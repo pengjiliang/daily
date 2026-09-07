@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+.env
+.env.local
+.npm-cache/
+.pnpm-store/
+
+# 排除上传的用户文件和临时文件
+apps/server/uploads/
+*.tsbuildinfo
+*.bak
+test.txt
+temp-sources.html

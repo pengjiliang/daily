@@ -1,0 +1,7 @@
+{
+  "name": "@ai-knowledge-base/shared",
+  "version": "1.0.0",
+  "description": "Shared types and contracts for the AI knowledge base",
+  "scripts": {},
+  "packageManager": "pnpm@10.18.2"
+}
