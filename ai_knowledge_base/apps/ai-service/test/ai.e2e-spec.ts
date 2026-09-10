@@ -60,9 +60,7 @@ describe('AIController (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
-    );
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
   });
 
@@ -114,16 +112,10 @@ describe('AIController (e2e)', () => {
 
   it('POST /ai/ask requires a question and rejects unknown fields', async () => {
     await request(app.getHttpServer()).post('/ai/ask').send({}).expect(400);
-    await request(app.getHttpServer())
-      .post('/ai/ask')
-      .send({ question: 'ok', unexpected: true })
-      .expect(400);
+    await request(app.getHttpServer()).post('/ai/ask').send({ question: 'ok', unexpected: true }).expect(400);
   });
 
   it('does not require JWT authentication', async () => {
-    await request(app.getHttpServer())
-      .post('/ai/ask')
-      .send({ question: 'No auth header supplied' })
-      .expect(201);
+    await request(app.getHttpServer()).post('/ai/ask').send({ question: 'No auth header supplied' }).expect(201);
   });
 });

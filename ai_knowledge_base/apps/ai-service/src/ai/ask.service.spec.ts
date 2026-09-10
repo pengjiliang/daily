@@ -1,11 +1,6 @@
 ﻿import type { Repository } from 'typeorm';
 import { DocumentChunk } from '../entities/document-chunk.entity.js';
-import {
-  AskService,
-  EXTERNAL_WITH_KB,
-  EXTERNAL_WITHOUT_KB,
-  TOP_K,
-} from './ask.service.js';
+import { AskService, EXTERNAL_WITH_KB, EXTERNAL_WITHOUT_KB, TOP_K } from './ask.service.js';
 import type { OpenAIModelProvider } from './openai-model.provider.js';
 
 interface QueryCall {
@@ -72,12 +67,7 @@ describe('AskService', () => {
       score: 0.75,
     });
     expect(result.sources.filter((s) => s.sourceType === 'external')).toHaveLength(3);
-    expect(result.sources.map((s) => s.sourceType)).toEqual([
-      'knowledge_base',
-      'external',
-      'external',
-      'external',
-    ]);
+    expect(result.sources.map((s) => s.sourceType)).toEqual(['knowledge_base', 'external', 'external', 'external']);
   });
 
   it('uses model knowledge with top 5 external sources when KB is empty', async () => {

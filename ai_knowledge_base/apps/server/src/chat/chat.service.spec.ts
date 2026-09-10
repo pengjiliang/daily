@@ -13,9 +13,7 @@ describe('ChatService', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    conversations = [
-      { id: 1, userId: 10, title: '新对话', createdAt: new Date(), updatedAt: new Date() },
-    ];
+    conversations = [{ id: 1, userId: 10, title: '新对话', createdAt: new Date(), updatedAt: new Date() }];
     messages = [];
 
     const conversationsRepository = {
@@ -25,8 +23,7 @@ describe('ChatService', () => {
         return input;
       },
       find: async () => conversations,
-      findOneBy: async ({ id }: { id: number }) =>
-        conversations.find((item) => item.id === id) ?? null,
+      findOneBy: async ({ id }: { id: number }) => conversations.find((item) => item.id === id) ?? null,
       remove: async (input: Conversation) => {
         conversations = conversations.filter((item) => item.id !== input.id);
         return input;
@@ -81,9 +78,7 @@ describe('ChatService', () => {
       body: JSON.stringify({
         question: 'pgvector 有什么用？',
         conversationId: '1',
-        history: [
-          { role: 'user', content: 'pgvector 有什么用？' },
-        ],
+        history: [{ role: 'user', content: 'pgvector 有什么用？' }],
       }),
     });
     expect(result.answer).toBe('pgvector 用于相似度检索。');

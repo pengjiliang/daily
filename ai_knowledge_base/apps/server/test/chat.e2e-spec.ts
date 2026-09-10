@@ -40,8 +40,7 @@ describe('ChatController (e2e)', () => {
       },
       find: async ({ where }: { where: { userId: number } }) =>
         conversations.filter((item) => item.userId === where.userId),
-      findOneBy: async ({ id }: { id: number }) =>
-        conversations.find((item) => item.id === id) ?? null,
+      findOneBy: async ({ id }: { id: number }) => conversations.find((item) => item.id === id) ?? null,
       remove: async (input: Conversation) => input,
       update: async () => ({ affected: 1 }),
     };
@@ -92,14 +91,10 @@ describe('ChatController (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
-    );
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
 
-    token = moduleFixture
-      .get(JwtService)
-      .sign({ sub: 10, email: 'owner@example.com' });
+    token = moduleFixture.get(JwtService).sign({ sub: 10, email: 'owner@example.com' });
   });
 
   afterAll(async () => {

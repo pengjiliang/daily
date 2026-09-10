@@ -1,9 +1,6 @@
 ﻿import { Body, Controller, Post } from '@nestjs/common';
 import { AskService, type AskResult } from './ask.service.js';
-import {
-  DocumentIndexService,
-  type IndexDocumentResult,
-} from './document-index.service.js';
+import { DocumentIndexService, type IndexDocumentResult } from './document-index.service.js';
 import { AskDto, IndexDocumentDto } from './dto/ai.dto.js';
 
 @Controller('ai')

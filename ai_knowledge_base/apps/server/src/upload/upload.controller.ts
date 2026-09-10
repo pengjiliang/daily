@@ -29,10 +29,7 @@ export class UploadController {
 
   @Post('avatar')
   @UseInterceptors(FileInterceptor('avatar', avatarUploadOptions))
-  async uploadAvatar(
-    @Req() request: AuthenticatedRequest,
-    @UploadedFile() file?: Express.Multer.File,
-  ) {
+  async uploadAvatar(@Req() request: AuthenticatedRequest, @UploadedFile() file?: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('Avatar file is required');
     }
@@ -41,10 +38,7 @@ export class UploadController {
 
   @Post('document')
   @UseInterceptors(FileInterceptor('file', documentUploadOptions))
-  async uploadDocument(
-    @Req() request: AuthenticatedRequest,
-    @UploadedFile() file?: Express.Multer.File,
-  ) {
+  async uploadDocument(@Req() request: AuthenticatedRequest, @UploadedFile() file?: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('Document file is required');
     }
@@ -62,10 +56,7 @@ export class UploadController {
     @Param('id', ParseIntPipe) id: number,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const file = await this.uploadService.getDocumentDownload(
-      id,
-      request.user.userId,
-    );
+    const file = await this.uploadService.getDocumentDownload(id, request.user.userId);
     const encodedName = encodeURIComponent(file.originalName);
 
     response.set({
@@ -78,10 +69,7 @@ export class UploadController {
   }
 
   @Delete('document/:id')
-  async deleteDocument(
-    @Req() request: AuthenticatedRequest,
-    @Param('id', ParseIntPipe) id: number,
-  ) {
+  async deleteDocument(@Req() request: AuthenticatedRequest, @Param('id', ParseIntPipe) id: number) {
     await this.uploadService.deleteDocument(id, request.user.userId);
     return { deleted: true };
   }

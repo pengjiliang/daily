@@ -7,12 +7,12 @@
     "apps/*",
     "packages/*"
   ],
+  "packageManager": "pnpm@12.3.4",
   "scripts": {
     "dev": "pnpm --parallel --filter \"./apps/**\" --if-present dev",
     "build": "pnpm --recursive --if-present build",
     "test": "pnpm --recursive --if-present test"
   },
-  "packageManager": "pnpm@10.18.2",
   "dependencies": {
     "iconv-lite": "^0.7.3",
     "jszip": "^3.10.1",

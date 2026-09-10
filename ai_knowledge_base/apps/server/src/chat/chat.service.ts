@@ -1,9 +1,4 @@
-﻿import {
-  BadGatewayException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+﻿import { BadGatewayException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -26,9 +21,7 @@ export class ChatService {
   ) {}
 
   createConversation(userId: number): Promise<Conversation> {
-    return this.conversationsRepository.save(
-      this.conversationsRepository.create({ userId }),
-    );
+    return this.conversationsRepository.save(this.conversationsRepository.create({ userId }));
   }
 
   listConversations(userId: number): Promise<Conversation[]> {
@@ -90,10 +83,7 @@ export class ChatService {
     return { answer, sources, message: assistantMessage };
   }
 
-  private async findOwnedConversation(
-    id: number,
-    userId: number,
-  ): Promise<Conversation> {
+  private async findOwnedConversation(id: number, userId: number): Promise<Conversation> {
     const conversation = await this.conversationsRepository.findOneBy({ id });
     if (!conversation) {
       throw new NotFoundException('Conversation not found');
@@ -104,15 +94,8 @@ export class ChatService {
     return conversation;
   }
 
-  private async ask(
-    question: string,
-    conversationId: number,
-    history: Message[],
-  ): Promise<AskAnswer> {
-    const aiServiceUrl = this.configService.get<string>(
-      'aiService.url',
-      'http://localhost:3001',
-    );
+  private async ask(question: string, conversationId: number, history: Message[]): Promise<AskAnswer> {
+    const aiServiceUrl = this.configService.get<string>('aiService.url', 'http://localhost:3001');
 
     let response: Response;
     try {
@@ -122,22 +105,18 @@ export class ChatService {
         body: JSON.stringify({
           question,
           conversationId: String(conversationId),
-          history: history.map(msg => ({
+          history: history.map((msg) => ({
             role: msg.role,
             content: msg.content,
           })),
         }),
       });
     } catch (error) {
-      throw new BadGatewayException(
-        `AI service is unreachable: ${String(error)}`,
-      );
+      throw new BadGatewayException(`AI service is unreachable: ${String(error)}`);
     }
 
     if (!response.ok) {
-      throw new BadGatewayException(
-        `AI service responded with ${response.status}`,
-      );
+      throw new BadGatewayException(`AI service responded with ${response.status}`);
     }
 
     const body = (await response.json()) as Partial<AskAnswer>;

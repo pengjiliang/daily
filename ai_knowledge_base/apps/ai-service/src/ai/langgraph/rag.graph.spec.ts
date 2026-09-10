@@ -1,7 +1,4 @@
-﻿import {
-  createRagGraph,
-  type RetrievedChunk,
-} from './rag.graph.js';
+﻿import { createRagGraph, type RetrievedChunk } from './rag.graph.js';
 
 const chunk: RetrievedChunk = {
   sourceType: 'knowledge_base',

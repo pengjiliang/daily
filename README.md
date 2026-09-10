@@ -31,8 +31,7 @@ cd ai_knowledge_base
 
 pnpm install
 
-配置环境变量（根据 .env.example 复制并修改 AI 模型和数据库配置）
-cp .env.example .env
+环境变量位于 apps/server/.env 和 apps/ai-service/.env（按需修改数据库与 AI 模型配置）
 
 
 启动项目（一条命令同时启动前端、后端和 AI 服务）：

@@ -33,4 +33,3 @@ import { DatabaseInitializationService } from './services/database-initializatio
   providers: [AppService, DatabaseInitializationService],
 })
 export class AppModule {}
-

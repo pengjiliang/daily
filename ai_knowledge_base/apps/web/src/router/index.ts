@@ -1,5 +1,5 @@
-import { createRouter, createWebHistory } from 'vue-router'
-import { useUserStore } from '../stores/user'
+import { createRouter, createWebHistory } from 'vue-router';
+import { useUserStore } from '../stores/user';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -25,18 +25,18 @@ const router = createRouter({
       redirect: '/home',
     },
   ],
-})
+});
 
 router.beforeEach((to, from, next) => {
-  const userStore = useUserStore()
-  
-  if (to.meta.requiresAuth && !userStore.isLoggedIn) {
-    next('/login')
-  } else if ((to.path === '/login' || to.path === '/register') && userStore.isLoggedIn) {
-    next('/home')
-  } else {
-    next()
-  }
-})
+  const userStore = useUserStore();
 
-export default router
+  if (to.meta.requiresAuth && !userStore.isLoggedIn) {
+    next('/login');
+  } else if ((to.path === '/login' || to.path === '/register') && userStore.isLoggedIn) {
+    next('/home');
+  } else {
+    next();
+  }
+});
+
+export default router;

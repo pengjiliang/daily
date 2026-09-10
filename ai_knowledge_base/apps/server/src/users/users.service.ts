@@ -3,8 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './user.entity.js';
 
-export type CreateUserInput = Pick<User, 'username' | 'password'> &
-  Partial<Pick<User, 'avatarUrl'>>;
+export type CreateUserInput = Pick<User, 'username' | 'password'> & Partial<Pick<User, 'avatarUrl'>>;
 
 @Injectable()
 export class UsersService {
@@ -25,7 +24,14 @@ export class UsersService {
 
   findOneById(id: number): Promise<User | null> {
     const numericId = Number(id);
-    this.logger.log('Looking for user with id: ' + numericId + ', original type: ' + typeof id + ', converted type: ' + typeof numericId);
+    this.logger.log(
+      'Looking for user with id: ' +
+        numericId +
+        ', original type: ' +
+        typeof id +
+        ', converted type: ' +
+        typeof numericId,
+    );
     return this.usersRepository.findOneBy({ id: numericId });
   }
 

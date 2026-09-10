@@ -14,7 +14,7 @@ class VectorTransformer {
       .trim()
       .slice(1, -1)
       .split(/[,\s]+/)
-      .filter(x => x)
+      .filter((x) => x)
       .map(parseFloat);
   }
 }

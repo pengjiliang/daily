@@ -75,9 +75,7 @@ export class DocumentIndexService {
       ),
     );
 
-    this.logger.log(
-      `Indexed ${chunks.length} chunks for upload file ${request.uploadFileId}`,
-    );
+    this.logger.log(`Indexed ${chunks.length} chunks for upload file ${request.uploadFileId}`);
     return { uploadFileId: request.uploadFileId, chunks: chunks.length };
   }
 
@@ -183,14 +181,12 @@ export class DocumentIndexService {
     const texts: string[] = [];
 
     // Iterate all sheets
-    workbook.SheetNames.forEach(sheetName => {
+    workbook.SheetNames.forEach((sheetName) => {
       const worksheet = workbook.Sheets[sheetName];
       // Convert sheet to 2D array of cells
-      const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as (unknown)[][];
+      const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as unknown[][];
       // Join cell values with tabs, rows with newlines
-      const sheetText = json
-        .map(row => row.map(cell => String(cell ?? '')).join('\t'))
-        .join('\n');
+      const sheetText = json.map((row) => row.map((cell) => String(cell ?? '')).join('\t')).join('\n');
       texts.push(`工作表：${sheetName}\n${sheetText}`);
     });
 
@@ -201,7 +197,9 @@ export class DocumentIndexService {
     const buffer = await readFile(filePath);
     const worker = await createWorker('chi_sim+eng');
     try {
-      const { data: { text } } = await worker.recognize(buffer);
+      const {
+        data: { text },
+      } = await worker.recognize(buffer);
       return text;
     } finally {
       await worker.terminate();

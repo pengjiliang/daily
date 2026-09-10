@@ -4,11 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Repository } from 'typeorm';
 import { DocumentChunk } from '../entities/document-chunk.entity.js';
-import {
-  CHUNK_OVERLAP,
-  CHUNK_SIZE,
-  DocumentIndexService,
-} from './document-index.service.js';
+import { CHUNK_OVERLAP, CHUNK_SIZE, DocumentIndexService } from './document-index.service.js';
 import type { OpenAIModelProvider } from './openai-model.provider.js';
 
 function createHarness() {
@@ -71,9 +67,7 @@ describe('DocumentIndexService', () => {
       expect(chunk.uploadFileId).toBe(7);
       expect(chunk.embedding).toHaveLength(3);
     }
-    expect(harness.saved.map((chunk) => chunk.metadata.chunkIndex)).toEqual(
-      harness.saved.map((_, index) => index),
-    );
+    expect(harness.saved.map((chunk) => chunk.metadata.chunkIndex)).toEqual(harness.saved.map((_, index) => index));
     expect(harness.deleted).toEqual([{ uploadFileId: 7 }]);
     expect(CHUNK_OVERLAP).toBe(200);
   });

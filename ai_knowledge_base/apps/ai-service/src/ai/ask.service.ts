@@ -2,12 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DocumentChunk } from '../entities/document-chunk.entity.js';
-import {
-  createRagGraph,
-  type GenerateResult,
-  type RagState,
-  type RetrievedChunk,
-} from './langgraph/rag.graph.js';
+import { createRagGraph, type GenerateResult, type RagState, type RetrievedChunk } from './langgraph/rag.graph.js';
 import { OpenAIModelProvider } from './openai-model.provider.js';
 import { HistoryMessage } from './dto/ai.dto.js';
 
@@ -109,9 +104,7 @@ export class AskService {
   private async generate(state: RagState): Promise<GenerateResult> {
     const hasKb = state.context.length > 0;
     const externalLimit = hasKb ? EXTERNAL_WITH_KB : EXTERNAL_WITHOUT_KB;
-    const historySection = state.history
-      ? `历史对话：\n\n${state.history}\n\n`
-      : '';
+    const historySection = state.history ? `历史对话：\n\n${state.history}\n\n` : '';
 
     const kbSection = hasKb
       ? state.context
@@ -155,10 +148,7 @@ export class AskService {
     try {
       const jsonText = this.extractJson(raw);
       const data = JSON.parse(jsonText) as ModelJsonResponse;
-      const answer =
-        typeof data.answer === 'string' && data.answer.trim()
-          ? data.answer.trim()
-          : fallbackAnswer;
+      const answer = typeof data.answer === 'string' && data.answer.trim() ? data.answer.trim() : fallbackAnswer;
 
       const externalSources = (Array.isArray(data.externalSources) ? data.externalSources : [])
         .map((item, index) => this.toExternalSource(item, index))
@@ -187,18 +177,12 @@ export class AskService {
     return trimmed;
   }
 
-  private toExternalSource(
-    item: ExternalKnowledgeItem,
-    index: number,
-  ): RetrievedChunk | null {
+  private toExternalSource(item: ExternalKnowledgeItem, index: number): RetrievedChunk | null {
     const content = typeof item.content === 'string' ? item.content.trim() : '';
     if (!content) {
       return null;
     }
-    const title =
-      typeof item.title === 'string' && item.title.trim()
-        ? item.title.trim()
-        : `外部资料 ${index + 1}`;
+    const title = typeof item.title === 'string' && item.title.trim() ? item.title.trim() : `外部资料 ${index + 1}`;
     const score =
       typeof item.score === 'number' && Number.isFinite(item.score)
         ? Math.min(1, Math.max(0, item.score))

@@ -57,8 +57,7 @@ export const avatarUploadOptions: MulterOptions = {
       ensureDirectory(AVATARS_DIRECTORY);
       callback(null, AVATARS_DIRECTORY);
     },
-    filename: (_request, file, callback) =>
-      callback(null, generatedFilename(file.originalname)),
+    filename: (_request, file, callback) => callback(null, generatedFilename(file.originalname)),
   }),
   fileFilter: (request, file, callback) => {
     if (!file.mimetype.startsWith('image/')) {
@@ -76,8 +75,7 @@ export const documentUploadOptions: MulterOptions = {
       ensureDirectory(DOCUMENTS_DIRECTORY);
       callback(null, DOCUMENTS_DIRECTORY);
     },
-    filename: (_request, file, callback) =>
-      callback(null, generatedFilename(file.originalname)),
+    filename: (_request, file, callback) => callback(null, generatedFilename(file.originalname)),
   }),
   fileFilter: allowExtension(documentExtensions),
   limits: { fileSize: 20 * 1024 * 1024 },

@@ -1,9 +1,4 @@
-import {
-  ForbiddenException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createReadStream, existsSync } from 'node:fs';
@@ -145,14 +140,8 @@ export class UploadService {
     return filePath;
   }
 
-  private async requestDocumentIndexing(
-    uploadFile: UploadFile,
-    absolutePath: string,
-  ): Promise<void> {
-    const aiServiceUrl = this.configService.get<string>(
-      'aiService.url',
-      'http://localhost:3001',
-    );
+  private async requestDocumentIndexing(uploadFile: UploadFile, absolutePath: string): Promise<void> {
+    const aiServiceUrl = this.configService.get<string>('aiService.url', 'http://localhost:3001');
 
     try {
       const controller = new AbortController();
@@ -173,18 +162,12 @@ export class UploadService {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        this.logger.warn(
-          `AI indexing request for document ${uploadFile.id} failed with ${response.status}`,
-        );
+        this.logger.warn(`AI indexing request for document ${uploadFile.id} failed with ${response.status}`);
       } else {
-        this.logger.log(
-          `AI indexing complete for document ${uploadFile.id}`,
-        );
+        this.logger.log(`AI indexing complete for document ${uploadFile.id}`);
       }
     } catch (error) {
-      this.logger.warn(
-        `AI indexing request for document ${uploadFile.id} could not be delivered: ${String(error)}`,
-      );
+      this.logger.warn(`AI indexing request for document ${uploadFile.id} could not be delivered: ${String(error)}`);
     }
   }
 }
