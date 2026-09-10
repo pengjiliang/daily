@@ -1,114 +1,93 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# AI 服务（ai-service）
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+AI 知识库的问答与文档向量化服务，基于 NestJS + LangChain（LangGraph）+ PostgreSQL/pgvector 实现 RAG 检索增强生成。
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## 功能
 
-## Description
+- 文档解析：支持 PDF、DOCX、XLSX/XLS、CSV、MD、TXT 及常见图片（OCR）等格式，自动处理 UTF-8/GBK 等中文编码
+- 文档向量化：文本分块后调用 Embedding 模型生成向量，存入 PostgreSQL（pgvector）的 `document_chunks` 表
+- 智能问答：基于 LangGraph 的 RAG 流程（检索 → 生成），优先使用知识库内容回答，并补充模型自身知识
+- 引用溯源：回答附带回源片段（内部知识库 + 外部资料），便于前端展示引用来源
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## 技术栈
 
-## Project setup
+- NestJS 12 + TypeScript
+- LangChain / LangGraph（RAG 编排）
+- TypeORM + PostgreSQL + pgvector
+- OpenAI 兼容 API（默认豆包/火山方舟，也可配置为 OpenAI）
 
-```bash
-$ pnpm install
-```
+## 环境变量
 
-## Compile and run the project
+在 `apps/ai-service/.env` 中配置（也可使用系统环境变量）：
 
-```bash
-# development
-$ pnpm run start
+| 变量 | 说明 | 默认值 |
+| --- | --- | --- |
+| `PORT` | 服务监听端口 | `3001` |
+| `DATABASE_HOST` | PostgreSQL 地址 | `localhost` |
+| `DATABASE_PORT` | PostgreSQL 端口 | `5432` |
+| `DATABASE_USER` | 数据库用户 | `postgres` |
+| `DATABASE_PASSWORD` | 数据库密码 | 空 |
+| `DATABASE_NAME` | 数据库名 | `ai_knowledge_base` |
+| `OPENAI_API_KEY` | OpenAI 兼容 API 的 Key | 空 |
+| `OPENAI_BASE_URL` | API 地址（如火山方舟） | 空 |
+| `OPENAI_EMBEDDING_MODEL` | Embedding 模型 | `text-embedding-ada-002` |
+| `OPENAI_CHAT_MODEL` | 对话模型 | `gpt-4o-mini` |
 
-# watch mode
-$ pnpm run start:dev
+> 服务启动时会自动启用 pgvector 扩展并同步数据表结构，数据库需为 PostgreSQL（建议安装 pgvector 插件）。
 
-# production mode
-$ pnpm run start:prod
-```
+## 启动
 
-## Run tests
+推荐在 monorepo 根目录（`ai_knowledge_base`）执行一键启动：
 
 ```bash
-# unit tests
-$ pnpm run test
-
-# e2e tests
-$ pnpm run test:e2e
-
-# test coverage
-$ pnpm run test:cov
+pnpm dev
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+也可以单独启动本服务：
 
 ```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
+cd apps/ai-service
+pnpm dev        # 开发模式（watch）
+pnpm start:prod # 生产模式（需先 pnpm build）
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+服务默认监听 `http://localhost:3001`。
 
-## Observability
+## 接口
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/health` | 健康检查 |
+| `POST` | `/ai/index-document` | 文档向量化入库（body：`uploadFileId`、`filePath`、`originalName`、`mimeType`） |
+| `POST` | `/ai/ask` | 知识库问答（body：`question`、可选 `conversationId`、`history`） |
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
+## 常用脚本
 
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
+```bash
+pnpm build       # 编译
+pnpm start:dev   # 开发模式
+pnpm test        # 单元测试
+pnpm test:e2e    # e2e 测试
+pnpm lint        # 代码检查（oxlint）
+pnpm format      # 代码格式化（Prettier）
+```
 
-## Resources
+## 目录结构
 
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+```text
+src/
+├── main.ts                       # 入口：全局校验管道、启动监听
+├── app.module.ts                 # 根模块：配置、数据库连接
+├── app.controller.ts             # 健康检查
+├── ai/
+│   ├── ai.controller.ts          # /ai 路由
+│   ├── ai.module.ts
+│   ├── ask.service.ts            # 问答：检索 + 生成
+│   ├── document-index.service.ts # 文档解析、分块、向量化
+│   ├── openai-model.provider.ts  # LLM / Embedding 模型封装
+│   ├── dto/ai.dto.ts             # 请求参数校验
+│   └── langgraph/rag.graph.ts    # RAG 状态图
+├── config/configuration.ts       # 环境变量读取
+├── entities/document-chunk.entity.ts
+└── services/database-initialization.service.ts
+```

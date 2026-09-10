@@ -2,7 +2,6 @@
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller.js';
-import { AppService } from './app.service.js';
 import { AIModule } from './ai/ai.module.js';
 import configuration from './config/configuration.js';
 import { DocumentChunk } from './entities/document-chunk.entity.js';
@@ -30,6 +29,6 @@ import { DatabaseInitializationService } from './services/database-initializatio
     AIModule,
   ],
   controllers: [AppController],
-  providers: [AppService, DatabaseInitializationService],
+  providers: [DatabaseInitializationService],
 })
 export class AppModule {}
