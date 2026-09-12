@@ -31,6 +31,13 @@ pnpm dev
 | 后端 API | http://localhost:3000 |
 | AI 服务 | http://localhost:3001 |
 
+## 目录结构
+
+- `apps/web`：前端（Vue3 + Vite + Element Plus）
+- `apps/server`：后端 API（NestJS + TypeORM + pgvector，含 SSE 流式转发）
+- `apps/ai-service`：AI 服务（NestJS + LangGraph，文档向量化与 RAG 问答）
+- `packages/shared`：跨端共享的纯类型包（`RetrievedChunk`、`AskResult` 等前后端契约，编译期擦除、无运行时依赖）
+
 ## 环境变量
 
 - `apps/server/.env`：数据库（PostgreSQL/pgvector）、JWT、AI 服务地址

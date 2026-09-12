@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="home-container">
     <!-- 顶部导航栏 -->
     <el-header class="header">
@@ -21,7 +21,7 @@
         </el-dropdown>
       </div>
     </el-header>
-
+    
     <el-container class="main-container">
       <!-- 左侧：文件管理 + 会话列表 tabs -->
       <el-aside width="320px" class="sidebar">
@@ -150,7 +150,10 @@
                         >
                           <div class="source-meta">
                             <el-tag size="small" type="primary" effect="plain">知识库</el-tag>
-                            <span class="source-score">相似度 {{ formatScore(source.score) }}%</span>
+                            <span class="source-score">相关度 {{ formatScore(source.similarity ?? source.score) }}%</span>
+                            <span v-if="source.similarity != null" class="source-raw-score">
+                              原始 {{ formatScore(source.score) }}%
+                            </span>
                           </div>
                           <div
                             class="source-file"
@@ -177,7 +180,7 @@
                         >
                           <div class="source-meta">
                             <el-tag size="small" type="warning" effect="plain">外部资料</el-tag>
-                            <span class="source-score">相关度 {{ formatScore(source.score) }}%</span>
+                            <span class="source-score">相关度 {{ formatScore(source.similarity ?? source.score) }}%</span>
                           </div>
                           <a
                             class="source-link"
@@ -308,7 +311,7 @@ import { useUserStore } from '@/stores/user';
 import { uploadApi } from '@/api/upload';
 import { chatApi } from '@/api/chat';
 import { authApi } from '@/api/auth';
-import type { Conversation, Message } from '@/api/chat';
+import type { Conversation, Message, Source } from '@/api/chat';
 import type { UploadDocument } from '@/api/upload';
 
 const userStore = useUserStore();
@@ -551,31 +554,62 @@ const sendQuestion = async () => {
 
   sending.value = true;
   // 添加 AI 加载占位
-  const aiLoadingIndex = messages.value.length;
+  const aiIndex = messages.value.length;
   messages.value.push({
     id: Date.now() + 1,
     role: 'assistant',
     content: '',
     conversationId: currentConversation.value.id,
     createdAt: new Date().toISOString(),
+    sources: [],
     loading: true,
   });
   nextTick(() => scrollToBottom());
 
   try {
-    const res = await chatApi.sendMessage(currentConversation.value.id, userQuestion);
-    // 替换加载占位
-    messages.value[aiLoadingIndex] = {
-      ...res.message,
-      sources: res.message.sources ?? res.sources ?? [],
+    const res = await chatApi.sendMessage(
+      currentConversation.value.id,
+      userQuestion,
+      {
+        // 知识库检索完成：先展示来源
+        onSources: (sources: Source[]) => {
+          messages.value[aiIndex] = { ...messages.value[aiIndex], sources };
+          nextTick(() => scrollToBottom());
+        },
+        // 逐 token 追加回答，首个 token 到达即取消“思考中”占位
+        onToken: (token: string) => {
+          const msg = messages.value[aiIndex];
+          messages.value[aiIndex] = {
+            ...msg,
+            content: msg.content + token,
+            loading: false,
+          };
+          nextTick(() => scrollToBottom());
+        },
+      },
+    );
+
+    // 用持久化后的消息（带真实 id）替换占位，内容/来源以服务端最终结果为准
+    messages.value[aiIndex] = {
+      ...(res.message ?? messages.value[aiIndex]),
+      content: res.answer,
+      sources: res.sources,
+      loading: false,
     };
     nextTick(() => scrollToBottom());
   } catch (error) {
     console.error(error);
-    ElMessage.error('发送失败');
-    question.value = userQuestion;
-    // 移除加载占位
-    messages.value.splice(aiLoadingIndex, 1);
+    const partial = messages.value[aiIndex]?.content;
+    if (partial) {
+      // 已收到部分回答：保留内容，标记中断
+      messages.value[aiIndex] = { ...messages.value[aiIndex], loading: false };
+      ElMessage.error('回答中断，已保留已生成的内容');
+    } else {
+      ElMessage.error(error instanceof Error ? error.message : '发送失败');
+      question.value = userQuestion;
+      // 移除加载占位
+      messages.value.splice(aiIndex, 1);
+    }
   } finally {
     sending.value = false;
   }
@@ -592,6 +626,9 @@ const handleCommand = (command: string) => {
 };
 
 // 来源处理工具函数
+// 与 ai-service 的 MIN_SCORE 保持一致：低于该相关度的知识库片段不在页面展示
+const KB_MIN_SCORE = 0.3;
+
 const isExternalSource = (source: any) => {
   // 兼容旧数据：有 uploadFileId 视为知识库
   return !source?.uploadFileId;
@@ -599,7 +636,7 @@ const isExternalSource = (source: any) => {
 
 const knowledgeBaseSources = (msg: any) => {
   const list = Array.isArray(msg?.sources) ? msg.sources : [];
-  return list.filter((source: any) => !isExternalSource(source));
+  return list.filter((source: any) => !isExternalSource(source) && (source?.score ?? 1) >= KB_MIN_SCORE);
 };
 
 const externalSources = (msg: any) => {
@@ -1006,6 +1043,11 @@ onMounted(() => {
 .source-score {
   font-size: 12px;
   color: #909399;
+}
+
+.source-raw-score {
+  font-size: 12px;
+  color: #c0c4cc;
 }
 
 .source-file {

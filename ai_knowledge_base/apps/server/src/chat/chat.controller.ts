@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Req } from '@nestjs/common';
-import type { Request } from 'express';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Req, Res } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 import { ChatService } from './chat.service.js';
 import { Conversation } from './conversation.entity.js';
@@ -34,11 +34,56 @@ export class ChatController {
   }
 
   @Post('conversations/:id/messages')
-  sendMessage(
-    @Req() request: AuthenticatedRequest,
+  async sendMessage(
+    @Req() req: AuthenticatedRequest,
+    @Res() response: Response,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CreateMessageDto,
-  ) {
-    return this.chatService.sendMessage(id, request.user.userId, dto.content);
+  ): Promise<void> {
+    response.set({
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    response.flushHeaders?.();
+
+    const sendEvent = (event: string, data: unknown): void => {
+      response.write(`event: ${event}\n`);
+      response.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    // 浏览器断开时通知服务中止上游请求
+    const abortController = new AbortController();
+    const onAbort = () => abortController.abort();
+    req.on('close', onAbort);
+
+    try {
+      const result = await this.chatService.sendMessageStream(
+        id,
+        req.user.userId,
+        dto.content,
+        {
+          onSources: (sources) => sendEvent('sources', sources),
+          onToken: (token) => sendEvent('token', token),
+        },
+        abortController.signal,
+      );
+      if (!response.writableEnded) {
+        sendEvent('done', result);
+        response.end();
+      }
+    } catch (error) {
+      if (!response.headersSent) {
+        // 会话不存在/无权限等错误：尚未发送流头，按普通 HTTP 错误抛出
+        throw error;
+      }
+      if (!abortController.signal.aborted && !response.writableEnded) {
+        sendEvent('error', { message: error instanceof Error ? error.message : String(error) });
+        response.end();
+      }
+    } finally {
+      req.off('close', onAbort);
+    }
   }
 }

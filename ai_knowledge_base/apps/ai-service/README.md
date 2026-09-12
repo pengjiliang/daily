@@ -7,6 +7,9 @@ AI 知识库的问答与文档向量化服务，基于 NestJS + LangChain（Lang
 - 文档解析：支持 PDF、DOCX、XLSX/XLS、CSV、MD、TXT 及常见图片（OCR）等格式，自动处理 UTF-8/GBK 等中文编码
 - 文档向量化：文本分块后调用 Embedding 模型生成向量，存入 PostgreSQL（pgvector）的 `document_chunks` 表
 - 智能问答：基于 LangGraph 的 RAG 流程（检索 → 生成），优先使用知识库内容回答，并补充模型自身知识
+- 检索过滤：相似度低于阈值（`MIN_SCORE` / `RELATIVE_MIN_SCORE`）的知识库片段不会返回，避免低相关结果干扰展示
+- 相关度重排：向量召回候选片段后由 LLM 二次判断相关性（`RERANK_TOP_N`），只保留真正相关的片段
+- 分数校准：原始 Embedding 相似度区间窄（豆包约 0.30~0.40）且绝对分数易误导，按本次检索的最强匹配归一化（`relativeSimilarity`）得到直观的“真实相似度”，最强匹配显示 90%，其余平滑缩放，两个分数一并返回给前端展示
 - 引用溯源：回答附带回源片段（内部知识库 + 外部资料），便于前端展示引用来源
 
 ## 技术栈

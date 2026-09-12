@@ -1,4 +1,10 @@
 import request from './request';
+import { useUserStore } from '../stores/user';
+import type { RetrievedChunk } from '@ai-knowledge-base/shared';
+
+// 会话与消息的普通 CRUD 走 axios 实例；发送消息使用原生 fetch 读取 SSE 流（见下方 sendMessage）
+
+const API_BASE = 'http://localhost:3000';
 
 export interface Conversation {
   id: number;
@@ -14,23 +20,22 @@ export interface Message {
   content: string;
   sources?: Source[] | null;
   createdAt: string;
+  /** 仅前端使用：AI 思考中占位 */
+  loading?: boolean;
 }
 
-export interface Source {
-  sourceType?: 'knowledge_base' | 'external';
-  chunkId?: number | null;
-  uploadFileId?: number | null;
-  content: string;
-  score: number;
-  metadata?: Record<string, unknown>;
-  pageContent?: string;
-  originalName?: string;
-}
+// 跨端共享类型：定义见 packages/shared（来源片段契约），前端保留旧名避免改动页面代码
+export type Source = RetrievedChunk;
 
-export interface SendMessageResult {
+export interface StreamDoneResult {
   answer: string;
   sources: Source[];
-  message: Message;
+  message: Message | null;
+}
+
+export interface StreamHandlers {
+  onSources?: (sources: Source[]) => void;
+  onToken?: (token: string) => void;
 }
 
 export const chatApi = {
@@ -50,7 +55,112 @@ export const chatApi = {
     return request.get<Message[]>(`/chat/conversations/${id}/messages`);
   },
 
-  sendMessage(id: number, content: string) {
-    return request.post<SendMessageResult>(`/chat/conversations/${id}/messages`, { content });
+  /**
+   * 流式发送消息：服务端以 SSE 返回 sources/token/done/error 事件。
+   * 不设置固定超时（模型边生成边推送，只要持续有 token 即视为正常）。
+   */
+  async sendMessage(
+    id: number,
+    content: string,
+    handlers: StreamHandlers = {},
+    signal?: AbortSignal,
+  ): Promise<StreamDoneResult> {
+    const userStore = useUserStore();
+    const response = await fetch(`${API_BASE}/chat/conversations/${id}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(userStore.token ? { Authorization: `Bearer ${userStore.token}` } : {}),
+      },
+      body: JSON.stringify({ content }),
+      signal,
+    });
+
+    if (!response.ok || !response.body) {
+      // 尽量解析 Nest 的错误响应
+      let message = `请求失败（${response.status}）`;
+      try {
+        const errorBody = (await response.json()) as { message?: string | string[] };
+        if (errorBody?.message) {
+          message = Array.isArray(errorBody.message) ? errorBody.message.join('；') : errorBody.message;
+        }
+      } catch {
+        // 忽略 JSON 解析失败
+      }
+      if (response.status === 401) {
+        userStore.logout();
+        window.location.href = '/login';
+      }
+      throw new Error(message);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let answer = '';
+    let sources: Source[] = [];
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let separatorIndex: number;
+      while ((separatorIndex = buffer.indexOf('\n\n')) !== -1) {
+        const rawFrame = buffer.slice(0, separatorIndex);
+        buffer = buffer.slice(separatorIndex + 2);
+
+        let event = 'message';
+        const dataLines: string[] = [];
+        for (const line of rawFrame.split('\n')) {
+          if (line.startsWith('event:')) {
+            event = line.slice(6).trim();
+          } else if (line.startsWith('data:')) {
+            dataLines.push(line.slice(5).trimStart());
+          }
+        }
+        if (dataLines.length === 0) continue;
+
+        let data: unknown;
+        try {
+          data = JSON.parse(dataLines.join('\n'));
+        } catch {
+          data = dataLines.join('\n');
+        }
+
+        if (event === 'sources') {
+          sources = Array.isArray(data) ? (data as Source[]) : [];
+          handlers.onSources?.(sources);
+        } else if (event === 'token') {
+          const token = typeof data === 'string' ? data : '';
+          if (token) {
+            answer += token;
+            handlers.onToken?.(token);
+          }
+        } else if (event === 'done') {
+          const result = data as Partial<StreamDoneResult>;
+          if (typeof result.answer === 'string' && result.answer) {
+            answer = result.answer;
+          }
+          if (Array.isArray(result.sources)) {
+            sources = result.sources;
+          }
+          return {
+            answer,
+            sources,
+            message: result.message ?? null,
+          };
+        } else if (event === 'error') {
+          const message =
+            data && typeof data === 'object' && 'message' in data
+              ? String((data as { message: unknown }).message)
+              : 'AI 服务异常';
+          throw new Error(message);
+        }
+      }
+    }
+
+    // 服务端正常结束但未收到 done（不应发生）：返回累积内容
+    return { answer, sources, message: null };
   },
 };

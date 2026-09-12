@@ -1,15 +1,8 @@
-﻿import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
+import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
+import type { RetrievedChunk, SourceType } from '@ai-knowledge-base/shared';
 
-export type SourceType = 'knowledge_base' | 'external';
-
-export interface RetrievedChunk {
-  sourceType: SourceType;
-  chunkId: number | null;
-  uploadFileId: number | null;
-  content: string;
-  score: number;
-  metadata: Record<string, unknown>;
-}
+// 跨端共享类型：定义见 packages/shared，此处仅转发，保持本地导入路径不变
+export type { RetrievedChunk, SourceType } from '@ai-knowledge-base/shared';
 
 export const RagStateAnnotation = Annotation.Root({
   question: Annotation<string>,

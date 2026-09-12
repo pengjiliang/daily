@@ -1,4 +1,8 @@
 import { IsInt, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import type { HistoryMessage } from '@ai-knowledge-base/shared';
+
+// 跨端共享类型：定义见 packages/shared，此处仅转发
+export type { HistoryMessage };
 
 export class IndexDocumentDto {
   @IsInt()
@@ -15,14 +19,6 @@ export class IndexDocumentDto {
   @IsString()
   @MinLength(1)
   mimeType: string;
-}
-
-export class HistoryMessage {
-  @IsString()
-  role: 'user' | 'assistant';
-
-  @IsString()
-  content: string;
 }
 
 export class AskDto {
