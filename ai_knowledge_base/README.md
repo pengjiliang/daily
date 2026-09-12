@@ -38,14 +38,26 @@ pnpm dev
 - `apps/ai-service`：AI 服务（NestJS + LangGraph，文档向量化与 RAG 问答）
 - `packages/shared`：跨端共享的纯类型包（`RetrievedChunk`、`AskResult` 等前后端契约，编译期擦除、无运行时依赖）
 
+## 检索链路（混合检索）
+
+知识库问答的检索分 5 步（`apps/ai-service/src/ai/ask.service.ts`）：
+
+1. **查询改写**（短查询 ≤ `QUERY_REWRITE_THRESHOLD`=4 字符时）：如"彭"→"彭基良"，由 LLM 扩展为完整表达——碎片/简称查询直接做 embedding 是语义噪声；
+2. **多路召回**：
+   - 向量语义路：Embedding cosine 相似度（pgvector），取 `TOP_K`=8，过滤相似度 ≤ `MIN_SCORE`(0.3) 的噪声；
+   - 关键词字面路：pg_trgm 子串匹配（`ILIKE '%term%'`），原始查询与改写查询各一路、各取 `KEYWORD_TOP_K`=8——保证"彭/彭基/基良"这类碎片能命中含"彭基良"的文档（纯向量检索只认语义、不认字，这是它补的短板）；
+3. **RRF 融合**：两路结果按排名融合（`1/(k+rank+1)`，k=`RRF_K`=60），不做分数阈值（两种分数不可比），每文件保留最优片段；
+4. **LLM 重排**：只保留与问题真正相关的片段（`RERANK_TOP_N`=5），关键词路的无关命中在此剔除；
+5. **分数校准**：`relativeSimilarity` 按最强匹配归一化后展示（`score` 原始 / `similarity` 相关度）。
+
 ## 核心不变量（项目不维护自动化测试，改动时请人工核对）
 
 > 验证方式：每次改动让 LLM 自查 + 手动走通真实链路（启动 `pnpm dev` 后逐项验证）。
 > 以下三个不变量是历史测试覆盖过的关键契约，改动相关代码时请勿破坏：
 
-1. **分数校准**（`apps/ai-service/src/ai/ask.service.ts` 的 `relativeSimilarity`）：原始 Embedding 相似度按本次检索最强匹配归一化——最强匹配固定返回 `0.9`，其余按比例平滑缩放；`score` 为原始相似度、`similarity` 为校准后相关度，两者一并返回给前端（前端展示"相关度 xx%（原始 xx%）"）。
+1. **分数校准**（`apps/ai-service/src/ai/ask.service.ts` 的 `relativeSimilarity`）：按本次检索保留片段的最强匹配归一化——最强匹配固定返回 `0.9`，其余按比例平滑缩放；`score` 为原始相似度、`similarity` 为校准后相关度，两者一并返回给前端（前端展示"相关度 xx%（原始 xx%）"）。注意混合检索下 `score` 可能来自向量 cosine 相似度或关键词 trigram 相似度（关键词路短词为 0 时取下限 `MIN_SCORE`），仅作展示基准。
 
-2. **检索 SQL 参数化**（`apps/ai-service/src/ai/ask.service.ts` 的 `retrieve`）：embedding 向量必须通过 `$1` 参数传入（`embedding::vector <=> $1::vector`），禁止字符串拼接；`LIMIT` 仅允许常量（`TOP_K`）内联，不允许用户输入进入 SQL。
+2. **检索 SQL 参数化**（`apps/ai-service/src/ai/ask.service.ts` 的 `retrieve` / `keywordSearch`）：所有用户输入（embedding 向量、关键词 term）必须通过 `$1` 参数传入（`embedding::vector <=> $1::vector`、`content ILIKE '%' || $1 || '%'`、`similarity(content, $1)`），禁止字符串拼接；`LIMIT` 仅允许常量（`TOP_K` / `KEYWORD_TOP_K`）内联，不允许用户输入进入 SQL。
 
 3. **SSE 流式协议**（`apps/web` ↔ `apps/server` ↔ `apps/ai-service`）：帧格式为 `event: <事件名>\ndata: <JSON>\n\n`；事件包括 `sources`（检索片段数组）、`token`（回答增量字符串）、`done`（最终 `AskResult`）、`error`（错误信息）；客户端断开时服务端应中止上游请求并尽力保留已生成的部分回答。
 

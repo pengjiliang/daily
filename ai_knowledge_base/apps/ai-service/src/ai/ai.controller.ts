@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Param, ParseIntPipe, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AskService, type AskResult } from './ask.service.js';
 import { DocumentIndexService, type IndexDocumentResult } from './document-index.service.js';
@@ -14,6 +14,14 @@ export class AIController {
   @Post('index-document')
   async indexDocument(@Body() dto: IndexDocumentDto): Promise<IndexDocumentResult> {
     return this.documentIndexService.indexDocument(dto);
+  }
+
+  /** 文档删除后由 server 调用：同步清理该文件的全部分块，避免孤儿分块继续被检索命中 */
+  @Delete('document/:uploadFileId')
+  async deleteDocumentChunks(
+    @Param('uploadFileId', ParseIntPipe) uploadFileId: number,
+  ): Promise<{ uploadFileId: number; deleted: number }> {
+    return this.documentIndexService.deleteChunksByUploadFileId(uploadFileId);
   }
 
   @Post('ask')

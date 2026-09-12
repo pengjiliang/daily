@@ -118,6 +118,31 @@ export class UploadService {
       }
     }
     await this.uploadFilesRepository.remove(uploadFile);
+
+    // 同步清理 ai-service 中该文件的分块：否则孤儿分块会继续被检索命中（同一文件名出现多条来源）
+    await this.requestChunkPurge(uploadFile.id);
+  }
+
+  /** 通知 ai-service 删除某上传文件的全部向量分块；失败仅告警，不影响文档删除本身 */
+  private async requestChunkPurge(uploadFileId: number): Promise<void> {
+    const aiServiceUrl = this.configService.get<string>('aiService.url', 'http://localhost:3001');
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const response = await fetch(`${aiServiceUrl}/ai/document/${uploadFileId}`, {
+        method: 'DELETE',
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        this.logger.warn(`AI chunk purge for document ${uploadFileId} failed with ${response.status}`);
+      } else {
+        this.logger.log(`AI chunk purge complete for document ${uploadFileId}`);
+      }
+    } catch (error) {
+      this.logger.warn(`AI chunk purge for document ${uploadFileId} could not be delivered: ${String(error)}`);
+    }
   }
 
   private async findOwnedDocument(id: number, userId: number): Promise<UploadFile> {

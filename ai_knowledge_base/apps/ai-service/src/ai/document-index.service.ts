@@ -79,6 +79,13 @@ export class DocumentIndexService {
     return { uploadFileId: request.uploadFileId, chunks: chunks.length };
   }
 
+  /** 删除某上传文件的全部向量分块（文档删除时由 server 调用，避免孤儿分块残留被检索命中） */
+  async deleteChunksByUploadFileId(uploadFileId: number): Promise<{ uploadFileId: number; deleted: number }> {
+    const result = await this.documentChunksRepository.delete({ uploadFileId });
+    this.logger.log(`Deleted ${result.affected ?? 0} chunks for upload file ${uploadFileId}`);
+    return { uploadFileId, deleted: result.affected ?? 0 };
+  }
+
   private async extractText(filePath: string, originalName: string): Promise<string> {
     const extension = extname(originalName).toLowerCase();
     let text: string;

@@ -9,7 +9,13 @@ export class DatabaseInitializationService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     await this.dataSource.query('CREATE EXTENSION IF NOT EXISTS vector');
+    // pg_trgm：混合检索的关键词（字面子串）召回依赖的 trigram 扩展
+    await this.dataSource.query('CREATE EXTENSION IF NOT EXISTS pg_trgm');
     await this.dataSource.synchronize();
-    this.logger.log('pgvector extension enabled and AI schema synchronized');
+    // trigram GIN 索引加速 content ILIKE '%term%' 子串查询（需在表同步之后创建）
+    await this.dataSource.query(
+      'CREATE INDEX IF NOT EXISTS idx_document_chunks_content_trgm ON document_chunks USING GIN (content gin_trgm_ops)',
+    );
+    this.logger.log('pgvector + pg_trgm extensions enabled and AI schema synchronized');
   }
 }

@@ -13,9 +13,3 @@ apps/server/uploads/
 *.bak
 test.txt
 temp-sources.html
-
-# 测试文件与测试代码（保留在本地，不提交到仓库）
-*.spec.ts
-test/
-vitest.config.ts
-vitest.config.e2e.ts

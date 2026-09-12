@@ -10,12 +10,16 @@ import type { HistoryMessage } from './dto/ai.dto.js';
 
 /** 向量检索候选数（重排前） */
 export const TOP_K = 8;
-/** 绝对阈值：相似度低于该值的片段视为不相关，直接丢弃 */
+/** 关键词（字面）检索候选数：pg_trgm 子串匹配，与向量路一起进 RRF 融合 */
+export const KEYWORD_TOP_K = 8;
+/** 绝对阈值：仅用于向量路——相似度低于该值的片段视为噪声丢弃；关键词路不做分数过滤（字面命中即候选） */
 export const MIN_SCORE = 0.3;
-/** 相对阈值：低于最高分该比例的片段视为低相关，丢弃（自适应不同 Embedding 模型的分数分布） */
-export const RELATIVE_MIN_SCORE = 0.7;
 /** 重排后最多保留的片段数 */
 export const RERANK_TOP_N = 5;
+/** RRF（Reciprocal Rank Fusion）融合常数，业界常用值 */
+export const RRF_K = 60;
+/** 短查询改写阈值：查询字符数不超过该值（如人名碎片“彭”“彭基”“基良”）时，先由 LLM 扩展为完整查询再检索 */
+export const QUERY_REWRITE_THRESHOLD = 4;
 
 /**
  * 相关度校准：把本次检索保留的片段按最强匹配归一化，映射为直观的“真实相似度”（0~1）。
@@ -52,6 +56,22 @@ interface SimilarityRow {
   content: string;
   metadata: Record<string, unknown>;
   distance: string;
+}
+
+/** 混合检索的融合候选：score 优先取向量路 cosine 相似度，其次取关键词路 trigram 相似度（仅用于展示与归一化） */
+interface FusionCandidate {
+  chunkId: number;
+  uploadFileId: number;
+  content: string;
+  metadata: Record<string, unknown>;
+  score: number;
+  rrf: number;
+}
+
+/** 一路召回的带排名结果（rank 从 0 开始，best first），供 RRF 融合 */
+interface FusionLeg {
+  name: string;
+  items: { rank: number; chunk: FusionCandidate }[];
 }
 
 interface ExternalKnowledgeItem {
@@ -364,43 +384,156 @@ export class AskService {
     };
   }
 
+  /**
+   * 查询改写（方案 A）：短碎片查询（如人名简称“彭”“彭基”“基良”）直接做 embedding 是语义噪声，
+   * 先由 LLM 扩展为完整表达（如“彭”→“彭基良”）。
+   * 改写结果用于「向量语义路」与「精确关键词路」；原始查询仍用于「子串关键词路」保证字面召回。
+   * 长查询（超过 QUERY_REWRITE_THRESHOLD 字符）不改写以省一次模型调用；改写失败/空结果回退原查询。
+   */
+  private async rewriteQuery(question: string): Promise<string> {
+    if (question.trim().length > QUERY_REWRITE_THRESHOLD) {
+      return question;
+    }
+    try {
+      const response = await this.models.chatModel.invoke([
+        {
+          role: 'system',
+          content:
+            '你是查询改写助手。用户可能输入了人名、术语的简称或碎片（例如“彭”“彭基”“基良”）。' +
+            '请把它改写成知识库检索可用的完整查询（例如“彭”→“彭基良”）。' +
+            '直接输出改写后的查询文本，不要任何解释、引号或多余标点。',
+        },
+        { role: 'user', content: `原始查询：${question}\n改写为：` },
+      ]);
+      const rewritten = response.text.trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, '');
+      return rewritten && rewritten !== question ? rewritten : question;
+    } catch (error) {
+      this.logger.warn(`Query rewrite failed, fallback to original query: ${String(error)}`);
+      return question;
+    }
+  }
+
+  /**
+   * 混合检索（方案 B）：多路召回 → RRF 融合 → 每文件保留最优 → LLM 重排。
+   * - 向量语义路：Embedding cosine 相似度（用改写后的查询，碎片“彭”的原始向量是噪声），
+   *   内部做 MIN_SCORE 绝对阈值过滤；
+   * - 关键词字面路：pg_trgm 子串匹配（`ILIKE '%term%'`），原始查询与改写查询各一路，
+   *   保证“输入‘彭’能命中含‘彭基良’的文档”——纯向量检索只认语义、不认字，这是它补的短板。
+   * 关键词路不做分数阈值过滤（字面命中即候选，避免碎片查询被绝对阈值误杀），
+   * 最终相关性由 LLM 重排把关；分数阈值与融合分数不可比，故融合后也不再做相对阈值过滤。
+   */
   private async retrieve(question: string): Promise<RetrievedChunk[]> {
-    const embedding = await this.models.embeddings.embedQuery(question);
-    const vectorStr = `[${embedding.join(',')}]`;
-    // 向量以参数传入，避免字符串拼接（TOP_K 为常量，直接内联无注入风险）
-    const sql = `SELECT id, "uploadFileId", content, metadata, embedding::vector <=> $1::vector AS distance
-       FROM document_chunks
-       ORDER BY embedding::vector <=> $1::vector
-       LIMIT ${TOP_K}`;
-    const rows: SimilarityRow[] = await this.documentChunksRepository.query(sql, [vectorStr]);
+    // ① 查询改写（方案 A）：短碎片 → 完整表达
+    const rewritten = await this.rewriteQuery(question);
 
-    let chunks = rows
-      .map((row) => ({
-        sourceType: 'knowledge_base' as const,
-        chunkId: row.id,
-        uploadFileId: row.uploadFileId,
-        content: row.content,
-        score: 1 - Number(row.distance),
-        metadata: row.metadata ?? {},
-      }))
-      .filter((chunk) => chunk.score > MIN_SCORE);
+    // ② 向量语义路
+    // LEFT JOIN upload_files：过滤已删除文档遗留的“孤儿分块”（server 与 ai-service 共用同一数据库，
+    // upload_files 由 server 维护）——否则旧分块会继续被检索命中，同一文件名出现多条来源
+    const vectorEmbedding = await this.models.embeddings.embedQuery(rewritten);
+    const vectorRows: SimilarityRow[] = await this.documentChunksRepository.query(
+      `SELECT c.id, c."uploadFileId", c.content, c.metadata,
+              c.embedding::vector <=> $1::vector AS distance
+         FROM document_chunks c
+         LEFT JOIN upload_files f ON f.id = c."uploadFileId"
+        WHERE f.id IS NOT NULL
+        ORDER BY c.embedding::vector <=> $1::vector
+        LIMIT ${TOP_K}`,
+      [`[${vectorEmbedding.join(',')}]`],
+    );
 
-    // 去掉“矮个子里拔高个”的长尾：只保留与最高分相近的片段
-    const bestScore = chunks.reduce((best, chunk) => Math.max(best, chunk.score), 0);
-    chunks = chunks.filter((chunk) => chunk.score >= bestScore * RELATIVE_MIN_SCORE);
+    // ③ 关键词字面路（原始查询 + 改写查询各一路，Set 去重；每路按 trigram 相似度排序召回）
+    const legs: FusionLeg[] = [
+      {
+        name: 'vector',
+        items: vectorRows
+          .filter((row) => 1 - Number(row.distance) > MIN_SCORE)
+          .map((row, rank) => ({ rank, chunk: this.toFusionCandidate(row, 1 - Number(row.distance)) })),
+      },
+    ];
+    for (const term of new Set([question, rewritten].filter((t) => t.trim()))) {
+      const rows = await this.keywordSearch(term);
+      legs.push({
+        name: `keyword:${term}`,
+        items: rows.map((row, rank) => ({
+          rank,
+          // 关键词路 SimilarityRow.distance 字段存放 pg_trgm similarity（0~1，越大越相关）；
+          // 1~2 字符的短词 trigram 相似度可能为 0，但已字面命中，给 MIN_SCORE 下限避免展示为 0%
+          chunk: this.toFusionCandidate(row, Math.max(Number(row.distance), MIN_SCORE)),
+        })),
+      });
+    }
 
-    const fileChunkMap = new Map<number, (typeof chunks)[0]>();
-    chunks.forEach((chunk) => {
+    // ④ RRF 融合（只比较排名、不比较绝对分数，天然适配“cosine 分 + trigram 分”两种不可比空间），
+    //    再按文件保留最优片段，避免同一文档多条候选占满重排名额
+    const fused = this.reciprocalRankFusion(legs);
+    const fileChunkMap = new Map<number, FusionCandidate>();
+    fused.forEach((chunk) => {
       const existing = fileChunkMap.get(chunk.uploadFileId);
-      if (!existing || chunk.score > existing.score) {
+      if (!existing || chunk.rrf > existing.rrf) {
         fileChunkMap.set(chunk.uploadFileId, chunk);
       }
     });
 
-    const candidates: Omit<RetrievedChunk, 'similarity'>[] = Array.from(fileChunkMap.values()).sort(
-      (a, b) => b.score - a.score,
-    );
+    const candidates: Omit<RetrievedChunk, 'similarity'>[] = Array.from(fileChunkMap.values())
+      .sort((a, b) => b.rrf - a.rrf)
+      .map((chunk) => ({
+        sourceType: 'knowledge_base' as const,
+        chunkId: chunk.chunkId,
+        uploadFileId: chunk.uploadFileId,
+        content: chunk.content,
+        score: chunk.score,
+        metadata: chunk.metadata,
+      }));
+
+    // ⑤ LLM 重排：最终相关性过滤（关键词路可能命中无关文档，由重排剔除），并校准展示分数
     return this.rerank(question, candidates);
+  }
+
+  /** 关键词（字面）检索：pg_trgm 子串匹配 + trigram 相似度排序；term 参数化传入（防注入），LIMIT 为常量。
+   *  同样 LEFT JOIN upload_files 过滤已删除文档的孤儿分块（与向量路一致）。 */
+  private async keywordSearch(term: string): Promise<SimilarityRow[]> {
+    if (!term.trim()) {
+      return [];
+    }
+    const sql = `SELECT c.id, c."uploadFileId", c.content, c.metadata,
+                        similarity(c.content, $1) AS distance
+                   FROM document_chunks c
+                   LEFT JOIN upload_files f ON f.id = c."uploadFileId"
+                  WHERE f.id IS NOT NULL
+                    AND c.content ILIKE '%' || $1 || '%'
+                  ORDER BY distance DESC
+                  LIMIT ${KEYWORD_TOP_K}`;
+    return this.documentChunksRepository.query(sql, [term]);
+  }
+
+  private toFusionCandidate(row: SimilarityRow, score: number): FusionCandidate {
+    return {
+      chunkId: row.id,
+      uploadFileId: row.uploadFileId,
+      content: row.content,
+      metadata: row.metadata ?? {},
+      score,
+      rrf: 0,
+    };
+  }
+
+  /**
+   * RRF（Reciprocal Rank Fusion）：多路召回按排名融合，score = Σ 1/(k + rank + 1)。
+   * 只比较排名、不比较绝对分数，适合向量分与关键词分不可比的多路召回场景。
+   */
+  private reciprocalRankFusion(legs: FusionLeg[], k = RRF_K): FusionCandidate[] {
+    const map = new Map<number, FusionCandidate>();
+    for (const leg of legs) {
+      for (const { rank, chunk } of leg.items) {
+        const existing = map.get(chunk.chunkId);
+        if (existing) {
+          existing.rrf += 1 / (k + rank + 1);
+        } else {
+          map.set(chunk.chunkId, { ...chunk, rrf: 1 / (k + rank + 1) });
+        }
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.rrf - a.rrf);
   }
 
   /**
