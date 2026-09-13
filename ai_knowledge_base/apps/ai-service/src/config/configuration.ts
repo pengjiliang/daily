@@ -1,4 +1,9 @@
-﻿export default () => ({
+﻿/**
+ * ai-service 配置工厂：把环境变量整理为结构化配置（端口、PostgreSQL 连接、OpenAI 兼容模型配置）。
+ * 通过 NestJS ConfigService 以 configService.get('openai.chatModel') 等方式读取。
+ * OPENAI_BASE_URL 指向 OpenAI 兼容网关（如火山方舟/豆包），为空时使用官方地址。
+ */
+export default () => ({
   port: Number.parseInt(process.env.PORT ?? '3001', 10),
   database: {
     host: process.env.DATABASE_HOST ?? 'localhost',

@@ -1,4 +1,8 @@
-﻿<template>
+﻿<!--
+  登录页：用户名/密码表单（Element Plus 校验），登录成功后把 JWT 与用户信息
+  写入 Pinia（并持久化到 localStorage），随后跳转主页。
+-->
+<template>
   <div class="login-container">
     <el-card class="login-card">
       <h2 class="title">用户登录</h2>
@@ -21,6 +25,7 @@
 </template>
 
 <script setup lang="ts">
+// 登录页逻辑：表单校验 → 调登录接口 → 保存登录态 → 跳转主页
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
@@ -55,6 +60,7 @@ const rules = ref<FormRules>({
   ],
 });
 
+/** 提交登录：先做前端表单校验，通过后请求接口并保存 token/用户信息 */
 async function handleLogin() {
   if (!formRef.value) return;
   await formRef.value.validate(async (valid) => {

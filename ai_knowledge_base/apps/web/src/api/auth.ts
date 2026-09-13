@@ -1,3 +1,6 @@
+/**
+ * 鉴权相关接口：注册、登录（拿 JWT）、获取当前用户资料。
+ */
 import request from './request';
 
 export interface RegisterData {

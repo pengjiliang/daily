@@ -1,3 +1,8 @@
+﻿<!--
+  主页（核心工作台）：
+  顶部为用户菜单（换头像/登出）；左侧 Tab 切换「知识库文档管理」与「对话列表」；
+  右侧为聊天区，支持 SSE 流式问答（先出来源、再逐 token 出答案），并展示知识库/外部两类引用。
+-->
 <template>
   <div class="home-container">
     <!-- 顶部导航栏 -->
@@ -5,11 +10,14 @@
       <div class="title">AI 知识库</div>
       <div class="user-info">
         <el-dropdown @command="handleCommand">
-          <div class="avatar-wrapper">
-            <el-avatar v-if="userStore.userInfo?.avatarUrl" :src="fullAvatarUrl" size="large" />
-            <el-avatar v-else :size="large" :icon="UserFilled" />
-            <div class="avatar-overlay">
-              <Upload />
+          <div class="user-trigger">
+            <span class="username">{{ userStore.userInfo?.username }}</span>
+            <div class="avatar-wrapper">
+              <el-avatar v-if="userStore.userInfo?.avatarUrl" :src="fullAvatarUrl" size="large" />
+              <el-avatar v-else size="large" :icon="UserFilled" />
+              <div class="avatar-overlay">
+                <Upload />
+              </div>
             </div>
           </div>
           <template #dropdown>
@@ -21,7 +29,7 @@
         </el-dropdown>
       </div>
     </el-header>
-    
+
     <el-container class="main-container">
       <!-- 左侧：文件管理 + 会话列表 tabs -->
       <el-aside width="320px" class="sidebar">
@@ -150,7 +158,9 @@
                         >
                           <div class="source-meta">
                             <el-tag size="small" type="primary" effect="plain">知识库</el-tag>
-                            <span class="source-score">相关度 {{ formatScore(source.similarity ?? source.score) }}%</span>
+                            <span class="source-score"
+                              >相关度 {{ formatScore(source.similarity ?? source.score) }}%</span
+                            >
                             <span v-if="source.similarity != null" class="source-raw-score">
                               原始 {{ formatScore(source.score) }}%
                             </span>
@@ -180,7 +190,9 @@
                         >
                           <div class="source-meta">
                             <el-tag size="small" type="warning" effect="plain">外部资料</el-tag>
-                            <span class="source-score">相关度 {{ formatScore(source.similarity ?? source.score) }}%</span>
+                            <span class="source-score"
+                              >相关度 {{ formatScore(source.similarity ?? source.score) }}%</span
+                            >
                           </div>
                           <a
                             class="source-link"
@@ -289,6 +301,7 @@
 </template>
 
 <script setup lang="ts">
+// 主页逻辑：文档/会话加载、上传与删除、头像更换，以及 SSE 流式问答
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
@@ -317,6 +330,7 @@ import type { UploadDocument } from '@/api/upload';
 const userStore = useUserStore();
 const router = useRouter();
 
+/** 头像相对路径补全为 server 静态资源绝对地址 */
 const fullAvatarUrl = computed(() => {
   if (!userStore.userInfo?.avatarUrl) return '';
   return `http://localhost:3000${userStore.userInfo.avatarUrl}`;
@@ -408,6 +422,7 @@ const formatDate = (dateStr: string) => {
 };
 
 // 上传相关
+/** el-upload 前置钩子：前端先做 10MB 大小限制（服务端另有 20MB 白名单校验） */
 const beforeUpload = (file: File) => {
   const isLt10M = file.size / 1024 / 1024 < 10;
   if (!isLt10M) {
@@ -417,6 +432,7 @@ const beforeUpload = (file: File) => {
   return true;
 };
 
+/** 手动上传文档（:auto-upload 走自定义请求），成功后刷新列表（索引在服务端异步进行） */
 const handleUpload = async (options: { file: File }) => {
   try {
     await uploadApi.uploadDocument(options.file);
@@ -472,6 +488,7 @@ const deleteConversation = async (id: number) => {
   }
 };
 
+// 删除确认弹窗的确认回调（文档/对话共用一个弹窗，用它区分要执行的删除动作）
 const deleteConfirmCallback = ref<(() => void) | null>(null);
 const confirmDelete = () => {
   if (deleteConfirmCallback.value) {
@@ -492,6 +509,7 @@ const downloadSourceFile = async (source: any) => {
 
 // 头像上传
 const avatarFile = ref<File | null>(null);
+/** 头像选择前置钩子：限制 2MB，并通过 FileReader 生成本地预览（不立即上传） */
 const beforeAvatarUpload = (file: File) => {
   const isLt2M = file.size / 1024 / 1024 < 2;
   if (!isLt2M) {
@@ -512,6 +530,7 @@ const handleAvatarUpload = (options: { file: File }) => {
   beforeAvatarUpload(options.file);
 };
 
+/** 确认更换头像：上传成功后重新拉取资料并刷新 store */
 const submitAvatar = async () => {
   if (!avatarFile.value) {
     ElMessage.warning('请先选择一张图片');
@@ -532,7 +551,11 @@ const submitAvatar = async () => {
   }
 };
 
-// 发送消息
+/**
+ * 发送问题（SSE 流式）：
+ * 立即上屏用户消息并插入“AI 思考中”占位；onSources 先渲染来源，onToken 逐段拼接答案；
+ * done 后用服务端持久化消息（真实 id）整体替换占位；异常时保留已生成内容或回退问题。
+ */
 const sendQuestion = async () => {
   if (!currentConversation.value) {
     ElMessage.warning('请先创建或选择对话');
@@ -567,27 +590,23 @@ const sendQuestion = async () => {
   nextTick(() => scrollToBottom());
 
   try {
-    const res = await chatApi.sendMessage(
-      currentConversation.value.id,
-      userQuestion,
-      {
-        // 知识库检索完成：先展示来源
-        onSources: (sources: Source[]) => {
-          messages.value[aiIndex] = { ...messages.value[aiIndex], sources };
-          nextTick(() => scrollToBottom());
-        },
-        // 逐 token 追加回答，首个 token 到达即取消“思考中”占位
-        onToken: (token: string) => {
-          const msg = messages.value[aiIndex];
-          messages.value[aiIndex] = {
-            ...msg,
-            content: msg.content + token,
-            loading: false,
-          };
-          nextTick(() => scrollToBottom());
-        },
+    const res = await chatApi.sendMessage(currentConversation.value.id, userQuestion, {
+      // 知识库检索完成：先展示来源
+      onSources: (sources: Source[]) => {
+        messages.value[aiIndex] = { ...messages.value[aiIndex], sources };
+        nextTick(() => scrollToBottom());
       },
-    );
+      // 逐 token 追加回答，首个 token 到达即取消“思考中”占位
+      onToken: (token: string) => {
+        const msg = messages.value[aiIndex];
+        messages.value[aiIndex] = {
+          ...msg,
+          content: msg.content + token,
+          loading: false,
+        };
+        nextTick(() => scrollToBottom());
+      },
+    });
 
     // 用持久化后的消息（带真实 id）替换占位，内容/来源以服务端最终结果为准
     messages.value[aiIndex] = {
@@ -615,6 +634,7 @@ const sendQuestion = async () => {
   }
 };
 
+/** 顶部用户下拉命令：打开换头像弹窗 或 登出回登录页 */
 const handleCommand = (command: string) => {
   if (command === 'uploadAvatar') {
     avatarDialogVisible.value = true;
@@ -629,27 +649,32 @@ const handleCommand = (command: string) => {
 // 与 ai-service 的 MIN_SCORE 保持一致：低于该相关度的知识库片段不在页面展示
 const KB_MIN_SCORE = 0.3;
 
+/** 是否为模型外部资料：无 uploadFileId 即不是知识库片段（兼容旧数据） */
 const isExternalSource = (source: any) => {
-  // 兼容旧数据：有 uploadFileId 视为知识库
   return !source?.uploadFileId;
 };
 
+/** 取一条消息中可展示的知识库来源：非外部且相关度达标 */
 const knowledgeBaseSources = (msg: any) => {
   const list = Array.isArray(msg?.sources) ? msg.sources : [];
   return list.filter((source: any) => !isExternalSource(source) && (source?.score ?? 1) >= KB_MIN_SCORE);
 };
 
+/** 取一条消息中的外部资料列表 */
 const externalSources = (msg: any) => {
   const list = Array.isArray(msg?.sources) ? msg.sources : [];
   return list.filter((source: any) => isExternalSource(source));
 };
 
+/** 是否存在任意一类可展示来源（控制折叠面板显隐） */
 const hasAnySources = (msg: any) => knowledgeBaseSources(msg).length > 0 || externalSources(msg).length > 0;
 
+/** 知识库来源的原始文件名 */
 const sourceFileName = (source: any) => {
   return source?.metadata?.originalName || source?.originalName || '';
 };
 
+/** 外部资料展示标题（缺省“外部资料”） */
 const externalSourceTitle = (source: any) => {
   return source?.metadata?.title || source?.title || '外部资料';
 };
@@ -668,14 +693,17 @@ const externalSourceUrl = (source: any) => {
   return '';
 };
 
+/** 取来源正文（兼容 LangChain 的 pageContent 字段） */
 const sourceContent = (source: any) => {
   return source?.content || source?.pageContent || '';
 };
 
+/** 相关度 0~1 转百分比文本，如 0.832 -> “83.2” */
 const formatScore = (score: number) => {
   return (score * 100).toFixed(1);
 };
 
+/** 消息正文渲染：换行转 <br>（配合 v-html，正文为模型输出的纯文本） */
 const formatMessageContent = (content: string) => {
   return content.replace(/\n/g, '<br>');
 };
@@ -710,6 +738,23 @@ onMounted(() => {
 .header .user-info {
   display: flex;
   align-items: center;
+}
+
+/* 头像 + 用户名整体作为下拉触发区 */
+.user-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.username {
+  font-size: 14px;
+  color: #333;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .avatar-wrapper {

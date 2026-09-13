@@ -46,6 +46,7 @@ pnpm dev
 2. **多路召回**：
    - 向量语义路：Embedding cosine 相似度（pgvector），取 `TOP_K`=8，过滤相似度 ≤ `MIN_SCORE`(0.3) 的噪声；
    - 关键词字面路：pg_trgm 子串匹配（`ILIKE '%term%'`），原始查询与改写查询各一路、各取 `KEYWORD_TOP_K`=8——保证"彭/彭基/基良"这类碎片能命中含"彭基良"的文档（纯向量检索只认语义、不认字，这是它补的短板）；
+   - 两路均 `LEFT JOIN upload_files` 排除已删除文档遗留的孤儿分块（server 与 ai-service 共用同一数据库）；文档删除时 server 会同步调用 ai-service 清理分块；
 3. **RRF 融合**：两路结果按排名融合（`1/(k+rank+1)`，k=`RRF_K`=60），不做分数阈值（两种分数不可比），每文件保留最优片段；
 4. **LLM 重排**：只保留与问题真正相关的片段（`RERANK_TOP_N`=5），关键词路的无关命中在此剔除；
 5. **分数校准**：`relativeSimilarity` 按最强匹配归一化后展示（`score` 原始 / `similarity` 相关度）。

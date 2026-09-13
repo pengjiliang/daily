@@ -1,4 +1,10 @@
-﻿import { Module } from '@nestjs/common';
+﻿/**
+ * ai-service 根模块。
+ * 组装配置中心（环境变量）、PostgreSQL + pgvector 数据源、AI 业务模块（AIModule），
+ * 以及启动时自动建扩展/建表的 DatabaseInitializationService。
+ * 注意：本服务关闭 TypeORM synchronize，表结构由初始化服务统一管理。
+ */
+import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller.js';
@@ -9,6 +15,7 @@ import { DatabaseInitializationService } from './services/database-initializatio
 
 @Module({
   imports: [
+    // 全局配置：读取 .env 并按 configuration.ts 的结构暴露
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
@@ -23,7 +30,7 @@ import { DatabaseInitializationService } from './services/database-initializatio
         password: configService.getOrThrow<string>('database.password'),
         database: configService.getOrThrow<string>('database.name'),
         entities: [DocumentChunk],
-        synchronize: false,
+        synchronize: false, // 不在此处自动同步，改由 DatabaseInitializationService 控制
       }),
     }),
     AIModule,

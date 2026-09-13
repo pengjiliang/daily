@@ -1,3 +1,9 @@
+/**
+ * 聊天服务：会话与消息的持久化（归属校验 + 级联删除），以及问答的流式转发。
+ * 发送消息时先落库用户提问、取最近 10 条历史，再调用 ai-service 的 SSE 接口：
+ * 逐帧解析 sources/token/done/error 并通过回调透传给控制器，同时累积完整回答落库；
+ * 客户端中途断开时中止上游请求，但仍尽力保存已生成的部分回答。
+ */
 import { BadGatewayException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -19,10 +25,12 @@ export class ChatService {
     private readonly configService: ConfigService,
   ) {}
 
+  /** 创建一个默认标题的空会话 */
   createConversation(userId: number): Promise<Conversation> {
     return this.conversationsRepository.save(this.conversationsRepository.create({ userId }));
   }
 
+  /** 当前用户的会话列表，按最近更新时间倒序 */
   listConversations(userId: number): Promise<Conversation[]> {
     return this.conversationsRepository.find({
       where: { userId },
@@ -30,12 +38,14 @@ export class ChatService {
     });
   }
 
+  /** 删除会话：先删全部消息再删会话（归属不匹配时 findOwnedConversation 直接抛错） */
   async removeConversation(id: number, userId: number): Promise<void> {
     const conversation = await this.findOwnedConversation(id, userId);
     await this.messagesRepository.delete({ conversationId: conversation.id });
     await this.conversationsRepository.remove(conversation);
   }
 
+  /** 查询会话消息（按 id 正序还原对话），含归属校验 */
   async listMessages(id: number, userId: number): Promise<Message[]> {
     const conversation = await this.findOwnedConversation(id, userId);
     return this.messagesRepository.find({
@@ -221,6 +231,11 @@ export class ChatService {
     return { answer, sources };
   }
 
+  /**
+   * 解析单个 SSE 帧：形如「event: token\\ndata: "..."」。
+   * 多行 data 按规范以 \\n 拼接后尝试 JSON.parse；解析失败则原样作为字符串返回。
+   * 没有任何 data 行的帧（如注释行）返回 null。
+   */
   private parseSseFrame(rawFrame: string): { event: string; data: unknown } | null {
     let event = 'message';
     const dataLines: string[] = [];
@@ -241,6 +256,7 @@ export class ChatService {
     }
   }
 
+  /** 按 id 取会话并校验归属：不存在抛 404，属于他人抛 403 */
   private async findOwnedConversation(id: number, userId: number): Promise<Conversation> {
     const conversation = await this.conversationsRepository.findOneBy({ id });
     if (!conversation) {
@@ -252,6 +268,7 @@ export class ChatService {
     return conversation;
   }
 
+  /** 旧版一次性问答调用（POST /ai/ask，非流式），当前流式链路已不使用，保留备用 */
   private async ask(question: string, conversationId: number, history: Message[]): Promise<AskAnswer> {
     const aiServiceUrl = this.configService.get<string>('aiService.url', 'http://localhost:3001');
 

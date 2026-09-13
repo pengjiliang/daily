@@ -1,3 +1,8 @@
+/**
+ * 数据库初始化服务：模块启动时确保 pgvector / pg_trgm 扩展可用，
+ * 通过 dataSource.synchronize() 同步实体表结构，并补建 content 列的 trigram GIN 索引。
+ * CREATE EXTENSION / CREATE INDEX 均为 IF NOT EXISTS 幂等写法，每次启动可安全重复执行。
+ */
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 

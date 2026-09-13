@@ -1,8 +1,10 @@
+/**
+ * 聊天相关接口与会话/消息类型定义。
+ * 会话与消息的普通 CRUD 走全局 axios；发送消息使用原生 fetch 读取 SSE 流（见 sendMessage）。
+ */
 import request from './request';
 import { useUserStore } from '../stores/user';
 import type { RetrievedChunk } from '@ai-knowledge-base/shared';
-
-// 会话与消息的普通 CRUD 走 axios 实例；发送消息使用原生 fetch 读取 SSE 流（见下方 sendMessage）
 
 const API_BASE = 'http://localhost:3000';
 

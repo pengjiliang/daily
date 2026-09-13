@@ -1,4 +1,8 @@
-﻿import { createApp } from 'vue';
+﻿/**
+ * 前端应用入口：创建 Vue 实例，装配 Element Plus（中文语言包）、全部图标、
+ * Pinia 状态与路由，并挂载到 #app。
+ */
+import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';

@@ -1,4 +1,8 @@
-﻿<template>
+﻿<!--
+  注册页：用户名/密码/确认密码表单，前端校验长度与两次密码一致，
+  注册成功后提示并跳转登录页（错误提示由 axios 响应拦截器统一弹出）。
+-->
+<template>
   <div class="register-container">
     <el-card class="register-card">
       <h2 class="title">用户注册</h2>
@@ -24,6 +28,7 @@
 </template>
 
 <script setup lang="ts">
+// 注册页逻辑：自定义确认密码校验器 → 调注册接口 → 成功跳登录
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
@@ -40,6 +45,7 @@ const formData = ref({
   confirmPassword: '',
 });
 
+/** 自定义校验：确认密码必须与密码一致 */
 const validateConfirmPassword = (rule: any, value: any, callback: any) => {
   if (value !== formData.value.password) {
     callback(new Error('两次输入密码不一致'));
@@ -68,6 +74,7 @@ const rules = ref<FormRules>({
   ],
 });
 
+/** 提交注册：前端校验通过后请求注册接口，成功跳转登录页 */
 async function handleRegister() {
   if (!formRef.value) return;
   await formRef.value.validate(async (valid) => {

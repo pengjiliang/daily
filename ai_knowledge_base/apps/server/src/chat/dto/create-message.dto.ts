@@ -1,3 +1,4 @@
+/** 发送消息请求 DTO：问题文本，1~2000 字符 */
 import { IsString, MaxLength, MinLength } from 'class-validator';
 
 export class CreateMessageDto {

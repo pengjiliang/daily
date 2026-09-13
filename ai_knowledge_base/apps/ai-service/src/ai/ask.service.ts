@@ -1,3 +1,10 @@
+/**
+ * 问答核心服务（RAG）。
+ * 检索：短碎片查询先经 LLM 改写，再走「向量语义路 + pg_trgm 关键词字面路」多路召回，
+ *      RRF 融合、按文件去重后由 LLM 重排，最终校准为展示用相关度。
+ * 生成：流式链路 askStream 并行产出答案 token 流与外部资料 JSON，并剔除与知识库重复的伪外部资料；
+ *      旧链路 ask 经 LangGraph 一次性返回 JSON。
+ */
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { BaseMessageChunk } from '@langchain/core/messages';
@@ -36,7 +43,9 @@ export function relativeSimilarity(rawScore: number, bestScore: number): number 
   return Math.round(Math.min(1, Math.max(0, value)) * 1000) / 1000;
 }
 
+/** 有知识库命中时，补充的外部资料最多条数 */
 export const EXTERNAL_WITH_KB = 3;
+/** 无知识库命中、完全依赖模型自身知识时，外部资料最多条数 */
 export const EXTERNAL_WITHOUT_KB = 5;
 /** 外部资料与知识库片段的 bigram 覆盖率达到该阈值时，视为对知识库内容的复述，予以剔除 */
 export const EXTERNAL_DEDUP_OVERLAP = 0.4;
@@ -100,6 +109,7 @@ export class AskService {
     private readonly models: OpenAIModelProvider,
   ) {}
 
+  /** 旧版一次性问答：走 LangGraph（retrieve → generate），等待完整 JSON 后返回 */
   async ask(request: AskRequest): Promise<AskResult> {
     const result = await this.graph.invoke({
       question: request.question,
@@ -506,6 +516,7 @@ export class AskService {
     return this.documentChunksRepository.query(sql, [term]);
   }
 
+  /** 把一行 SQL 结果统一转成融合候选结构（rrf 初始为 0，融合时累加） */
   private toFusionCandidate(row: SimilarityRow, score: number): FusionCandidate {
     return {
       chunkId: row.id,
@@ -587,6 +598,7 @@ export class AskService {
     }));
   }
 
+  /** 从模型输出中抽取重排编号数组（如“相关片段为 [1,3]”）；无法解析时返回 null 触发兜底策略 */
   private parseIndexList(raw: string): number[] | null {
     const match = raw.match(/\[([\d,\s]*)\]/);
     if (!match) {
@@ -598,6 +610,7 @@ export class AskService {
       .filter((index) => Number.isInteger(index) && index > 0);
   }
 
+  /** LangGraph 生成节点（旧链路）：一次性输出 { answer, externalSources } JSON */
   private async generate(state: RagState): Promise<GenerateResult> {
     const hasKb = state.context.length > 0;
     const externalLimit = hasKb ? EXTERNAL_WITH_KB : EXTERNAL_WITHOUT_KB;
@@ -640,6 +653,7 @@ export class AskService {
     return parsed;
   }
 
+  /** 解析旧链路模型 JSON 响应：answer 缺失时把整段文本兜底为答案，解析失败外部资料置空 */
   private parseModelResponse(raw: string, externalLimit: number): GenerateResult {
     const fallbackAnswer = raw?.trim() || '暂时无法生成回答。';
     try {
@@ -660,6 +674,7 @@ export class AskService {
     }
   }
 
+  /** 从模型文本中截取最外层 { ... } JSON（兼容代码围栏与前后多余文字） */
   private extractJson(raw: string): string {
     const trimmed = raw.trim();
     const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -674,6 +689,7 @@ export class AskService {
     return trimmed;
   }
 
+  /** 把模型给出的一条外部资料归一化为 RetrievedChunk（无 chunkId/uploadFileId，score 缺省按序号递减） */
   private toExternalSource(item: ExternalKnowledgeItem, index: number): RetrievedChunk | null {
     const content = typeof item.content === 'string' ? item.content.trim() : '';
     if (!content) {
@@ -696,6 +712,7 @@ export class AskService {
     };
   }
 
+  /** 把历史消息数组拼成模型可读的「问：…／答：…」文本，无历史时返回空串 */
   private buildHistory(history?: HistoryMessage[]): string {
     if (!history || history.length === 0) {
       return '';

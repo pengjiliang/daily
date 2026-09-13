@@ -1,3 +1,7 @@
+/**
+ * 上传服务：头像落库、文档落库与异步建索引、文档列表/下载/删除（含归属与路径穿越防护），
+ * 并在删除文档后通知 ai-service 清理向量分块。
+ */
 import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -11,6 +15,11 @@ import { UploadFile } from './upload-file.entity.js';
 import { UPLOAD_ROOT } from './upload.storage.js';
 import { Buffer } from 'node:buffer';
 
+/**
+ * 兼容多种编码的原始文件名解码：
+ * multer 拿到的 originalname 可能是百分号编码，也可能被按 Latin1 误读；
+ * 依次尝试 percent-decode 与 Latin1→UTF-8 还原，哪种结果包含中文就用哪种，都不行返回最后结果。
+ */
 function decodeFileName(filename: string): string {
   // Try multiple methods to decode Chinese filename
   // Method 1: percent-decode
@@ -48,6 +57,7 @@ export class UploadService {
     private readonly configService: ConfigService,
   ) {}
 
+  /** 保存头像：把静态访问 URL 更新到用户资料，返回 URL 与脱敏后的用户信息 */
   async saveAvatar(userId: number, file: Express.Multer.File) {
     const avatarUrl = `/uploads/avatars/${file.filename}`;
     const user = await this.usersService.update(userId, { avatarUrl });
@@ -55,6 +65,7 @@ export class UploadService {
     return { avatarUrl, user: publicUser };
   }
 
+  /** 保存文档元数据并立即返回；向量索引在 setImmediate 后台异步进行，不阻塞上传响应 */
   async saveDocument(userId: number, file: Express.Multer.File): Promise<UploadFile> {
     const originalName = decodeFileName(file.originalname);
     const uploadFile = await this.uploadFilesRepository.save(
@@ -75,6 +86,7 @@ export class UploadService {
     return uploadFile;
   }
 
+  /** 当前用户上传的文档列表（按上传时间倒序） */
   async listDocuments(userId: number): Promise<UploadFile[]> {
     return this.uploadFilesRepository.find({
       where: { uploaderId: userId },
@@ -82,6 +94,7 @@ export class UploadService {
     });
   }
 
+  /** 取下载所需的文件流与元信息：校验归属、防路径穿越、文件缺失抛 404 */
   async getDocumentDownload(
     id: number,
     userId: number,
@@ -106,6 +119,7 @@ export class UploadService {
     };
   }
 
+  /** 删除文档：本地文件（ENOENT 容忍）+ 库记录 + ai-service 向量分块清理 */
   async deleteDocument(id: number, userId: number): Promise<void> {
     const uploadFile = await this.findOwnedDocument(id, userId);
     const filePath = this.resolveSafeDocumentPath(uploadFile.path);
@@ -145,6 +159,7 @@ export class UploadService {
     }
   }
 
+  /** 按 id 取文档并校验归属：不存在 404，属于他人 403 */
   private async findOwnedDocument(id: number, userId: number): Promise<UploadFile> {
     const uploadFile = await this.uploadFilesRepository.findOneBy({ id });
     if (!uploadFile) {
@@ -156,6 +171,7 @@ export class UploadService {
     return uploadFile;
   }
 
+  /** 把库中相对路径解析为绝对路径，并限制其必须位于上传根目录内，防止 ../ 路径穿越 */
   private resolveSafeDocumentPath(relativePath: string): string {
     const filePath = resolve(UPLOAD_ROOT, relativePath);
     const uploadRoot = `${resolve(UPLOAD_ROOT)}${sep}`;
@@ -165,6 +181,7 @@ export class UploadService {
     return filePath;
   }
 
+  /** 通知 ai-service 对新文档解析切片并建向量索引；失败仅告警（不回滚上传，120s 超时） */
   private async requestDocumentIndexing(uploadFile: UploadFile, absolutePath: string): Promise<void> {
     const aiServiceUrl = this.configService.get<string>('aiService.url', 'http://localhost:3001');
 

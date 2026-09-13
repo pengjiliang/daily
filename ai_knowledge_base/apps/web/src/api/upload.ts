@@ -1,3 +1,7 @@
+/**
+ * 上传相关接口：头像上传、知识文档上传/列表/删除/下载。
+ * 普通操作走全局 axios；下载因需要 blob 响应并手动触发浏览器保存，单独使用原生 axios。
+ */
 import request from './request';
 import axios from 'axios';
 import { useUserStore } from '../stores/user';
@@ -36,6 +40,10 @@ export const uploadApi = {
     return request.delete(`/upload/document/${id}`);
   },
 
+  /**
+   * 下载文档为 blob 并用隐藏 <a> 触发浏览器保存。
+   * 文件名优先取 Content-Disposition 中的 filename*（UTF-8 编码中文），其次普通 filename，最后兜底。
+   */
   async downloadDocument(id: number, fallbackName?: string) {
     const userStore = useUserStore();
     try {

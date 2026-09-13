@@ -1,3 +1,9 @@
+/**
+ * 文档索引服务：把 server 上传的文件解析为纯文本 → 递归切片 → 批量调用 Embedding
+ * → 覆盖式写入 document_chunks（先删后插，支持重复索引同一文件）。
+ * 支持格式：PDF / DOCX / XLSX / XLS / CSV / MD / TXT（含 GBK 编码自动探测）/ 常见图片（OCR）。
+ * .doc 不支持，需用户另存为 .docx。
+ */
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
@@ -11,8 +17,11 @@ import * as XLSX from 'xlsx';
 import * as mammoth from 'mammoth';
 import { createWorker } from 'tesseract.js';
 
+/** 每个切片的目标字符数 */
 export const CHUNK_SIZE = 1000;
+/** 相邻切片的重叠字符数，保留跨块上下文连续性 */
 export const CHUNK_OVERLAP = 200;
+/** Embedding 单次请求的最大文本数（豆包 embedding 接口限制） */
 export const BATCH_SIZE = 10; // doubao-embedding limit per request
 
 export interface IndexDocumentRequest {
@@ -41,6 +50,7 @@ export class DocumentIndexService {
     private readonly models: OpenAIModelProvider,
   ) {}
 
+  /** 索引主流程：抽取文本 → 文件名前置一次（支持按文件名检索）→ 切片 → 批量 Embedding → 先删后插覆盖入库 */
   async indexDocument(request: IndexDocumentRequest): Promise<IndexDocumentResult> {
     let text = await this.extractText(request.filePath, request.originalName);
     // Prepend document filename once before splitting so it gets indexed
@@ -86,6 +96,7 @@ export class DocumentIndexService {
     return { uploadFileId, deleted: result.affected ?? 0 };
   }
 
+  /** 按扩展名分派到对应解析器，统一去 BOM、换行归一化，并对空内容抛错 */
   private async extractText(filePath: string, originalName: string): Promise<string> {
     const extension = extname(originalName).toLowerCase();
     let text: string;
@@ -120,6 +131,7 @@ export class DocumentIndexService {
     return normalized;
   }
 
+  /** 依次尝试 UTF-8 / GBK / GB2312 / UTF-16LE，用替换字符比例判断乱码；全部失败则回退 latin1 */
   private tryDecode(buffer: Buffer): string {
     // Try UTF-8 first
     try {
@@ -157,6 +169,7 @@ export class DocumentIndexService {
     return buffer.toString('latin1');
   }
 
+  /** 乱码探测：U+FFFD 替换字符超过文本 5% 即认为当前编码不正确 */
   // Check if text contains lots of replacement characters which indicates wrong encoding
   private hasGarbled(text: string): boolean {
     const replacementCount = (text.match(/\uFFFD/g) || []).length;
@@ -164,6 +177,7 @@ export class DocumentIndexService {
     return replacementCount > text.length * 0.05;
   }
 
+  /** 解析 PDF 文本（动态加载 pdf-parse，避免影响其他格式的启动开销） */
   private async extractPdfText(filePath: string): Promise<string> {
     const { PDFParse } = await import('pdf-parse');
     const buffer = await readFile(filePath);
@@ -176,12 +190,14 @@ export class DocumentIndexService {
     }
   }
 
+  /** 解析 .docx：mammoth 抽取纯文本（丢弃样式与图片） */
   private async extractDocxText(filePath: string): Promise<string> {
     const buffer = await readFile(filePath);
     const result = await mammoth.extractRawText({ buffer });
     return result.value;
   }
 
+  /** 解析 Excel：遍历所有工作表，单元格用制表符拼接、行用换行拼接，并标注工作表名 */
   private async extractXlsxText(filePath: string): Promise<string> {
     const buffer = await readFile(filePath);
     const workbook = XLSX.read(buffer, { type: 'buffer' });
@@ -200,6 +216,7 @@ export class DocumentIndexService {
     return texts.join('\n\n');
   }
 
+  /** OCR 解析图片：tesseract 中英文模型识别，用完即销毁 worker 释放资源 */
   private async extractImageText(filePath: string): Promise<string> {
     const buffer = await readFile(filePath);
     const worker = await createWorker('chi_sim+eng');
