@@ -2,7 +2,13 @@
  * 上传服务：头像落库、文档落库与异步建索引、文档列表/下载/删除（含归属与路径穿越防护），
  * 并在删除文档后通知 ai-service 清理向量分块。
  */
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createReadStream, existsSync } from 'node:fs';
@@ -123,6 +129,24 @@ export class UploadService {
       originalName: uploadFile.originalName,
       size: Number(uploadFile.size),
     };
+  }
+
+  /**
+   * 重命名文档：仅更新展示名 originalName。
+   * 磁盘文件用独立 uuid 文件名存储，向量索引 metadata 保留索引时的旧名，
+   * 因此重命名不影响磁盘与检索，只影响列表/下载展示。
+   */
+  async renameDocument(id: number, userId: number, originalName: string): Promise<UploadFile> {
+    const uploadFile = await this.findOwnedDocument(id, userId);
+    const name = originalName.trim();
+    if (!name) {
+      throw new BadRequestException('文件名不能为空');
+    }
+    if (name.length > 255) {
+      throw new BadRequestException('文件名过长（最多 255 字符）');
+    }
+    uploadFile.originalName = name;
+    return this.uploadFilesRepository.save(uploadFile);
   }
 
   /** 删除文档：本地文件（ENOENT 容忍）+ 库记录 + ai-service 向量分块清理 */

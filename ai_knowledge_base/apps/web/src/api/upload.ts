@@ -50,6 +50,23 @@ export const uploadApi = {
   },
 
   /**
+   * 获取文档原始 blob（带 JWT 认证），供在线预览等场景使用
+   */
+  async fetchDocumentBlob(id: number): Promise<Blob> {
+    const userStore = useUserStore();
+    const response = await axios.get(`${API_BASE}/upload/document/${id}/download`, {
+      responseType: 'blob',
+      headers: userStore.token ? { Authorization: `Bearer ${userStore.token}` } : undefined,
+    });
+    return response.data;
+  },
+
+  /** 重命名文档（仅改展示名，不影响磁盘文件与向量索引） */
+  renameDocument(id: number, originalName: string) {
+    return request.patch<UploadDocument>(`/upload/document/${id}`, { originalName });
+  },
+
+  /**
    * 下载文档为 blob 并用隐藏 <a> 触发浏览器保存。
    * 文件名优先取 Content-Disposition 中的 filename*（UTF-8 编码中文），其次普通 filename，最后兜底。
    */

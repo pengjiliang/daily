@@ -113,15 +113,23 @@
                         <el-tooltip :content="displayFolderFileName(group.name, doc)" placement="top-start">
                           <span class="document-name">{{ displayFolderFileName(group.name, doc) }}</span>
                         </el-tooltip>
-                        <el-tooltip content="删除" placement="top">
-                          <el-button
-                            :icon="Delete"
-                            text
-                            size="small"
-                            style="color: #909399"
-                            @click="confirmDeleteDocument(doc)"
-                          />
-                        </el-tooltip>
+                        <div class="doc-actions">
+                          <el-tooltip content="预览" placement="top">
+                            <el-button :icon="View" text size="small" style="color: #909399" @click="previewDocument(doc)" />
+                          </el-tooltip>
+                          <el-tooltip content="重命名" placement="top">
+                            <el-button :icon="EditPen" text size="small" style="color: #909399" @click="openRenameDocumentDialog(doc)" />
+                          </el-tooltip>
+                          <el-tooltip content="删除" placement="top">
+                            <el-button
+                              :icon="Delete"
+                              text
+                              size="small"
+                              style="color: #909399"
+                              @click="confirmDeleteDocument(doc)"
+                            />
+                          </el-tooltip>
+                        </div>
                       </div>
                       <div v-if="group.files.length === 0" class="section-empty">文件夹为空</div>
                     </template>
@@ -151,15 +159,23 @@
                     <el-tooltip :content="doc.originalName" placement="top-start">
                       <span class="document-name">{{ doc.originalName }}</span>
                     </el-tooltip>
-                    <el-tooltip content="删除" placement="top">
-                      <el-button
-                        :icon="Delete"
-                        text
-                        size="small"
-                        style="color: #909399"
-                        @click="confirmDeleteDocument(doc)"
-                      />
-                    </el-tooltip>
+                    <div class="doc-actions">
+                      <el-tooltip content="预览" placement="top">
+                        <el-button :icon="View" text size="small" style="color: #909399" @click="previewDocument(doc)" />
+                      </el-tooltip>
+                      <el-tooltip content="重命名" placement="top">
+                        <el-button :icon="EditPen" text size="small" style="color: #909399" @click="openRenameDocumentDialog(doc)" />
+                      </el-tooltip>
+                      <el-tooltip content="删除" placement="top">
+                        <el-button
+                          :icon="Delete"
+                          text
+                          size="small"
+                          style="color: #909399"
+                          @click="confirmDeleteDocument(doc)"
+                        />
+                      </el-tooltip>
+                    </div>
                   </div>
                   <div v-if="rootFiles.length === 0" class="section-empty">暂无文件</div>
                 </div>
@@ -197,20 +213,32 @@
                   @click="selectConversation(conv)"
                 >
                   <div class="conv-info-sidebar">
-                    <!-- 主题描述：首条用户消息前 20 字；空会话显示"新对话" -->
+                    <!-- 主题描述：手动重命名优先，否则首条用户消息前 20 字；空会话显示"新对话" -->
                     <span class="conv-title">{{ conv.title || '新对话' }}</span>
                     <span class="conv-time">{{ formatDate(conv.updatedAt) }}</span>
                   </div>
-                  <!-- 会话列表删除按钮：改灰色文字图标 -->
-                  <el-tooltip content="删除该对话" placement="top">
-                    <el-button
-                      :icon="Delete"
-                      text
-                      size="small"
-                      style="color: #909399"
-                      @click.stop="confirmDeleteConversation(conv)"
-                    />
-                  </el-tooltip>
+                  <div class="conv-actions">
+                    <!-- 会话重命名按钮 -->
+                    <el-tooltip content="重命名" placement="top">
+                      <el-button
+                        :icon="EditPen"
+                        text
+                        size="small"
+                        style="color: #909399"
+                        @click.stop="openRenameConversationDialog(conv)"
+                      />
+                    </el-tooltip>
+                    <!-- 会话列表删除按钮：改灰色文字图标 -->
+                    <el-tooltip content="删除该对话" placement="top">
+                      <el-button
+                        :icon="Delete"
+                        text
+                        size="small"
+                        style="color: #909399"
+                        @click.stop="confirmDeleteConversation(conv)"
+                      />
+                    </el-tooltip>
+                  </div>
                 </div>
                 <div v-if="conversations.length === 0" class="section-empty">暂无会话</div>
               </el-scrollbar>
@@ -225,6 +253,39 @@
           <span>请选择或新建对话开始聊天</span>
         </div>
         <div class="messages-container" v-if="currentConversation">
+          <!-- 会话工具栏：标题（可重命名）+ 复制/下载当前对话 -->
+          <div class="chat-toolbar">
+            <span class="chat-toolbar-title">{{ currentConversation.title || '新对话' }}</span>
+            <el-tooltip content="重命名当前会话" placement="bottom">
+              <el-button
+                text
+                size="small"
+                :icon="EditPen"
+                style="margin-left: 4px"
+                @click="openRenameConversationDialog(currentConversation)"
+              />
+            </el-tooltip>
+            <div class="chat-toolbar-actions">
+              <el-button
+                text
+                size="small"
+                :icon="CopyDocument"
+                :disabled="messages.length === 0"
+                @click="copyConversation"
+              >
+                复制对话
+              </el-button>
+              <el-button
+                text
+                size="small"
+                :icon="Download"
+                :disabled="messages.length === 0"
+                @click="downloadConversation"
+              >
+                下载对话
+              </el-button>
+            </div>
+          </div>
           <el-scrollbar ref="messageScrollRef">
             <div class="message-list">
               <div v-for="msg in messages" :key="msg.id" :class="['message-item', msg.role]">
@@ -283,9 +344,7 @@
                               <Download />
                             </el-icon>
                           </div>
-                          <div class="source-content">
-                            {{ sourceContent(source) }}
-                          </div>
+                          <div class="source-content" v-html="highlightedSourceContent(source, msg)"></div>
                         </div>
                       </el-collapse-item>
 
@@ -315,9 +374,7 @@
                             <el-icon><Collection /></el-icon>
                             <span>{{ externalSourceTitle(source) }}</span>
                           </div>
-                          <div class="source-content">
-                            {{ sourceContent(source) }}
-                          </div>
+                          <div class="source-content" v-html="highlightedSourceContent(source, msg)"></div>
                         </div>
                       </el-collapse-item>
                     </el-collapse>
@@ -336,14 +393,26 @@
               @keydown.enter.exact.prevent="sendQuestion"
               class="question-input"
             />
-            <el-button
-              type="primary"
-              circle
-              :icon="Promotion"
-              :loading="sending"
-              class="send-btn"
-              @click="sendQuestion"
-            />
+            <div class="input-actions">
+              <!-- 当前会话正在生成时显示"停止生成"，否则显示发送按钮 -->
+              <el-button
+                v-if="isCurrentStreaming"
+                type="danger"
+                circle
+                :icon="VideoPause"
+                class="stop-btn"
+                title="停止生成"
+                @click="stopStreaming"
+              />
+              <el-button
+                v-else
+                type="primary"
+                circle
+                :icon="Promotion"
+                class="send-btn"
+                @click="sendQuestion"
+              />
+            </div>
           </div>
         </div>
       </el-main>
@@ -404,6 +473,28 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 重命名对话框（文档/会话共用，回调区分动作） -->
+    <el-dialog
+      v-model="renameDialogVisible"
+      :title="renameDialogTitle"
+      width="420px"
+      :close-on-click-modal="false"
+    >
+      <el-input
+        v-model="renameDialogValue"
+        placeholder="请输入新名称"
+        maxlength="255"
+        show-word-limit
+        @keydown.enter="confirmRename"
+      />
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="renameDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="confirmRename">确定</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -427,6 +518,10 @@ import {
   UploadFilled,
   QuestionFilled,
   FolderOpened,
+  View,
+  EditPen,
+  CopyDocument,
+  VideoPause,
 } from '@element-plus/icons-vue';
 import { useUserStore } from '@/stores/user';
 import { uploadApi } from '@/api/upload';
@@ -452,13 +547,45 @@ const conversations = ref<Conversation[]>([]);
 const currentConversation = ref<Conversation | null>(null);
 const messages = ref<Message[]>([]);
 const question = ref('');
-const sending = ref(false);
+/** 正在后台流式生成的会话 id 集合（切换会话/新建对话不中断，任务在后台继续完成） */
+const streamingConversationIds = ref<Set<number>>(new Set());
+/** 标记某会话是否正在流式生成（Set 需整体替换以触发响应式更新） */
+const markStreaming = (id: number, streaming: boolean) => {
+  const next = new Set(streamingConversationIds.value);
+  if (streaming) {
+    next.add(id);
+  } else {
+    next.delete(id);
+  }
+  streamingConversationIds.value = next;
+};
+/** 当前查看的会话是否正在生成中（用于发送按钮 loading，不影响其他会话后台执行） */
+const isCurrentStreaming = computed(() =>
+  currentConversation.value ? streamingConversationIds.value.has(currentConversation.value.id) : false,
+);
+/** 各会话正在流式请求的 AbortController（供"停止生成"使用；非响应式，仅运行时读取） */
+const streamingControllers = new Map<number, AbortController>();
+
+/** 停止当前会话的生成：中断 fetch，服务端尽力保存已生成内容（不影响其他会话后台任务） */
+const stopStreaming = () => {
+  if (!currentConversation.value) return;
+  const controller = streamingControllers.get(currentConversation.value.id);
+  if (controller) {
+    controller.abort();
+    streamingControllers.delete(currentConversation.value.id);
+  }
+};
 const activeSourceCollapse = ref(['kb', 'ext']);
 const avatarDialogVisible = ref(false);
 const avatarPreview = ref('');
 const deleteDialogVisible = ref(false);
 const deleteDialogContent = ref('');
 const messageScrollRef = ref(null);
+// 重命名弹窗（文档/会话共用）：标题 + 输入值 + 确认回调
+const renameDialogVisible = ref(false);
+const renameDialogTitle = ref('');
+const renameDialogValue = ref('');
+const renameConfirmCallback = ref<(() => void) | null>(null);
 
 /** 重要修复：使用 wrapRef 获取滚动容器的 DOM 元素 */
 const scrollToBottom = () => {
@@ -805,6 +932,67 @@ const deleteDocument = async (id: number) => {
   }
 };
 
+// ---- 重命名（文档/会话共用一个输入弹窗，回调区分动作） ----
+
+/** 打开文档重命名弹窗（预填旧名） */
+const openRenameDocumentDialog = (doc: UploadDocument) => {
+  renameDialogTitle.value = '重命名文档';
+  renameDialogValue.value = doc.originalName;
+  renameConfirmCallback.value = async () => {
+    const name = renameDialogValue.value.trim();
+    if (!name) {
+      ElMessage.warning('文件名不能为空');
+      return;
+    }
+    try {
+      await uploadApi.renameDocument(doc.id, name);
+      ElMessage.success('重命名成功');
+      loadDocuments();
+    } catch (error) {
+      console.error(error);
+      ElMessage.error('重命名失败');
+    }
+  };
+  renameDialogVisible.value = true;
+};
+
+/** 打开会话重命名弹窗（预填当前标题） */
+const openRenameConversationDialog = (conv: Conversation) => {
+  renameDialogTitle.value = '重命名会话';
+  renameDialogValue.value = conv.title || '新对话';
+  renameConfirmCallback.value = async () => {
+    const title = renameDialogValue.value.trim();
+    if (!title) {
+      ElMessage.warning('会话标题不能为空');
+      return;
+    }
+    try {
+      const updated = await chatApi.renameConversation(conv.id, title);
+      // 同步更新列表与当前会话的标题
+      const index = conversations.value.findIndex((c) => c.id === conv.id);
+      if (index >= 0) {
+        conversations.value[index] = { ...conversations.value[index], ...updated };
+      }
+      if (currentConversation.value?.id === conv.id) {
+        currentConversation.value = { ...currentConversation.value, ...updated };
+      }
+      ElMessage.success('已重命名');
+    } catch (error) {
+      console.error(error);
+      ElMessage.error('重命名失败');
+    }
+  };
+  renameDialogVisible.value = true;
+};
+
+/** 重命名弹窗确认：关闭弹窗并执行回调 */
+const confirmRename = () => {
+  const callback = renameConfirmCallback.value;
+  renameDialogVisible.value = false;
+  renameConfirmCallback.value = null;
+  callback?.();
+};
+
 // 删除对话
 const confirmDeleteConversation = (conv: Conversation) => {
   deleteDialogContent.value = '确定要删除这个对话吗？删除后无法恢复。';
@@ -882,6 +1070,29 @@ const downloadSourceFile = async (source: any) => {
   }
 };
 
+// 在线预览：浏览器原生可渲染的格式（PDF/图片/TXT/MD）拉取 blob 后新标签页打开
+/** 可在线预览的扩展名（Office 文档不支持原生预览） */
+const PREVIEWABLE_EXTENSIONS = new Set(['.pdf', '.txt', '.md', '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif']);
+
+/** 预览文档：拉取 blob 后 window.open 新标签页（浏览器原生渲染 PDF/图片/文本） */
+const previewDocument = async (doc: UploadDocument) => {
+  const ext = getExtension(doc.originalName);
+  if (!PREVIEWABLE_EXTENSIONS.has(ext)) {
+    ElMessage.warning('该格式暂不支持在线预览，请下载查看');
+    return;
+  }
+  try {
+    const blob = await uploadApi.fetchDocumentBlob(doc.id);
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    // 延时释放 blob URL，避免新窗口尚未加载完就失效
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (error) {
+    console.error(error);
+    ElMessage.error('预览加载失败');
+  }
+};
+
 // 头像上传
 const avatarFile = ref<File | null>(null);
 /** 头像选择前置钩子：限制 2MB，并通过 FileReader 生成本地预览（不立即上传） */
@@ -928,8 +1139,10 @@ const submitAvatar = async () => {
 
 /**
  * 发送问题（SSE 流式）：
- * 立即上屏用户消息并插入“AI 思考中”占位；onSources 先渲染来源，onToken 逐段拼接答案；
- * done 后用服务端持久化消息（真实 id）整体替换占位；异常时保留已生成内容或回退问题。
+ * 立即上屏用户消息并插入"AI 思考中"占位；onSources 先渲染来源，onToken 逐段拼接答案。
+ * 任务绑定到发送时的会话：期间切换会话/新建对话不会中断后台生成（服务端继续执行并落库），
+ * 流式回调只更新"发送时"的消息数组，避免污染当前查看的其他会话；
+ * 完成后若仍查看该会话则重新拉取完整消息，若已切走则切回时自动加载到完整回答。
  */
 const sendQuestion = async () => {
   if (!currentConversation.value) {
@@ -939,74 +1152,147 @@ const sendQuestion = async () => {
   const userQuestion = question.value.trim();
   if (!userQuestion) return;
 
+  // 记录发送时的会话与消息数组引用（切换会话后 messages.value 会被替换，回调始终写这个数组）
+  const conversationId = currentConversation.value.id;
+  const localMessages = messages.value;
+
   // 用户消息立即显示
-  messages.value.push({
+  localMessages.push({
     id: Date.now(),
     role: 'user',
     content: userQuestion,
-    conversationId: currentConversation.value.id,
+    conversationId,
     createdAt: new Date().toISOString(),
   });
   question.value = '';
   nextTick(() => scrollToBottom());
 
-  sending.value = true;
+  markStreaming(conversationId, true);
+  // 创建中止控制器："停止生成"按钮可中断本次 fetch（服务端尽力保存已生成内容）
+  const controller = new AbortController();
+  streamingControllers.set(conversationId, controller);
   // 添加 AI 加载占位
-  const aiIndex = messages.value.length;
-  messages.value.push({
+  const aiIndex = localMessages.length;
+  localMessages.push({
     id: Date.now() + 1,
     role: 'assistant',
     content: '',
-    conversationId: currentConversation.value.id,
+    conversationId,
     createdAt: new Date().toISOString(),
     sources: [],
     loading: true,
   });
   nextTick(() => scrollToBottom());
 
-  try {
-    const res = await chatApi.sendMessage(currentConversation.value.id, userQuestion, {
-      // 知识库检索完成：先展示来源
-      onSources: (sources: Source[]) => {
-        messages.value[aiIndex] = { ...messages.value[aiIndex], sources };
-        nextTick(() => scrollToBottom());
-      },
-      // 逐 token 追加回答，首个 token 到达即取消“思考中”占位
-      onToken: (token: string) => {
-        const msg = messages.value[aiIndex];
-        messages.value[aiIndex] = {
-          ...msg,
-          content: msg.content + token,
-          loading: false,
-        };
-        nextTick(() => scrollToBottom());
-      },
-    });
+  /** 当前仍查看的是发送时那个会话（决定 UI 更新/滚动） */
+  const isCurrentView = () => currentConversation.value?.id === conversationId;
 
-    // 用持久化后的消息（带真实 id）替换占位，内容/来源以服务端最终结果为准
-    messages.value[aiIndex] = {
-      ...(res.message ?? messages.value[aiIndex]),
-      content: res.answer,
-      sources: res.sources,
-      loading: false,
-    };
-    nextTick(() => scrollToBottom());
+  try {
+    await chatApi.sendMessage(
+      conversationId,
+      userQuestion,
+      {
+        // 知识库检索完成：先展示来源
+        onSources: (sources: Source[]) => {
+          localMessages[aiIndex] = { ...localMessages[aiIndex], sources };
+          if (isCurrentView()) nextTick(() => scrollToBottom());
+        },
+        // 逐 token 追加回答，首个 token 到达即取消"思考中"占位
+        onToken: (token: string) => {
+          const msg = localMessages[aiIndex];
+          localMessages[aiIndex] = {
+            ...msg,
+            content: msg.content + token,
+            loading: false,
+          };
+          if (isCurrentView()) nextTick(() => scrollToBottom());
+        },
+      },
+      controller.signal,
+    );
+
+    // 任务完成：若仍查看该会话，重新拉取服务端最终消息（含完整回答与来源）；
+    // 若已切走，切回时 loadMessages 自然拿到完整回答
+    if (isCurrentView()) {
+      await loadMessages();
+      nextTick(() => scrollToBottom());
+    }
   } catch (error) {
     console.error(error);
-    const partial = messages.value[aiIndex]?.content;
-    if (partial) {
-      // 已收到部分回答：保留内容，标记中断
-      messages.value[aiIndex] = { ...messages.value[aiIndex], loading: false };
-      ElMessage.error('回答中断，已保留已生成的内容');
-    } else {
-      ElMessage.error(error instanceof Error ? error.message : '发送失败');
-      question.value = userQuestion;
-      // 移除加载占位
-      messages.value.splice(aiIndex, 1);
+    // 用户主动点"停止生成"：保留已生成内容，不视为失败
+    const isUserStopped = error instanceof DOMException && error.name === 'AbortError';
+    // 仅当仍在查看该会话时处理占位/回退；已切走则静默（服务端已尽力保存，切回可见）
+    if (isCurrentView()) {
+      const partial = localMessages[aiIndex]?.content;
+      if (isUserStopped) {
+        if (partial) {
+          localMessages[aiIndex] = { ...localMessages[aiIndex], loading: false };
+        } else {
+          localMessages.splice(aiIndex, 1);
+        }
+        ElMessage.info('已停止生成，已保留生成的内容');
+      } else if (partial) {
+        // 已收到部分回答：保留内容，标记中断
+        localMessages[aiIndex] = { ...localMessages[aiIndex], loading: false };
+        ElMessage.error('回答中断，已保留已生成的内容');
+      } else {
+        ElMessage.error(error instanceof Error ? error.message : '发送失败');
+        question.value = userQuestion;
+        // 移除加载占位
+        localMessages.splice(aiIndex, 1);
+      }
     }
   } finally {
-    sending.value = false;
+    markStreaming(conversationId, false);
+    streamingControllers.delete(conversationId);
+    // 刷新会话列表：让新会话/旧会话的主题标题、更新时间与排序反映本次问答
+    loadConversations();
   }
+};
+
+// 会话导出：把当前对话拼成 Markdown（复制到剪贴板 / 下载 .md 文件），纯前端实现
+/** 当前会话导出为 Markdown 文本 */
+const conversationToMarkdown = () => {
+  const conv = currentConversation.value;
+  if (!conv) return '';
+  const lines: string[] = [`# ${conv.title || '新对话'}`, '', `> 导出时间：${new Date().toLocaleString('zh-CN')}`, ''];
+  for (const msg of messages.value) {
+    if (msg.loading) continue;
+    if (msg.role === 'user') {
+      lines.push('**用户：**', '', msg.content, '');
+    } else {
+      lines.push('**AI：**', '', msg.content, '');
+    }
+  }
+  return lines.join('\n');
+};
+
+/** 一键复制当前对话（Markdown 格式） */
+const copyConversation = async () => {
+  const text = conversationToMarkdown();
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    ElMessage.success('对话已复制到剪贴板');
+  } catch (error) {
+    console.error(error);
+    ElMessage.error('复制失败，请手动选择复制');
+  }
+};
+
+/** 下载当前对话为 Markdown 文件 */
+const downloadConversation = () => {
+  const text = conversationToMarkdown();
+  if (!text) return;
+  const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${(currentConversation.value?.title || '对话').replace(/[\\/:*?"<>|]/g, '_')}.md`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 };
 
 /** 顶部用户下拉命令：打开换头像弹窗 或 登出回登录页 */
@@ -1112,6 +1398,48 @@ const externalSourceUrl = (source: any) => {
 /** 取来源正文（兼容 LangChain 的 pageContent 字段） */
 const sourceContent = (source: any) => {
   return source?.content || source?.pageContent || '';
+};
+
+// 来源片段关键词高亮（纯前端）：先 HTML 转义防注入，再对用户提问中的关键词加 <mark> 高亮
+/** HTML 转义，防止文档原文注入（高亮前必须先转义） */
+const escapeHtml = (text: string) =>
+  text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+/** 正则特殊字符转义（关键词可能含正则元字符） */
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** 从当前消息往前找最近一条用户提问，提取高亮关键词：连续中文片段/英文单词（长度>=2，去重取前 5 个） */
+const extractKeywords = (msg: any) => {
+  const index = messages.value.indexOf(msg);
+  if (index <= 0) return [];
+  for (let i = index - 1; i >= 0; i--) {
+    const prev = messages.value[i];
+    if (prev.role === 'user') {
+      const words = prev.content.match(/[\u4e00-\u9fff]+|[a-zA-Z0-9_]+/g) ?? [];
+      return Array.from(new Set(words.filter((w) => w.length >= 2))).slice(0, 5);
+    }
+  }
+  return [];
+};
+
+/** 来源片段内容 + 关键词高亮（返回 HTML，配合 v-html 使用） */
+const highlightedSourceContent = (source: any, msg: any) => {
+  const text = sourceContent(source);
+  if (!text) return '';
+  const keywords = extractKeywords(msg);
+  let html = escapeHtml(text);
+  for (const keyword of keywords) {
+    const escaped = escapeRegExp(escapeHtml(keyword));
+    if (escaped) {
+      html = html.replace(new RegExp(escaped, 'gi'), (match) => `<mark>${match}</mark>`);
+    }
+  }
+  return html;
 };
 
 /** 相关度 0~1 转百分比文本，如 0.832 -> “83.2” */
@@ -1373,6 +1701,19 @@ onMounted(() => {
   font-size: 13px;
 }
 
+/* 文档行操作按钮组（预览/重命名/删除），默认隐藏、悬停显示，避免拥挤 */
+.doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.document-item:hover .doc-actions {
+  opacity: 1;
+}
+
 /* 文件/文件夹分区小标题（标题 + 右侧"一键删除"按钮） */
 .sub-section-title {
   display: flex;
@@ -1501,6 +1842,51 @@ onMounted(() => {
   color: #909399;
   margin: 0 2px 8px;
   padding: 0 2px;
+}
+
+/* 会话行操作按钮组（重命名/删除），默认隐藏、悬停显示 */
+.conv-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.conversation-item-sidebar:hover .conv-actions {
+  opacity: 1;
+}
+
+/* 聊天区工具栏：会话标题 + 右侧操作按钮 */
+.chat-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.chat-toolbar-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+.chat-toolbar-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+
+/* 来源片段关键词高亮 */
+.source-content mark {
+  background-color: #fef08a;
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
 }
 
 .chat-section {
@@ -1692,6 +2078,21 @@ onMounted(() => {
   height: 60px;
 }
 .send-btn :deep(.el-icon) {
+  font-size: 24px;
+}
+
+/* 停止生成按钮：与发送按钮同尺寸，生成中替代发送按钮显示 */
+.input-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.stop-btn {
+  width: 60px;
+  height: 60px;
+}
+.stop-btn :deep(.el-icon) {
   font-size: 24px;
 }
 

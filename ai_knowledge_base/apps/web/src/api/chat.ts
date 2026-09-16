@@ -55,6 +55,11 @@ export const chatApi = {
     return request.delete(`/chat/conversations/${id}`);
   },
 
+  /** 手动重命名会话标题 */
+  renameConversation(id: number, title: string) {
+    return request.patch<Conversation>(`/chat/conversations/${id}`, { title });
+  },
+
   listMessages(id: number) {
     return request.get<Message[]>(`/chat/conversations/${id}/messages`);
   },

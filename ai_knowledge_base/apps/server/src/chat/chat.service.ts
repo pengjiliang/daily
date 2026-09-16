@@ -4,7 +4,13 @@
  * 逐帧解析 sources/token/done/error 并通过回调透传给控制器，同时累积完整回答落库；
  * 客户端中途断开时中止上游请求，但仍尽力保存已生成的部分回答。
  */
-import { BadGatewayException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -42,7 +48,7 @@ export class ChatService {
     return this.conversationsRepository.save(this.conversationsRepository.create({ userId }));
   }
 
-  /** 当前用户的会话列表（按最近更新时间倒序），每条附带主题描述 title（首条用户消息前 20 字） */
+  /** 当前用户的会话列表（按最近更新时间倒序），每条附带主题描述 title：手动重命名优先，否则取首条用户消息前 20 字 */
   async listConversations(userId: number): Promise<(Conversation & { title: string })[]> {
     const conversations = await this.conversationsRepository.find({
       where: { userId },
@@ -63,15 +69,33 @@ export class ChatService {
       .addOrderBy('message.id', 'ASC')
       .getRawMany();
 
-    const titleByConversationId = new Map<number, string>();
+    const autoTitleByConversationId = new Map<number, string>();
     for (const row of rows) {
-      titleByConversationId.set(row.conversationId, buildConversationTitle(row.content));
+      autoTitleByConversationId.set(row.conversationId, buildConversationTitle(row.content));
     }
 
-    return conversations.map((conversation) => ({
-      ...conversation,
-      title: titleByConversationId.get(conversation.id) ?? '新对话',
-    }));
+    return conversations.map((conversation) => {
+      // 手动重命名过（title 不再是默认"新对话"）则优先用手动标题；否则用自动主题描述
+      const manualTitle = conversation.title !== '新对话' ? conversation.title : null;
+      return {
+        ...conversation,
+        title: manualTitle ?? autoTitleByConversationId.get(conversation.id) ?? '新对话',
+      };
+    });
+  }
+
+  /** 手动重命名会话：校验归属后更新 title（非默认值即视为手动标题，列表展示时优先） */
+  async renameConversation(id: number, userId: number, title: string): Promise<Conversation> {
+    const conversation = await this.findOwnedConversation(id, userId);
+    const name = title.trim();
+    if (!name) {
+      throw new BadRequestException('会话标题不能为空');
+    }
+    if (name.length > 60) {
+      throw new BadRequestException('会话标题过长（最多 60 字符）');
+    }
+    conversation.title = name;
+    return this.conversationsRepository.save(conversation);
   }
 
   /** 删除会话：先删全部消息再删会话（归属不匹配时 findOwnedConversation 直接抛错） */
@@ -113,6 +137,9 @@ export class ChatService {
         content,
       }),
     );
+
+    // 刷新会话的 updatedAt：会话列表按此排序并显示更新时间（@UpdateDateColumn 自动写入）
+    await this.conversationsRepository.save({ id: conversation.id, updatedAt: new Date() });
 
     // 读取最近10轮对话历史传给ai-service
     const history = await this.messagesRepository.find({

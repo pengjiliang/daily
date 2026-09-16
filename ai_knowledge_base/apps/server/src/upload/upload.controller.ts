@@ -10,6 +10,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Req,
   Res,
@@ -80,6 +81,19 @@ export class UploadController {
     });
 
     return new StreamableFile(file.stream);
+  }
+
+  /** PATCH /upload/document/:id：重命名文档（仅改展示名，不影响磁盘与索引） */
+  @Patch('document/:id')
+  async renameDocument(
+    @Req() request: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { originalName?: string },
+  ) {
+    if (!body.originalName?.trim()) {
+      throw new BadRequestException('文件名不能为空');
+    }
+    return this.uploadService.renameDocument(id, request.user.userId, body.originalName);
   }
 
   /** DELETE /upload/document/:id：删本地文件 + 删库记录 + 通知 ai-service 清向量分块 */

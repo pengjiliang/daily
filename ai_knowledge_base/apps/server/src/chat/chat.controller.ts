@@ -3,7 +3,19 @@
  * 发送消息为 SSE 流式接口：先写 text/event-stream 响应头，
  * 再把 ai-service 的 sources/token 事件实时透传给前端，结束时发 done。
  */
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Req, Res } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Req,
+  Res,
+} from '@nestjs/common';
 import type { Request, Response } from 'express';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 import { ChatService } from './chat.service.js';
@@ -35,6 +47,19 @@ export class ChatController {
   async deleteConversation(@Req() request: AuthenticatedRequest, @Param('id', ParseIntPipe) id: number) {
     await this.chatService.removeConversation(id, request.user.userId);
     return { deleted: true };
+  }
+
+  /** PATCH /chat/conversations/:id：手动重命名自己的会话标题 */
+  @Patch('conversations/:id')
+  async renameConversation(
+    @Req() request: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { title?: string },
+  ) {
+    if (!body.title?.trim()) {
+      throw new BadRequestException('会话标题不能为空');
+    }
+    return this.chatService.renameConversation(id, request.user.userId, body.title);
   }
 
   /** GET /chat/conversations/:id/messages：查询某会话全部消息（按时间正序） */
