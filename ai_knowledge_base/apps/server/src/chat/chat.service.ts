@@ -15,6 +15,18 @@ import type { AskResult, RetrievedChunk } from '@ai-knowledge-base/shared';
 // 跨端共享类型：定义见 packages/shared
 export type AskAnswer = AskResult;
 
+/** 会话主题描述最大长度（超出截断加省略号） */
+const CONVERSATION_TITLE_MAX_LENGTH = 20;
+
+/** 由消息正文生成会话主题描述：压缩连续空白，超长截断加省略号 */
+function buildConversationTitle(content: string): string {
+  const compact = content.replace(/\s+/g, ' ').trim();
+  if (compact.length <= CONVERSATION_TITLE_MAX_LENGTH) {
+    return compact;
+  }
+  return `${compact.slice(0, CONVERSATION_TITLE_MAX_LENGTH)}…`;
+}
+
 @Injectable()
 export class ChatService {
   constructor(
@@ -30,12 +42,36 @@ export class ChatService {
     return this.conversationsRepository.save(this.conversationsRepository.create({ userId }));
   }
 
-  /** 当前用户的会话列表，按最近更新时间倒序 */
-  listConversations(userId: number): Promise<Conversation[]> {
-    return this.conversationsRepository.find({
+  /** 当前用户的会话列表（按最近更新时间倒序），每条附带主题描述 title（首条用户消息前 20 字） */
+  async listConversations(userId: number): Promise<(Conversation & { title: string })[]> {
+    const conversations = await this.conversationsRepository.find({
       where: { userId },
       order: { updatedAt: 'DESC' },
     });
+    if (conversations.length === 0) {
+      return [];
+    }
+
+    // 联查每个会话的第一条用户消息（DISTINCT ON 每组取最小 id），生成会话主题描述
+    const rows: { conversationId: number; content: string }[] = await this.messagesRepository
+      .createQueryBuilder('message')
+      .select('DISTINCT ON (message."conversationId") message."conversationId" AS "conversationId"')
+      .addSelect('message.content AS content')
+      .where('message."conversationId" IN (:...ids)', { ids: conversations.map((c) => c.id) })
+      .andWhere("message.role = 'user'")
+      .orderBy('message."conversationId"', 'ASC')
+      .addOrderBy('message.id', 'ASC')
+      .getRawMany();
+
+    const titleByConversationId = new Map<number, string>();
+    for (const row of rows) {
+      titleByConversationId.set(row.conversationId, buildConversationTitle(row.content));
+    }
+
+    return conversations.map((conversation) => ({
+      ...conversation,
+      title: titleByConversationId.get(conversation.id) ?? '新对话',
+    }));
   }
 
   /** 删除会话：先删全部消息再删会话（归属不匹配时 findOwnedConversation 直接抛错） */

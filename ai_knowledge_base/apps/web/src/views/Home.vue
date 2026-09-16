@@ -1,4 +1,4 @@
-﻿<!--
+<!--
   主页（核心工作台）：
   顶部为用户菜单（换头像/登出）；左侧 Tab 切换「知识库文档管理」与「对话列表」；
   右侧为聊天区，支持 SSE 流式问答（先出来源、再逐 token 出答案），并展示知识库/外部两类引用。
@@ -48,6 +48,18 @@
                   >
                     <el-button type="primary" :icon="UploadFilled">上传文档</el-button>
                   </el-upload>
+                  <!-- 上传文件夹：webkitdirectory 选择整个文件夹，递归上传其中白名单文档（保留相对路径区分重名） -->
+                  <el-button type="primary" plain :icon="FolderOpened" :loading="uploadingFolder" @click="pickFolder">
+                    上传文件夹
+                  </el-button>
+                  <input
+                    ref="folderInput"
+                    type="file"
+                    webkitdirectory
+                    multiple
+                    class="folder-input-hidden"
+                    @change="handleFolderChange"
+                  />
                   <el-tooltip
                     content="支持 PDF、Word(.docx)、Excel(.xlsx/.xls)、CSV、Markdown、TXT、JPG/PNG/GIF 图片(OCR)，单个文件不超过 10MB"
                     placement="top"
@@ -57,11 +69,85 @@
                 </div>
               </div>
 
-              <!-- 我的文档（列表行展示，单行省略，超出纵向滚动） -->
+              <!-- 我的文档：分"文件夹列表"和"文件列表"两个区域；文件夹点击内联展开内部文件 -->
               <div class="file-list-section">
                 <div class="section-title">我的文档</div>
                 <div v-loading="loadingDocuments" class="document-list" element-loading-text="加载中...">
-                  <div v-for="doc in documents" :key="doc.id" class="document-item">
+                  <!-- 文件夹列表区：区级一键删除 + 每个文件夹行可展开/删除 -->
+                  <div class="sub-section-title">
+                    <span>文件夹列表（{{ folderGroups.length }}）</span>
+                    <el-button
+                      :icon="Delete"
+                      text
+                      size="small"
+                      class="bulk-delete-btn"
+                      :disabled="folderGroups.length === 0"
+                      @click="confirmDeleteAllFolders"
+                    >
+                      一键删除
+                    </el-button>
+                  </div>
+                  <template v-for="group in folderGroups" :key="group.name">
+                    <div class="document-item folder-item" @click="toggleFolder(group.name)">
+                      <el-icon class="folder-icon"><FolderOpened /></el-icon>
+                      <span class="document-name folder-name">{{ group.name }}</span>
+                      <span class="folder-count">{{ group.files.length }} 个文件</span>
+                      <el-tooltip content="删除文件夹" placement="top">
+                        <el-button
+                          :icon="Delete"
+                          text
+                          size="small"
+                          style="color: #909399"
+                          @click.stop="confirmDeleteFolder(group.name)"
+                        />
+                      </el-tooltip>
+                    </div>
+                    <!-- 内联展开：文件夹内的文件列表（显示文件名，深层子路径带前缀，支持单个删除） -->
+                    <template v-if="expandedFolders.has(group.name)">
+                      <div
+                        v-for="doc in group.files"
+                        :id="'doc-item-' + doc.id"
+                        :key="doc.id"
+                        :class="['document-item folder-file-item', { 'highlighted-doc': doc.id === highlightedDocumentId }]"
+                      >
+                        <el-tooltip :content="displayFolderFileName(group.name, doc)" placement="top-start">
+                          <span class="document-name">{{ displayFolderFileName(group.name, doc) }}</span>
+                        </el-tooltip>
+                        <el-tooltip content="删除" placement="top">
+                          <el-button
+                            :icon="Delete"
+                            text
+                            size="small"
+                            style="color: #909399"
+                            @click="confirmDeleteDocument(doc)"
+                          />
+                        </el-tooltip>
+                      </div>
+                      <div v-if="group.files.length === 0" class="section-empty">文件夹为空</div>
+                    </template>
+                  </template>
+                  <div v-if="folderGroups.length === 0" class="section-empty">暂无文件夹</div>
+
+                  <!-- 文件列表区：区级一键删除 + 每行单个删除 -->
+                  <div class="sub-section-title">
+                    <span>文件列表（{{ rootFiles.length }}）</span>
+                    <el-button
+                      :icon="Delete"
+                      text
+                      size="small"
+                      class="bulk-delete-btn"
+                      :disabled="rootFiles.length === 0"
+                      @click="confirmDeleteAllFiles"
+                    >
+                      一键删除
+                    </el-button>
+                  </div>
+                  <div
+                    v-for="doc in rootFiles"
+                    :id="'doc-item-' + doc.id"
+                    :key="doc.id"
+                    :class="['document-item', { 'highlighted-doc': doc.id === highlightedDocumentId }]"
+                  >
                     <el-tooltip :content="doc.originalName" placement="top-start">
                       <span class="document-name">{{ doc.originalName }}</span>
                     </el-tooltip>
@@ -75,11 +161,7 @@
                       />
                     </el-tooltip>
                   </div>
-                  <el-empty
-                    v-if="!loadingDocuments && documents.length === 0"
-                    description="暂无文档"
-                    :image-size="80"
-                  />
+                  <div v-if="rootFiles.length === 0" class="section-empty">暂无文件</div>
                 </div>
               </div>
             </div>
@@ -92,6 +174,21 @@
                 <el-button type="primary" :icon="Plus" @click="createNewConversation">新建对话</el-button>
               </div>
 
+              <!-- 会话区标题 + 一键删除全部会话 -->
+              <div class="conv-section-header">
+                <span>会话列表（{{ conversations.length }}）</span>
+                <el-button
+                  :icon="Delete"
+                  text
+                  size="small"
+                  class="bulk-delete-btn"
+                  :disabled="conversations.length === 0"
+                  @click="confirmDeleteAllConversations"
+                >
+                  一键删除
+                </el-button>
+              </div>
+
               <el-scrollbar>
                 <div
                   v-for="conv in conversations"
@@ -100,6 +197,8 @@
                   @click="selectConversation(conv)"
                 >
                   <div class="conv-info-sidebar">
+                    <!-- 主题描述：首条用户消息前 20 字；空会话显示"新对话" -->
+                    <span class="conv-title">{{ conv.title || '新对话' }}</span>
                     <span class="conv-time">{{ formatDate(conv.updatedAt) }}</span>
                   </div>
                   <!-- 会话列表删除按钮：改灰色文字图标 -->
@@ -113,6 +212,7 @@
                     />
                   </el-tooltip>
                 </div>
+                <div v-if="conversations.length === 0" class="section-empty">暂无会话</div>
               </el-scrollbar>
             </div>
           </el-tab-pane>
@@ -165,16 +265,23 @@
                               原始 {{ formatScore(source.score) }}%
                             </span>
                           </div>
-                          <div
-                            class="source-file"
-                            v-if="sourceFileName(source)"
-                            :class="{ clickable: !!source.uploadFileId }"
-                            :title="source.uploadFileId ? '点击下载原文件' : undefined"
-                            @click="downloadSourceFile(source)"
-                          >
+                          <div class="source-file" v-if="sourceFileName(source)" :class="{ clickable: !!source.uploadFileId }">
                             <el-icon><DocumentIcon /></el-icon>
-                            <span>{{ sourceFileName(source) }}</span>
-                            <el-icon v-if="source.uploadFileId" class="download-icon"><Download /></el-icon>
+                            <span
+                              class="source-file-name"
+                              :title="source.uploadFileId ? '点击定位到文档列表中的文件' : undefined"
+                              @click="openSourceInDocuments(source)"
+                            >
+                              {{ sourceFileName(source) }}
+                            </span>
+                            <el-icon
+                              v-if="source.uploadFileId"
+                              class="download-icon"
+                              title="下载原文件"
+                              @click.stop="downloadSourceFile(source)"
+                            >
+                              <Download />
+                            </el-icon>
                           </div>
                           <div class="source-content">
                             {{ sourceContent(source) }}
@@ -319,6 +426,7 @@ import {
   Warning,
   UploadFilled,
   QuestionFilled,
+  FolderOpened,
 } from '@element-plus/icons-vue';
 import { useUserStore } from '@/stores/user';
 import { uploadApi } from '@/api/upload';
@@ -372,6 +480,116 @@ const loadDocuments = async () => {
     ElMessage.error('加载文档列表失败');
   } finally {
     loadingDocuments.value = false;
+  }
+};
+
+// 文件夹视图：基于 upload_files.folderName 字段分组——
+// folderName 为空 → "文件列表"区；folderName 非空（如 `2026/文档`）按首段归入 "文件夹列表"区，点击内联展开内部文件
+/** 已展开的文件夹名集合（点击文件夹行切换展开/收起） */
+const expandedFolders = ref<Set<string>>(new Set());
+
+/** 文件列表区：folderName 为空（单文件上传） */
+const rootFiles = computed(() => documents.value.filter((doc) => !doc.folderName));
+
+/** 文件夹列表区：folderName 非空，按首段文件夹名分组（组内含该文件夹的所有文件） */
+const folderGroups = computed(() => {
+  const map = new Map<string, UploadDocument[]>();
+  documents.value.forEach((doc) => {
+    if (!doc.folderName) return;
+    const folder = doc.folderName.split('/')[0];
+    const list = map.get(folder) ?? [];
+    list.push(doc);
+    map.set(folder, list);
+  });
+  return Array.from(map.entries()).map(([name, files]) => ({ name, files }));
+});
+
+/** 展开项显示名：顶层文件夹内的文件显示文件名；有更深子路径时带上前缀（如 `文档/报告.pdf`） */
+const displayFolderFileName = (groupName: string, doc: UploadDocument) => {
+  const folderName = doc.folderName ?? '';
+  if (folderName === groupName) {
+    return doc.originalName;
+  }
+  return `${folderName.slice(groupName.length + 1)}/${doc.originalName}`;
+};
+
+/** 点击文件夹行：切换内联展开/收起 */
+const toggleFolder = (name: string) => {
+  const next = new Set(expandedFolders.value);
+  if (next.has(name)) {
+    next.delete(name);
+  } else {
+    next.add(name);
+  }
+  expandedFolders.value = next;
+};
+
+// ---- 删除：文件列表区 / 文件夹列表区（区域级一键删除 + 行级删除） ----
+
+/** 删除文件列表区的全部单文件（确认后并发删除） */
+const confirmDeleteAllFiles = () => {
+  if (rootFiles.value.length === 0) return;
+  deleteDialogContent.value = `确定要删除文件列表中的全部 ${rootFiles.value.length} 个文件吗？删除后无法恢复。`;
+  deleteDialogVisible.value = true;
+  deleteConfirmCallback.value = () => {
+    deleteBulkDocuments(rootFiles.value, '文件列表');
+  };
+};
+
+/** 删除文件夹列表区的全部文件夹及其内文件（确认后并发删除） */
+const confirmDeleteAllFolders = () => {
+  const folderFiles = documents.value.filter((doc) => doc.folderName);
+  if (folderFiles.length === 0) return;
+  deleteDialogContent.value = `确定要删除全部 ${folderGroups.value.length} 个文件夹及其中的 ${folderFiles.length} 个文件吗？删除后无法恢复。`;
+  deleteDialogVisible.value = true;
+  deleteConfirmCallback.value = () => {
+    expandedFolders.value = new Set();
+    deleteBulkDocuments(folderFiles, '文件夹列表');
+  };
+};
+
+/** 删除整个文件夹：确认后并发删除其下所有文件（复用单文件删除接口，逐条清库记录与向量分块） */
+const confirmDeleteFolder = (name: string) => {
+  const files = documents.value.filter(
+    (doc) => doc.folderName === name || doc.folderName?.startsWith(`${name}/`),
+  );
+  deleteDialogContent.value = `确定要删除文件夹 "${name}" 吗？将同时删除其中的 ${files.length} 个文件，删除后无法恢复。`;
+  deleteDialogVisible.value = true;
+  deleteConfirmCallback.value = () => {
+    deleteFolder(name);
+  };
+};
+
+const deleteFolder = async (name: string) => {
+  const files = documents.value.filter(
+    (doc) => doc.folderName === name || doc.folderName?.startsWith(`${name}/`),
+  );
+  await deleteBulkDocuments(files, `文件夹 "${name}"`);
+  const next = new Set(expandedFolders.value);
+  next.delete(name);
+  expandedFolders.value = next;
+};
+
+/** 并发删除一批文档（复用单文件删除接口），刷新列表并汇总提示 */
+const deleteBulkDocuments = async (files: UploadDocument[], label: string) => {
+  let success = 0;
+  let failed = 0;
+  await Promise.all(
+    files.map(async (doc) => {
+      try {
+        await uploadApi.deleteDocument(doc.id);
+        success += 1;
+      } catch (error) {
+        console.error(`删除失败: ${doc.originalName}`, error);
+        failed += 1;
+      }
+    }),
+  );
+  await loadDocuments();
+  if (failed > 0) {
+    ElMessage.error(`${label}删除完成：成功 ${success} 个，失败 ${failed} 个`);
+  } else {
+    ElMessage.success(`${label}删除完成（${success} 个文件）`);
   }
 };
 
@@ -444,6 +662,129 @@ const handleUpload = async (options: { file: File }) => {
   }
 };
 
+// 文件夹上传：递归上传文件夹内白名单文档，保留相对路径（如 `2026/文档/报告.pdf`）以区分重名
+/** 支持扩展名白名单（与 server upload.storage.ts 保持一致） */
+const ALLOWED_DOC_EXTENSIONS = new Set([
+  '.pdf',
+  '.txt',
+  '.xls',
+  '.xlx',
+  '.xlsx',
+  '.csv',
+  '.md',
+  '.docx',
+  '.doc',
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.gif',
+  '.bmp',
+  '.tiff',
+  '.tif',
+]);
+/** 文件夹上传并发数（避免同时发起过多请求） */
+const FOLDER_UPLOAD_CONCURRENCY = 3;
+
+const folderInput = ref<HTMLInputElement | null>(null);
+const uploadingFolder = ref(false);
+
+/** 文件夹选择入口：优先用 File System Access API（Chrome/Edge），拿到文件夹名与子路径；不支持则回退 webkitdirectory */
+const pickFolder = async () => {
+  const picker = (window as unknown as { showDirectoryPicker?: (opts?: { mode?: string }) => Promise<unknown> })
+    .showDirectoryPicker;
+  if (typeof picker === 'function') {
+    try {
+      const handle = await picker({ mode: 'read' });
+      const items: { file: File; folderName: string }[] = [];
+      // 递归遍历目录树：folderName = 文件夹名 + 子路径（如 `资料/2026`），不包含文件名
+      const walk = async (dirHandle: any, prefix: string) => {
+        for await (const [name, entry] of dirHandle.entries()) {
+          if (entry.kind === 'directory') {
+            await walk(entry, `${prefix}${name}/`);
+          } else if (entry.kind === 'file') {
+            items.push({ file: await entry.getFile(), folderName: prefix.slice(0, -1) });
+          }
+        }
+      };
+      await walk(handle, `${(handle as { name?: string }).name ?? '文件夹'}/`);
+      await uploadFolderFiles(items);
+    } catch (error) {
+      // AbortError = 用户取消选择，不提示
+      if ((error as Error).name !== 'AbortError') {
+        console.error(error);
+        ElMessage.error('读取文件夹失败');
+      }
+    }
+  } else {
+    folderInput.value?.click(); // 回退：webkitdirectory 原生 input
+  }
+};
+
+/** 取文件扩展名（小写含点），与 node:path extname 行为一致（浏览器环境不引入 node 模块） */
+const getExtension = (name: string) => {
+  const dotIndex = name.lastIndexOf('.');
+  const slashIndex = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'));
+  return dotIndex > slashIndex ? name.slice(dotIndex).toLowerCase() : '';
+};
+
+/** 由完整相对路径（`2026/文档/报告.pdf`）算出所属文件夹路径（`2026/文档`）；无路径返回空串 */
+const extractFolderName = (relativePath: string) => {
+  const slashIndex = Math.max(relativePath.lastIndexOf('/'), relativePath.lastIndexOf('\\'));
+  return slashIndex > 0 ? relativePath.slice(0, slashIndex) : '';
+};
+
+/**
+ * 上传文件夹内所有文件：过滤白名单扩展名 + 10MB 上限，
+ * 以独立 folderName 字段（含文件夹名与子路径）逐个复用单文件上传接口
+ * （并发 FOLDER_UPLOAD_CONCURRENCY），结束后汇总提示并刷新文档列表（索引在服务端异步进行）。
+ */
+const uploadFolderFiles = async (items: { file: File; folderName: string }[]) => {
+  const valid = items.filter(
+    ({ file }) => ALLOWED_DOC_EXTENSIONS.has(getExtension(file.name)) && file.size / 1024 / 1024 < 10,
+  );
+  const skipped = items.length - valid.length;
+  if (valid.length === 0) {
+    ElMessage.warning(`文件夹内没有可上传的文档（跳过 ${skipped} 个不支持格式或超 10MB 的文件）`);
+    return;
+  }
+
+  uploadingFolder.value = true;
+  let success = 0;
+  let failed = 0;
+  const queue = [...valid];
+  const worker = async () => {
+    while (queue.length > 0) {
+      const { file, folderName } = queue.shift()!;
+      try {
+        await uploadApi.uploadDocument(file, folderName || undefined);
+        success += 1;
+      } catch (error) {
+        console.error(`上传失败: ${folderName}/${file.name}`, error);
+        failed += 1;
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(FOLDER_UPLOAD_CONCURRENCY, valid.length) }, () => worker()),
+  );
+  uploadingFolder.value = false;
+  loadDocuments();
+  ElMessage.success(`文件夹上传完成：成功 ${success} 个，跳过 ${skipped} 个，失败 ${failed} 个`);
+};
+
+/** 回退方案（webkitdirectory）：webkitRelativePath 缺失时 folderName 为空（按单文件上传） */
+const handleFolderChange = async (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const files = Array.from(input.files ?? []);
+  input.value = ''; // 清空 value，允许下次重复选择同一文件夹
+  await uploadFolderFiles(
+    files.map((file) => ({
+      file,
+      folderName: extractFolderName(file.webkitRelativePath || ''),
+    })),
+  );
+};
+
 // 删除文档
 const confirmDeleteDocument = (row: UploadDocument) => {
   deleteDialogContent.value = `确定要删除文档 "${row.originalName}" 吗？删除后无法恢复。`;
@@ -485,6 +826,40 @@ const deleteConversation = async (id: number) => {
   } catch (error) {
     console.error(error);
     ElMessage.error('删除失败');
+  }
+};
+
+/** 一键删除全部会话（确认后并发删除），删除后清空当前会话视图 */
+const confirmDeleteAllConversations = () => {
+  if (conversations.value.length === 0) return;
+  deleteDialogContent.value = `确定要删除全部 ${conversations.value.length} 个会话吗？删除后无法恢复。`;
+  deleteDialogVisible.value = true;
+  deleteConfirmCallback.value = () => {
+    deleteAllConversations();
+  };
+};
+
+const deleteAllConversations = async () => {
+  let success = 0;
+  let failed = 0;
+  await Promise.all(
+    conversations.value.map(async (conv) => {
+      try {
+        await chatApi.deleteConversation(conv.id);
+        success += 1;
+      } catch (error) {
+        console.error(`删除会话失败: ${conv.id}`, error);
+        failed += 1;
+      }
+    }),
+  );
+  conversations.value = [];
+  currentConversation.value = null;
+  messages.value = [];
+  if (failed > 0) {
+    ElMessage.error(`会话删除完成：成功 ${success} 个，失败 ${failed} 个`);
+  } else {
+    ElMessage.success(`已删除全部会话（${success} 个）`);
   }
 };
 
@@ -654,10 +1029,12 @@ const isExternalSource = (source: any) => {
   return !source?.uploadFileId;
 };
 
-/** 取一条消息中可展示的知识库来源：非外部且相关度达标 */
+/** 取一条消息中可展示的知识库来源：非外部且相关度达标，按相关度从大到小排序（similarity 优先，缺省用 score） */
 const knowledgeBaseSources = (msg: any) => {
   const list = Array.isArray(msg?.sources) ? msg.sources : [];
-  return list.filter((source: any) => !isExternalSource(source) && (source?.score ?? 1) >= KB_MIN_SCORE);
+  return list
+    .filter((source: any) => !isExternalSource(source) && (source?.score ?? 1) >= KB_MIN_SCORE)
+    .sort((a: any, b: any) => (b.similarity ?? b.score) - (a.similarity ?? a.score));
 };
 
 /** 取一条消息中的外部资料列表 */
@@ -672,6 +1049,45 @@ const hasAnySources = (msg: any) => knowledgeBaseSources(msg).length > 0 || exte
 /** 知识库来源的原始文件名 */
 const sourceFileName = (source: any) => {
   return source?.metadata?.originalName || source?.originalName || '';
+};
+
+/** 来源定位高亮：文档列表中临时高亮的文件 id */
+const highlightedDocumentId = ref<number | null>(null);
+
+/**
+ * 点击来源文件：定位到左侧"我的文档"中的对应文件——
+ * 切到文档管理 tab、展开文件所在文件夹、高亮并滚动到该文件（找不到时提示）。
+ */
+const openSourceInDocuments = async (source: any) => {
+  const uploadFileId = source?.uploadFileId;
+  if (!uploadFileId) return;
+
+  let doc = documents.value.find((d) => d.id === uploadFileId);
+  if (!doc) {
+    // 文档列表可能尚未加载（如刚进页面未切过 tab），先拉取一次
+    await loadDocuments();
+    doc = documents.value.find((d) => d.id === uploadFileId);
+  }
+  if (!doc) {
+    ElMessage.warning('该文件已不在文档列表中（可能已被删除）');
+    return;
+  }
+
+  activeTab.value = 'documents';
+  // 展开文件所在的顶层文件夹（folderName 如 `2026/文档` → 展开 `2026`）
+  if (doc.folderName) {
+    const folder = doc.folderName.split('/')[0];
+    if (!expandedFolders.value.has(folder)) {
+      const next = new Set(expandedFolders.value);
+      next.add(folder);
+      expandedFolders.value = next;
+    }
+  }
+  // 高亮并平滑滚动到该文件行
+  highlightedDocumentId.value = doc.id;
+  nextTick(() => {
+    document.getElementById(`doc-item-${doc.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
 };
 
 /** 外部资料展示标题（缺省“外部资料”） */
@@ -899,6 +1315,11 @@ onMounted(() => {
   gap: 8px;
 }
 
+/* 隐藏的原生文件夹选择 input（由“上传文件夹”按钮触发） */
+.folder-input-hidden {
+  display: none;
+}
+
 .question-icon {
   font-size: 16px;
   color: #909399;
@@ -952,6 +1373,70 @@ onMounted(() => {
   font-size: 13px;
 }
 
+/* 文件/文件夹分区小标题（标题 + 右侧"一键删除"按钮） */
+.sub-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 500;
+  color: #909399;
+  margin: 6px 0 4px;
+  padding: 0 2px;
+}
+
+/* 区级"一键删除"按钮：红色小字，不可用时置灰 */
+.bulk-delete-btn {
+  color: #f56c6c;
+  font-size: 12px;
+  padding: 0 4px;
+}
+
+.bulk-delete-btn:disabled {
+  color: #c0c4cc;
+  cursor: not-allowed;
+}
+
+/* 文件夹行：整行可点击展开/收起 */
+.folder-item {
+  cursor: pointer;
+}
+
+.folder-icon {
+  color: #e6a23c;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.folder-name {
+  font-weight: 500;
+}
+
+.folder-count {
+  font-size: 12px;
+  color: #909399;
+  flex-shrink: 0;
+}
+
+/* 文件夹内联展开的文件行：左缩进区分层级 */
+.folder-file-item {
+  margin-left: 18px;
+  padding: 8px 12px;
+  background-color: #fafafa;
+}
+
+.folder-file-item:hover {
+  background-color: #f0f6ff;
+}
+
+/* 空区域提示 */
+.section-empty {
+  font-size: 12px;
+  color: #c0c4cc;
+  text-align: center;
+  padding: 12px 0;
+}
+
 /* 会话列表 */
 .conversation-list-wrapper {
   padding: 0;
@@ -986,12 +1471,36 @@ onMounted(() => {
 
 .conv-info-sidebar {
   flex: 1;
+  min-width: 0;
+}
+
+/* 会话主题描述：单行省略 */
+.conv-info-sidebar .conv-title {
+  display: block;
+  font-size: 13px;
+  color: #303133;
+  line-height: 1.4;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .conv-info-sidebar .conv-time {
   font-size: 12px;
   color: #909399;
   line-height: 1.4;
+}
+
+/* 会话区标题行：标题 + 右侧"一键删除"按钮 */
+.conv-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 500;
+  color: #909399;
+  margin: 0 2px 8px;
+  padding: 0 2px;
 }
 
 .chat-section {
@@ -1115,6 +1624,27 @@ onMounted(() => {
 .source-file.clickable:hover {
   text-decoration: underline;
   color: #337ecc;
+}
+
+/* 来源文件名：点击定位到文档列表 */
+.source-file-name {
+  cursor: pointer;
+}
+
+.source-file .download-icon {
+  cursor: pointer;
+  color: #909399;
+  flex-shrink: 0;
+}
+
+.source-file .download-icon:hover {
+  color: #409eff;
+}
+
+/* 来源定位到文档列表后的高亮行 */
+.document-item.highlighted-doc {
+  border-color: #409eff;
+  background-color: #ecf5ff;
 }
 
 /* 外部资料链接样式 */

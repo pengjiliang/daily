@@ -4,6 +4,7 @@
  */
 import {
   BadRequestException,
+  Body,
   Controller,
   Delete,
   Get,
@@ -42,14 +43,18 @@ export class UploadController {
     return this.uploadService.saveAvatar(request.user.userId, file);
   }
 
-  /** POST /upload/document：表单字段名 file，落库后异步触发 ai-service 建索引 */
+  /** POST /upload/document：表单字段名 file，folderName 可选（文件夹上传时传文件夹相对路径），落库后异步触发 ai-service 建索引 */
   @Post('document')
   @UseInterceptors(FileInterceptor('file', documentUploadOptions))
-  async uploadDocument(@Req() request: AuthenticatedRequest, @UploadedFile() file?: Express.Multer.File) {
+  async uploadDocument(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: { folderName?: string },
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
     if (!file) {
       throw new BadRequestException('Document file is required');
     }
-    return this.uploadService.saveDocument(request.user.userId, file);
+    return this.uploadService.saveDocument(request.user.userId, file, body.folderName);
   }
 
   /** GET /upload/documents：当前用户上传的文档列表（按上传时间倒序） */

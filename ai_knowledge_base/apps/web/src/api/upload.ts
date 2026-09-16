@@ -14,6 +14,8 @@ export interface UploadDocument {
   mimeType: string;
   createdAt: string;
   indexed: boolean;
+  /** 所属文件夹相对路径（如 `2026/文档`）；单文件上传为 null/undefined */
+  folderName?: string | null;
 }
 
 /** @deprecated Use UploadDocument */
@@ -26,9 +28,16 @@ export const uploadApi = {
     return request.post<{ avatarUrl: string }>('/upload/avatar', formData);
   },
 
-  uploadDocument(file: File) {
+  /**
+   * 上传单个文档。folderName 可选：文件夹上传时传入文件夹相对路径（如 `2026/文档`），
+   * 作为独立表单字段交给服务端存入 upload_files.folderName，用于前端分组展示；单文件上传不传。
+   */
+  uploadDocument(file: File, folderName?: string) {
     const formData = new FormData();
     formData.append('file', file);
+    if (folderName) {
+      formData.append('folderName', folderName);
+    }
     return request.post<UploadDocument>('/upload/document', formData);
   },
 

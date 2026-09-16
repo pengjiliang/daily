@@ -66,12 +66,18 @@ export class UploadService {
   }
 
   /** 保存文档元数据并立即返回；向量索引在 setImmediate 后台异步进行，不阻塞上传响应 */
-  async saveDocument(userId: number, file: Express.Multer.File): Promise<UploadFile> {
+  async saveDocument(
+    userId: number,
+    file: Express.Multer.File,
+    folderName?: string,
+  ): Promise<UploadFile> {
     const originalName = decodeFileName(file.originalname);
     const uploadFile = await this.uploadFilesRepository.save(
       this.uploadFilesRepository.create({
         filename: file.filename,
         originalName,
+        // 文件夹上传时前端显式传入文件夹相对路径（如 `2026/文档`）；单文件上传为 NULL
+        folderName: folderName?.trim() || null,
         mimeType: file.mimetype,
         path: `documents/${file.filename}`,
         size: file.size,

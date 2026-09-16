@@ -13,6 +13,8 @@ export interface Conversation {
   userId: number;
   createdAt: string;
   updatedAt: string;
+  /** 会话主题描述（服务端按首条用户消息前 20 字生成；空会话为"新对话"） */
+  title?: string;
 }
 
 export interface Message {

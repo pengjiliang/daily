@@ -1,6 +1,6 @@
 # AI 知识库（RAG）— ai_knowledge_base
 
-基于 Vue3 + NestJS + pgvector + LangChain 的 RAG 知识库项目（pnpm monorepo）。
+基于 Vue3 + NestJS + pgvector + LangChain 的 RAG 知识库项目（pnpm monorepo），支持单个文档与整个文件夹上传（保留相对路径，自动过滤白名单格式）、SSE 流式问答、混合检索（向量 + pg_trgm 关键词 + RRF 融合）。
 
 ## 环境要求
 

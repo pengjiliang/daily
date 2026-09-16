@@ -17,6 +17,13 @@ export class UploadFile {
   @Column()
   originalName: string;
 
+  /**
+   * 所属文件夹的相对路径（如 `2026/文档`），文件夹上传时由前端显式传入；
+   * 单文件上传为 NULL。前端按此字段分组展示"文件夹列表 / 文件列表"。
+   */
+  @Column({ type: 'varchar', nullable: true })
+  folderName: string | null;
+
   @Column()
   mimeType: string;
 
