@@ -3,7 +3,7 @@
  * 统一 baseURL 与 30s 超时；请求拦截器自动附带 JWT，
  * 响应拦截器解包 data、统一弹错误提示，并在 401 时登出跳登录页。
  */
-import axios from 'axios';
+import axios, { type AxiosRequestConfig } from 'axios';
 import { ElMessage } from 'element-plus';
 import { useUserStore } from '../stores/user';
 
@@ -47,4 +47,17 @@ request.interceptors.response.use(
   },
 );
 
-export default request;
+/**
+ * 响应拦截器运行时已解包 response.data，这里把类型同步修正：
+ * 让 get/post/patch/put/delete 直接返回 Promise<T>（而非 axios 默认的 Promise<AxiosResponse<T>>），
+ * 避免调用处出现 AxiosResponse 解包类型错误。
+ */
+interface TypedRequest {
+  get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T>;
+  post<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>;
+  patch<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>;
+  put<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>;
+  delete<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T>;
+}
+
+export default request as unknown as TypedRequest;
