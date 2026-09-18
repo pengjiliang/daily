@@ -37,6 +37,10 @@ export class AskDto {
   @MaxLength(2000)
   question: string;
 
+  /** 当前登录用户 id：检索按用户隔离（只查询该用户上传的文档分块），由 server 端从 JWT 透传 */
+  @IsInt()
+  userId: number;
+
   @IsOptional()
   @IsString()
   conversationId?: string;

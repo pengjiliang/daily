@@ -11,6 +11,7 @@ AI 知识库的问答与文档向量化服务，基于 NestJS + LangChain（Lang
 - 相关度重排：多路召回候选片段由 LLM 二次判断相关性，只保留真正相关的片段，关键词路的无关命中在此剔除
 - 分数校准：原始 Embedding 相似度区间窄（豆包约 0.30~0.40）且绝对分数易误导，按本次检索的最强匹配归一化（`relativeSimilarity`）得到直观的“真实相似度”，最强匹配显示 90%，其余平滑缩放，两个分数一并返回给前端展示
 - 引用溯源：回答附带回源片段（内部知识库 + 外部资料），便于前端展示引用来源
+- 用户隔离：检索 SQL 按 `uploaderId` 过滤，每个用户只能检索到自己上传的文档（`userId` 由 server 端从 JWT 透传）
 - 文档生命周期：删除文档时由 server 调用清理向量分块（`DELETE /ai/document/:uploadFileId`），检索 SQL 亦会过滤已删除文件的孤儿分块
 
 ## 技术栈
@@ -63,7 +64,8 @@ pnpm start:prod # 生产模式（需先 pnpm build）
 | --- | --- | --- |
 | `GET` | `/health` | 健康检查 |
 | `POST` | `/ai/index-document` | 文档向量化入库（body：`uploadFileId`、`filePath`、`originalName`、`mimeType`） |
-| `POST` | `/ai/ask` | 知识库问答（body：`question`、可选 `conversationId`、`history`） |
+| `POST` | `/ai/ask` | 知识库问答（body：`question`、`userId`、可选 `conversationId`、`history`） |
+| `POST` | `/ai/ask/stream` | SSE 流式问答（body：`question`、`userId`、可选 `conversationId`、`history`；事件：`sources`、`token`、`done`、`error`） |
 
 ## 常用脚本
 

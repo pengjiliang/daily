@@ -154,7 +154,7 @@ export class ChatService {
     let clientAborted = false;
 
     try {
-      const result = await this.askStream(content, conversation.id, history, callbacks, clientSignal);
+      const result = await this.askStream(content, conversation.id, userId, history, callbacks, clientSignal);
       answer = result.answer;
       sources = result.sources;
     } catch (error) {
@@ -193,6 +193,7 @@ export class ChatService {
   private async askStream(
     question: string,
     conversationId: number,
+    userId: number,
     history: Message[],
     callbacks: {
       onSources: (sources: RetrievedChunk[]) => void | Promise<void>;
@@ -222,6 +223,8 @@ export class ChatService {
         body: JSON.stringify({
           question,
           conversationId: String(conversationId),
+          // 检索按用户隔离：ai-service 只查询该用户上传的文档分块
+          userId,
           history: history.map((msg) => ({
             role: msg.role,
             content: msg.content,
@@ -332,7 +335,7 @@ export class ChatService {
   }
 
   /** 旧版一次性问答调用（POST /ai/ask，非流式），当前流式链路已不使用，保留备用 */
-  private async ask(question: string, conversationId: number, history: Message[]): Promise<AskAnswer> {
+  private async ask(question: string, conversationId: number, userId: number, history: Message[]): Promise<AskAnswer> {
     const aiServiceUrl = this.configService.get<string>('aiService.url', 'http://localhost:3001');
 
     // 兜底超时：比前端发送消息的超时（180s）略长，避免上游挂起导致请求永久等待
@@ -347,6 +350,8 @@ export class ChatService {
         body: JSON.stringify({
           question,
           conversationId: String(conversationId),
+          // 检索按用户隔离：ai-service 只查询该用户上传的文档分块
+          userId,
           history: history.map((msg) => ({
             role: msg.role,
             content: msg.content,

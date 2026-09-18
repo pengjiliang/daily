@@ -464,9 +464,16 @@ const externalSourceTitle = (source: any) => {
   return source?.metadata?.title || source?.title || '外部资料';
 };
 
-/** 外部资料跳转地址（缺省空串不渲染链接） */
+/** 外部资料跳转地址：优先真实 URL（兼容 metadata.link），无 URL 时用标题拼百度搜索链接，保证标题可点击 */
 const externalSourceUrl = (source: any) => {
-  return source?.metadata?.url || source?.url || '';
+  const url = source?.metadata?.url || source?.url || source?.metadata?.link || '';
+  if (url) return url;
+
+  const title = source?.metadata?.title || source?.title || '';
+  if (title) {
+    return `https://www.baidu.com/s?wd=${encodeURIComponent(title)}`;
+  }
+  return '';
 };
 
 /** 取来源正文（兼容 LangChain 的 pageContent 字段） */

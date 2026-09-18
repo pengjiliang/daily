@@ -52,6 +52,8 @@ export const EXTERNAL_DEDUP_OVERLAP = 0.4;
 
 export interface AskRequest {
   question: string;
+  /** 当前登录用户 id：检索按用户隔离（只查询该用户上传的文档分块） */
+  userId: number;
   conversationId?: string;
   history?: HistoryMessage[];
 }
@@ -98,11 +100,6 @@ interface ModelJsonResponse {
 export class AskService {
   private readonly logger = new Logger(AskService.name);
 
-  private readonly graph = createRagGraph({
-    retrieve: (question) => this.retrieve(question),
-    generate: (state) => this.generate(state),
-  });
-
   constructor(
     @InjectRepository(DocumentChunk)
     private readonly documentChunksRepository: Repository<DocumentChunk>,
@@ -111,7 +108,11 @@ export class AskService {
 
   /** 旧版一次性问答：走 LangGraph（retrieve → generate），等待完整 JSON 后返回 */
   async ask(request: AskRequest): Promise<AskResult> {
-    const result = await this.graph.invoke({
+    const graph = createRagGraph({
+      retrieve: (question) => this.retrieve(question, request.userId),
+      generate: (state) => this.generate(state),
+    });
+    const result = await graph.invoke({
       question: request.question,
       history: this.buildHistory(request.history),
       context: [],
@@ -136,7 +137,7 @@ export class AskService {
     },
     signal?: AbortSignal,
   ): Promise<AskResult> {
-    const kbSources = await this.retrieve(request.question);
+    const kbSources = await this.retrieve(request.question, request.userId);
     await callbacks.onSources(kbSources);
 
     const externalLimit = kbSources.length > 0 ? EXTERNAL_WITH_KB : EXTERNAL_WITHOUT_KB;
@@ -432,13 +433,14 @@ export class AskService {
    * 关键词路不做分数阈值过滤（字面命中即候选，避免碎片查询被绝对阈值误杀），
    * 最终相关性由 LLM 重排把关；分数阈值与融合分数不可比，故融合后也不再做相对阈值过滤。
    */
-  private async retrieve(question: string): Promise<RetrievedChunk[]> {
+  private async retrieve(question: string, userId: number): Promise<RetrievedChunk[]> {
     // ① 查询改写（方案 A）：短碎片 → 完整表达
     const rewritten = await this.rewriteQuery(question);
 
     // ② 向量语义路
-    // LEFT JOIN upload_files：过滤已删除文档遗留的“孤儿分块”（server 与 ai-service 共用同一数据库，
-    // upload_files 由 server 维护）——否则旧分块会继续被检索命中，同一文件名出现多条来源
+    // LEFT JOIN upload_files：过滤已删除文档遗留的“孤儿分块”，并按 uploaderId 隔离用户——
+    // 只检索当前登录用户上传的文档（server 与 ai-service 共用同一数据库，upload_files 由 server 维护），
+    // 避免跨用户检索泄漏他人文档
     const vectorEmbedding = await this.models.embeddings.embedQuery(rewritten);
     const vectorRows: SimilarityRow[] = await this.documentChunksRepository.query(
       `SELECT c.id, c."uploadFileId", c.content, c.metadata,
@@ -446,9 +448,10 @@ export class AskService {
          FROM document_chunks c
          LEFT JOIN upload_files f ON f.id = c."uploadFileId"
         WHERE f.id IS NOT NULL
+          AND f."uploaderId" = $2
         ORDER BY c.embedding::vector <=> $1::vector
         LIMIT ${TOP_K}`,
-      [`[${vectorEmbedding.join(',')}]`],
+      [`[${vectorEmbedding.join(',')}]`, userId],
     );
 
     // ③ 关键词字面路（原始查询 + 改写查询各一路，Set 去重；每路按 trigram 相似度排序召回）
@@ -461,7 +464,7 @@ export class AskService {
       },
     ];
     for (const term of new Set([question, rewritten].filter((t) => t.trim()))) {
-      const rows = await this.keywordSearch(term);
+      const rows = await this.keywordSearch(term, userId);
       legs.push({
         name: `keyword:${term}`,
         items: rows.map((row, rank) => ({
@@ -499,9 +502,9 @@ export class AskService {
     return this.rerank(question, candidates);
   }
 
-  /** 关键词（字面）检索：pg_trgm 子串匹配 + trigram 相似度排序；term 参数化传入（防注入），LIMIT 为常量。
-   *  同样 LEFT JOIN upload_files 过滤已删除文档的孤儿分块（与向量路一致）。 */
-  private async keywordSearch(term: string): Promise<SimilarityRow[]> {
+  /** 关键词（字面）检索：pg_trgm 子串匹配 + trigram 相似度排序；term 与 userId 参数化传入（防注入），LIMIT 为常量。
+   *  同样 LEFT JOIN upload_files 过滤已删除文档的孤儿分块，并按 uploaderId 隔离用户（与向量路一致）。 */
+  private async keywordSearch(term: string, userId: number): Promise<SimilarityRow[]> {
     if (!term.trim()) {
       return [];
     }
@@ -510,10 +513,11 @@ export class AskService {
                    FROM document_chunks c
                    LEFT JOIN upload_files f ON f.id = c."uploadFileId"
                   WHERE f.id IS NOT NULL
+                    AND f."uploaderId" = $2
                     AND c.content ILIKE '%' || $1 || '%'
                   ORDER BY distance DESC
                   LIMIT ${KEYWORD_TOP_K}`;
-    return this.documentChunksRepository.query(sql, [term]);
+    return this.documentChunksRepository.query(sql, [term, userId]);
   }
 
   /** 把一行 SQL 结果统一转成融合候选结构（rrf 初始为 0，融合时累加） */
