@@ -64,7 +64,13 @@ pnpm dev
 
 ## 环境变量
 
-- `apps/server/.env`：数据库（PostgreSQL/pgvector）、JWT、AI 服务地址
-- `apps/ai-service/.env`：数据库、OpenAI 兼容 API（豆包/火山方舟）
+前后端与 AI 服务的环境变量已合并为**一份**，统一放在项目根目录 `ai_knowledge_base/.env`：
 
-> 提示：`.env` 已在 `.gitignore` 中忽略，请勿提交到仓库。
+- 数据库（PostgreSQL/pgvector）：`DATABASE_*`
+- 鉴权（server 端）：`JWT_SECRET`、`JWT_EXPIRES_IN`
+- 服务端口：`SERVER_PORT`（后端，默认 `3000`）、`AI_SERVICE_PORT`（AI 服务，默认 `3001`）
+- AI 服务地址（server 端调用）：`AI_SERVICE_URL`
+- OpenAI 兼容 API（豆包/火山方舟）：`OPENAI_*`
+- 检索/生成参数：`AI_TEMPERATURE`、`AI_TOP_K`、`AI_KEYWORD_TOP_K`、`AI_MIN_SCORE`、`AI_RERANK_TOP_N`
+
+> 提示：`.env` 已在 `.gitignore` 中忽略，请勿提交到仓库；修改后需重启 `pnpm dev` 生效。

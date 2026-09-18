@@ -16,6 +16,6 @@ async function bootstrap() {
       transform: true, // 按 DTO 类型自动转换入参（如 string → number）
     }),
   );
-  await app.listen(process.env.PORT ?? 3001);
+  await app.listen(process.env.AI_SERVICE_PORT ?? 3001);
 }
 await bootstrap();

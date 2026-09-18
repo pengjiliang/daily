@@ -1,5 +1,5 @@
 <!--
-  顶部导航栏（上）：应用标题 + 右侧用户信息（用户名、头像下拉：更换头像 / 退出登录）。
+  顶部导航栏（上）：应用标题 + 右侧用户信息（用户名、头像下拉：模型配置 / 使用统计 / 知识图谱 / 更换头像 / 退出登录）。
   头像更换弹窗自包含在此组件内（选择图片 → 预览 → 上传 → 刷新 store 用户信息）。
 -->
 <template>
@@ -19,8 +19,20 @@
         </div>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item command="uploadAvatar">更换头像</el-dropdown-item>
-            <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+            <el-dropdown-item command="settings">
+              <el-icon><Setting /></el-icon>
+              模型配置
+            </el-dropdown-item>
+            <el-dropdown-item command="stats">
+              <el-icon><DataAnalysis /></el-icon>
+              使用统计
+            </el-dropdown-item>
+            <el-dropdown-item command="graph">
+              <el-icon><Connection /></el-icon>
+              知识图谱
+            </el-dropdown-item>
+            <el-dropdown-item command="uploadAvatar" divided>更换头像</el-dropdown-item>
+            <el-dropdown-item command="logout">退出登录</el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
@@ -66,11 +78,13 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { ElMessage } from 'element-plus';
-import { Upload, UserFilled } from '@element-plus/icons-vue';
+import { Upload, UserFilled, Setting, DataAnalysis, Connection } from '@element-plus/icons-vue';
 import { useUserStore } from '@/stores/user';
+import { useUiStore } from '@/stores/ui';
 import { uploadApi } from '@/api/upload';
 import { authApi } from '@/api/auth';
 
+const uiStore = useUiStore();
 const userStore = useUserStore();
 
 /** 头像相对路径补全为 server 静态资源绝对地址 */
@@ -126,9 +140,15 @@ const submitAvatar = async () => {
   }
 };
 
-/** 顶部用户下拉命令：打开换头像弹窗 或 登出回登录页 */
+/** 顶部用户下拉命令：打开全局功能弹框 / 换头像弹窗 或 登出回登录页 */
 const handleCommand = (command: string) => {
-  if (command === 'uploadAvatar') {
+  if (command === 'settings') {
+    uiStore.openDialog('settings');
+  } else if (command === 'stats') {
+    uiStore.openDialog('stats');
+  } else if (command === 'graph') {
+    uiStore.openDialog('graph');
+  } else if (command === 'uploadAvatar') {
     avatarDialogVisible.value = true;
     avatarPreview.value = fullAvatarUrl.value || '';
   } else if (command === 'logout') {

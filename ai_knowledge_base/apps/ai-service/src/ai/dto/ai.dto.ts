@@ -15,6 +15,10 @@ export class IndexDocumentDto {
   @IsInt()
   uploadFileId: number;
 
+  /** 上传者用户 ID：按用户隔离，使用该用户配置的向量模型建索引 */
+  @IsInt()
+  uploaderId: number;
+
   /** server 本机磁盘上的文件绝对路径（两服务需共享同一存储或部署在同机） */
   @IsString()
   @MinLength(1)

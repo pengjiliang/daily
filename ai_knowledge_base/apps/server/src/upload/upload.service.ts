@@ -227,6 +227,8 @@ export class UploadService {
           filePath: absolutePath,
           originalName: uploadFile.originalName,
           mimeType: uploadFile.mimeType,
+          // 索引时按用户隔离：ai-service 用该用户的向量模型配置并写入 uploaderId
+          uploaderId: uploadFile.uploaderId,
         }),
         signal: controller.signal,
       });
@@ -241,5 +243,14 @@ export class UploadService {
     } catch (error) {
       this.logger.warn(`AI indexing request for document ${uploadFile.id} could not be delivered: ${String(error)}`);
     }
+  }
+
+  /**
+   * 供设置页“重建索引”任务复用：按库中相对路径解析绝对路径后，
+   * 请求 ai-service 以该用户当前向量模型重新建索引（等待本次索引完成）。
+   */
+  async reindexDocument(uploadFile: UploadFile): Promise<void> {
+    const filePath = this.resolveSafeDocumentPath(uploadFile.path);
+    await this.requestDocumentIndexing(uploadFile, filePath);
   }
 }

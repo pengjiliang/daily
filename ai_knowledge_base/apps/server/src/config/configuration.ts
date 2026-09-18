@@ -4,7 +4,7 @@
  * JWT 密钥与有效期、ai-service 的内部调用地址。
  */
 export default () => ({
-  port: Number.parseInt(process.env.PORT ?? '3000', 10),
+  port: Number.parseInt(process.env.SERVER_PORT ?? '3000', 10),
   database: {
     host: process.env.DATABASE_HOST ?? 'localhost',
     port: Number.parseInt(process.env.DATABASE_PORT ?? '5432', 10),
@@ -21,5 +21,20 @@ export default () => ({
   aiService: {
     // 文档索引、问答（含 SSE）都转发到该地址
     url: process.env.AI_SERVICE_URL ?? 'http://localhost:3001',
+  },
+  // OpenAI 兼容模型默认配置：与 ai-service 保持一致，供「设置页」回显默认值（用户未配置时展示）
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY ?? '',
+    baseUrl: process.env.OPENAI_BASE_URL ?? '',
+    embeddingModel: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-ada-002',
+    chatModel: process.env.OPENAI_CHAT_MODEL ?? 'gpt-4o-mini',
+  },
+  // 检索/生成参数默认值：与 ai-service 的 ask.service 常量保持一致
+  ai: {
+    temperature: Number.parseFloat(process.env.AI_TEMPERATURE ?? '0'),
+    topK: Number.parseInt(process.env.AI_TOP_K ?? '8', 10),
+    keywordTopK: Number.parseInt(process.env.AI_KEYWORD_TOP_K ?? '8', 10),
+    minScore: Number.parseFloat(process.env.AI_MIN_SCORE ?? '0.3'),
+    rerankTopN: Number.parseInt(process.env.AI_RERANK_TOP_N ?? '5', 10),
   },
 });

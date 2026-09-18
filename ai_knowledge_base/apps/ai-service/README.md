@@ -23,11 +23,11 @@ AI 知识库的问答与文档向量化服务，基于 NestJS + LangChain（Lang
 
 ## 环境变量
 
-在 `apps/ai-service/.env` 中配置（也可使用系统环境变量）：
+统一在 monorepo 根目录 `ai_knowledge_base/.env` 中配置（本服务不再单独维护 `.env`，也可使用系统环境变量）：
 
 | 变量 | 说明 | 默认值 |
 | --- | --- | --- |
-| `PORT` | 服务监听端口 | `3001` |
+| `AI_SERVICE_PORT` | 服务监听端口 | `3001` |
 | `DATABASE_HOST` | PostgreSQL 地址 | `localhost` |
 | `DATABASE_PORT` | PostgreSQL 端口 | `5432` |
 | `DATABASE_USER` | 数据库用户 | `postgres` |

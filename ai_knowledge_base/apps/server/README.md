@@ -18,11 +18,11 @@ AI 知识库的后端 API 服务，基于 NestJS + TypeORM + PostgreSQL，负责
 
 ## 环境变量
 
-在 `apps/server/.env` 中配置：
+统一在 monorepo 根目录 `ai_knowledge_base/.env` 中配置（本服务不再单独维护 `.env`）：
 
 | 变量 | 说明 | 默认值 |
 | --- | --- | --- |
-| `PORT` | 服务监听端口 | `3000` |
+| `SERVER_PORT` | 本服务监听端口 | `3000` |
 | `DATABASE_HOST` | PostgreSQL 地址 | `localhost` |
 | `DATABASE_PORT` | PostgreSQL 端口 | `5432` |
 | `DATABASE_USER` | 数据库用户 | `postgres` |
@@ -31,7 +31,23 @@ AI 知识库的后端 API 服务，基于 NestJS + TypeORM + PostgreSQL，负责
 | `NODE_ENV` | 运行环境；非 `production` 时自动同步表结构 | 空 |
 | `JWT_SECRET` | JWT 签名密钥 | `your_secret_key` |
 | `JWT_EXPIRES_IN` | Token 有效期 | `7d` |
-| `AI_SERVICE_URL` | AI 服务地址 | `http://localhost:3001` |
+| `AI_SERVICE_URL` | AI 服务地址（需与 `AI_SERVICE_PORT` 一致） | `http://localhost:3001` |
+| `AI_SERVICE_PORT` | AI 服务监听端口 | `3001` |
+
+以下 AI 配置用于「模型配置」设置页回显默认值（用户未单独配置时展示），
+**与 ai-service 共用根 `.env` 中的同一份值**：
+
+| 变量 | 说明 | 默认值 |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | OpenAI 兼容 API 的 Key | 空 |
+| `OPENAI_BASE_URL` | API 地址（如火山方舟） | 空 |
+| `OPENAI_EMBEDDING_MODEL` | Embedding 模型 | `text-embedding-ada-002` |
+| `OPENAI_CHAT_MODEL` | 对话模型 | `gpt-4o-mini` |
+| `AI_TEMPERATURE` | 生成温度 | `0` |
+| `AI_TOP_K` | 检索 Top K | `8` |
+| `AI_KEYWORD_TOP_K` | 关键词检索 Top K | `8` |
+| `AI_MIN_SCORE` | 最小相似度阈值 | `0.3` |
+| `AI_RERANK_TOP_N` | Rerank 取前 N | `5` |
 
 ## 启动
 

@@ -11,7 +11,8 @@ import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { Repository } from 'typeorm';
 import { DocumentChunk } from '../entities/document-chunk.entity.js';
-import { OpenAIModelProvider } from './openai-model.provider.js';
+import { UserSettingsService } from '../settings/user-settings.service.js';
+import { ModelProvider } from './openai-model.provider.js';
 import * as iconv from 'iconv-lite';
 import * as XLSX from 'xlsx';
 import * as mammoth from 'mammoth';
@@ -26,6 +27,8 @@ export const BATCH_SIZE = 10; // doubao-embedding limit per request
 
 export interface IndexDocumentRequest {
   uploadFileId: number;
+  /** 上传者用户 ID：使用该用户配置的向量模型建索引，检索也按用户隔离 */
+  uploaderId: number;
   filePath: string;
   originalName: string;
   mimeType: string;
@@ -47,7 +50,8 @@ export class DocumentIndexService {
   constructor(
     @InjectRepository(DocumentChunk)
     private readonly documentChunksRepository: Repository<DocumentChunk>,
-    private readonly models: OpenAIModelProvider,
+    private readonly models: ModelProvider,
+    private readonly userSettings: UserSettingsService,
   ) {}
 
   /** 索引主流程：抽取文本 → 文件名前置一次（支持按文件名检索）→ 切片 → 批量 Embedding → 先删后插覆盖入库 */
@@ -61,11 +65,15 @@ export class DocumentIndexService {
       throw new BadRequestException('文档不包含可索引内容');
     }
 
+    // 使用该用户配置的向量模型（设置页可改，改后触发重建索引）
+    const embeddingsModel = await this.models.getEmbeddings(request.uploaderId);
+    const settings = await this.userSettings.getEffectiveSettings(request.uploaderId);
+
     // Batch embeddings to respect doubao-embedding limit per request
     const embeddings: number[][] = [];
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
       const batch = chunks.slice(i, i + BATCH_SIZE);
-      const batchEmbeddings = await this.models.embeddings.embedDocuments(batch);
+      const batchEmbeddings = await embeddingsModel.embedDocuments(batch);
       embeddings.push(...batchEmbeddings);
     }
 
@@ -80,6 +88,8 @@ export class DocumentIndexService {
             originalName: request.originalName,
             mimeType: request.mimeType,
             chunkIndex: index,
+            // 记录向量模型标识：切换向量模型重建后可区分新旧分块
+            embeddingModel: settings.embedding.model,
           },
         }),
       ),

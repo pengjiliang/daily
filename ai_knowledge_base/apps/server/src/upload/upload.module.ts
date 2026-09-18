@@ -14,5 +14,7 @@ import { UploadService } from './upload.service.js';
   imports: [TypeOrmModule.forFeature([UploadFile]), UsersModule],
   controllers: [UploadController],
   providers: [UploadService],
+  // 供 SettingsModule 依赖注入：重建索引时调用 UploadService.reindexDocument
+  exports: [UploadService],
 })
 export class UploadModule {}

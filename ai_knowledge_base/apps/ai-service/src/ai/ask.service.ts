@@ -4,24 +4,26 @@
  *      RRF 融合、按文件去重后由 LLM 重排，最终校准为展示用相关度。
  * 生成：流式链路 askStream 并行产出答案 token 流与外部资料 JSON，并剔除与知识库重复的伪外部资料；
  *      旧链路 ask 经 LangGraph 一次性返回 JSON。
+ * 所有模型调用均按 userId 解析：对话/向量模型配置与检索参数（topK/minScore 等）
+ * 取自该用户在设置页保存的配置，未配置时回退 .env 默认值。
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import type { BaseMessageChunk } from '@langchain/core/messages';
 import { Repository } from 'typeorm';
 import { DocumentChunk } from '../entities/document-chunk.entity.js';
 import { createRagGraph, type GenerateResult, type RagState, type RetrievedChunk } from './langgraph/rag.graph.js';
 import type { AskResult } from '@ai-knowledge-base/shared';
-import { OpenAIModelProvider } from './openai-model.provider.js';
+import { ModelProvider, type ChatMessage } from './openai-model.provider.js';
+import { UserSettingsService } from '../settings/user-settings.service.js';
 import type { HistoryMessage } from './dto/ai.dto.js';
 
-/** 向量检索候选数（重排前） */
+/** 向量检索候选数默认值（重排前）；用户未配置时回退该值 */
 export const TOP_K = 8;
-/** 关键词（字面）检索候选数：pg_trgm 子串匹配，与向量路一起进 RRF 融合 */
+/** 关键词（字面）检索候选数默认值：pg_trgm 子串匹配，与向量路一起进 RRF 融合 */
 export const KEYWORD_TOP_K = 8;
-/** 绝对阈值：仅用于向量路——相似度低于该值的片段视为噪声丢弃；关键词路不做分数过滤（字面命中即候选） */
+/** 绝对阈值默认值：仅用于向量路——相似度低于该值的片段视为噪声丢弃；关键词路不做分数过滤（字面命中即候选） */
 export const MIN_SCORE = 0.3;
-/** 重排后最多保留的片段数 */
+/** 重排后最多保留片段数默认值 */
 export const RERANK_TOP_N = 5;
 /** RRF（Reciprocal Rank Fusion）融合常数，业界常用值 */
 export const RRF_K = 60;
@@ -103,14 +105,15 @@ export class AskService {
   constructor(
     @InjectRepository(DocumentChunk)
     private readonly documentChunksRepository: Repository<DocumentChunk>,
-    private readonly models: OpenAIModelProvider,
+    private readonly models: ModelProvider,
+    private readonly userSettings: UserSettingsService,
   ) {}
 
   /** 旧版一次性问答：走 LangGraph（retrieve → generate），等待完整 JSON 后返回 */
   async ask(request: AskRequest): Promise<AskResult> {
     const graph = createRagGraph({
       retrieve: (question) => this.retrieve(question, request.userId),
-      generate: (state) => this.generate(state),
+      generate: (state) => this.generate(state, request.userId),
     });
     const result = await graph.invoke({
       question: request.question,
@@ -145,8 +148,8 @@ export class AskService {
 
     // ① 答案流式输出；② 外部资料一次性生成（并行进行，不拖慢首字）
     const [answer, rawExternalSources] = await Promise.all([
-      this.streamAnswer(messages.answerMessages, callbacks.onToken, signal),
-      this.fetchExternalSources(messages.externalMessages, externalLimit, signal),
+      this.streamAnswer(messages.answerMessages, callbacks.onToken, signal, request.userId),
+      this.fetchExternalSources(messages.externalMessages, externalLimit, signal, request.userId),
     ]);
     // 兜底去重：剔除与内部知识库重复（同一文件/同内容改写）的“伪外部资料”
     const externalSources = this.dedupeAgainstKb(rawExternalSources, kbSources);
@@ -156,16 +159,22 @@ export class AskService {
     return { answer: finalAnswer, sources };
   }
 
-  /** 逐 token 调用模型，累积并回调每个增量片段 */
+  /** 逐 token 调用模型，累积并回调每个增量片段（兼容 content 为字符串或片段数组） */
   private async streamAnswer(
-    messages: Parameters<OpenAIModelProvider['chatModel']['stream']>[0],
+    messages: ChatMessage[],
     onToken: (chunk: string) => void | Promise<void>,
-    signal?: AbortSignal,
+    signal: AbortSignal | undefined,
+    userId: number,
   ): Promise<string> {
     let answer = '';
-    const stream = await this.models.chatModel.stream(messages, { signal });
-    for await (const chunk of stream as AsyncIterable<BaseMessageChunk>) {
-      const text = typeof chunk.content === 'string' ? chunk.content : '';
+    const chatModel = await this.models.getChatModel(userId);
+    const stream = await chatModel.stream(messages, { signal });
+    for await (const chunk of stream) {
+      const text = Array.isArray(chunk.content)
+        ? chunk.content
+            .map((part) => (typeof part === 'string' ? part : ((part as { text?: string }).text ?? '')))
+            .join('')
+        : chunk.content;
       if (text) {
         answer += text;
         await onToken(text);
@@ -176,16 +185,18 @@ export class AskService {
 
   /** 一次性调用模型生成「外部资料」要点；失败或返回空时重试一次，最终容错返回空数组（不影响回答流） */
   private async fetchExternalSources(
-    messages: Parameters<OpenAIModelProvider['chatModel']['invoke']>[0],
+    messages: ChatMessage[],
     externalLimit: number,
-    signal?: AbortSignal,
+    signal: AbortSignal | undefined,
+    userId: number,
   ): Promise<RetrievedChunk[]> {
+    const chatModel = await this.models.getChatModel(userId);
     for (let attempt = 0; attempt < 2; attempt += 1) {
       if (signal?.aborted) {
         return [];
       }
       try {
-        const response = await this.models.chatModel.invoke(messages, { signal });
+        const response = await chatModel.invoke(messages, { signal });
         const sources = this.parseExternalSourcesResponse(response.text, externalLimit);
         if (sources.length > 0 || attempt === 1) {
           return sources;
@@ -333,8 +344,8 @@ export class AskService {
     history: HistoryMessage[] | undefined,
     kbSources: RetrievedChunk[],
   ): {
-    answerMessages: { role: 'system' | 'user'; content: string }[];
-    externalMessages: { role: 'system' | 'user'; content: string }[];
+    answerMessages: ChatMessage[];
+    externalMessages: ChatMessage[];
   } {
     const hasKb = kbSources.length > 0;
     const externalLimit = hasKb ? EXTERNAL_WITH_KB : EXTERNAL_WITHOUT_KB;
@@ -401,12 +412,13 @@ export class AskService {
    * 改写结果用于「向量语义路」与「精确关键词路」；原始查询仍用于「子串关键词路」保证字面召回。
    * 长查询（超过 QUERY_REWRITE_THRESHOLD 字符）不改写以省一次模型调用；改写失败/空结果回退原查询。
    */
-  private async rewriteQuery(question: string): Promise<string> {
+  private async rewriteQuery(question: string, userId: number): Promise<string> {
     if (question.trim().length > QUERY_REWRITE_THRESHOLD) {
       return question;
     }
     try {
-      const response = await this.models.chatModel.invoke([
+      const chatModel = await this.models.getChatModel(userId);
+      const response = await chatModel.invoke([
         {
           role: 'system',
           content:
@@ -427,21 +439,25 @@ export class AskService {
   /**
    * 混合检索（方案 B）：多路召回 → RRF 融合 → 每文件保留最优 → LLM 重排。
    * - 向量语义路：Embedding cosine 相似度（用改写后的查询，碎片“彭”的原始向量是噪声），
-   *   内部做 MIN_SCORE 绝对阈值过滤；
+   *   内部做 minScore 绝对阈值过滤；
    * - 关键词字面路：pg_trgm 子串匹配（`ILIKE '%term%'`），原始查询与改写查询各一路，
    *   保证“输入‘彭’能命中含‘彭基良’的文档”——纯向量检索只认语义、不认字，这是它补的短板。
    * 关键词路不做分数阈值过滤（字面命中即候选，避免碎片查询被绝对阈值误杀），
    * 最终相关性由 LLM 重排把关；分数阈值与融合分数不可比，故融合后也不再做相对阈值过滤。
+   * 检索参数（topK/keywordTopK/minScore/rerankTopN）取该用户在设置页保存的值。
    */
   private async retrieve(question: string, userId: number): Promise<RetrievedChunk[]> {
+    const settings = await this.userSettings.getEffectiveSettings(userId);
+
     // ① 查询改写（方案 A）：短碎片 → 完整表达
-    const rewritten = await this.rewriteQuery(question);
+    const rewritten = await this.rewriteQuery(question, userId);
 
     // ② 向量语义路
     // LEFT JOIN upload_files：过滤已删除文档遗留的“孤儿分块”，并按 uploaderId 隔离用户——
     // 只检索当前登录用户上传的文档（server 与 ai-service 共用同一数据库，upload_files 由 server 维护），
     // 避免跨用户检索泄漏他人文档
-    const vectorEmbedding = await this.models.embeddings.embedQuery(rewritten);
+    const embeddingsModel = await this.models.getEmbeddings(userId);
+    const vectorEmbedding = await embeddingsModel.embedQuery(rewritten);
     const vectorRows: SimilarityRow[] = await this.documentChunksRepository.query(
       `SELECT c.id, c."uploadFileId", c.content, c.metadata,
               c.embedding::vector <=> $1::vector AS distance
@@ -450,7 +466,7 @@ export class AskService {
         WHERE f.id IS NOT NULL
           AND f."uploaderId" = $2
         ORDER BY c.embedding::vector <=> $1::vector
-        LIMIT ${TOP_K}`,
+        LIMIT ${settings.topK}`,
       [`[${vectorEmbedding.join(',')}]`, userId],
     );
 
@@ -459,12 +475,12 @@ export class AskService {
       {
         name: 'vector',
         items: vectorRows
-          .filter((row) => 1 - Number(row.distance) > MIN_SCORE)
+          .filter((row) => 1 - Number(row.distance) > settings.minScore)
           .map((row, rank) => ({ rank, chunk: this.toFusionCandidate(row, 1 - Number(row.distance)) })),
       },
     ];
     for (const term of new Set([question, rewritten].filter((t) => t.trim()))) {
-      const rows = await this.keywordSearch(term, userId);
+      const rows = await this.keywordSearch(term, userId, settings.keywordTopK);
       legs.push({
         name: `keyword:${term}`,
         items: rows.map((row, rank) => ({
@@ -499,12 +515,12 @@ export class AskService {
       }));
 
     // ⑤ LLM 重排：最终相关性过滤（关键词路可能命中无关文档，由重排剔除），并校准展示分数
-    return this.rerank(question, candidates);
+    return this.rerank(question, candidates, userId);
   }
 
-  /** 关键词（字面）检索：pg_trgm 子串匹配 + trigram 相似度排序；term 与 userId 参数化传入（防注入），LIMIT 为常量。
+  /** 关键词（字面）检索：pg_trgm 子串匹配 + trigram 相似度排序；term 与 userId 参数化传入（防注入），LIMIT 由设置决定。
    *  同样 LEFT JOIN upload_files 过滤已删除文档的孤儿分块，并按 uploaderId 隔离用户（与向量路一致）。 */
-  private async keywordSearch(term: string, userId: number): Promise<SimilarityRow[]> {
+  private async keywordSearch(term: string, userId: number, keywordTopK: number): Promise<SimilarityRow[]> {
     if (!term.trim()) {
       return [];
     }
@@ -516,7 +532,7 @@ export class AskService {
                     AND f."uploaderId" = $2
                     AND c.content ILIKE '%' || $1 || '%'
                   ORDER BY distance DESC
-                  LIMIT ${KEYWORD_TOP_K}`;
+                  LIMIT ${keywordTopK}`;
     return this.documentChunksRepository.query(sql, [term, userId]);
   }
 
@@ -555,7 +571,8 @@ export class AskService {
    * LLM 重排：向量相似度分数区间窄（豆包等 Embedding 常见），绝对值区分度低，
    * 因此交给模型判断候选片段是否与问题真正相关，只保留相关片段。
    */
-  private async rerank(question: string, candidates: Omit<RetrievedChunk, 'similarity'>[]): Promise<RetrievedChunk[]> {
+  private async rerank(question: string, candidates: Omit<RetrievedChunk, 'similarity'>[], userId: number): Promise<RetrievedChunk[]> {
+    const settings = await this.userSettings.getEffectiveSettings(userId);
     let kept: Omit<RetrievedChunk, 'similarity'>[];
     if (candidates.length <= 1) {
       kept = candidates;
@@ -564,7 +581,8 @@ export class AskService {
         .map((chunk, index) => `[${index + 1}]：${chunk.content.slice(0, 400)}`)
         .join('\n\n');
 
-      const response = await this.models.chatModel.invoke([
+      const chatModel = await this.models.getChatModel(userId);
+      const response = await chatModel.invoke([
         { role: 'system', content: '你是检索相关性判断助手。只判断候选片段是否与问题相关，不要回答用户问题。' },
         {
           role: 'user',
@@ -575,7 +593,7 @@ export class AskService {
       const parsed = this.parseIndexList(response.text);
       if (parsed === null) {
         // 解析失败：退回向量排序结果，避免误删候选
-        kept = candidates.slice(0, RERANK_TOP_N);
+        kept = candidates.slice(0, settings.rerankTopN);
       } else if (parsed.length === 0) {
         // 模型判定无相关片段：返回空，让模型用自身知识回答
         kept = [];
@@ -583,7 +601,7 @@ export class AskService {
         kept = parsed
           .map((index) => candidates[index - 1])
           .filter((chunk): chunk is Omit<RetrievedChunk, 'similarity'> => Boolean(chunk))
-          .slice(0, RERANK_TOP_N);
+          .slice(0, settings.rerankTopN);
       }
     }
 
@@ -615,7 +633,7 @@ export class AskService {
   }
 
   /** LangGraph 生成节点（旧链路）：一次性输出 { answer, externalSources } JSON */
-  private async generate(state: RagState): Promise<GenerateResult> {
+  private async generate(state: RagState, userId: number): Promise<GenerateResult> {
     const hasKb = state.context.length > 0;
     const externalLimit = hasKb ? EXTERNAL_WITH_KB : EXTERNAL_WITHOUT_KB;
     const historySection = state.history ? `历史对话：\n\n${state.history}\n\n` : '';
@@ -645,7 +663,8 @@ export class AskService {
           '{"answer":"...","externalSources":[{"title":"...","content":"...","score":0.9}]}',
         ].join('\n');
 
-    const response = await this.models.chatModel.invoke([
+    const chatModel = await this.models.getChatModel(userId);
+    const response = await chatModel.invoke([
       { role: 'system', content: systemPrompt },
       {
         role: 'user',
