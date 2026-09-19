@@ -1,5 +1,6 @@
 <!--
   顶部导航栏（上）：应用标题 + 右侧用户信息（用户名、头像下拉：模型配置 / 使用统计 / 知识图谱 / 更换头像 / 退出登录）。
+  模型配置 / 使用统计 / 知识图谱 通过 uiStore.openView 切换右侧主区内容页（与左侧菜单入口一致）。
   头像更换弹窗自包含在此组件内（选择图片 → 预览 → 上传 → 刷新 store 用户信息）。
 -->
 <template>
@@ -140,14 +141,14 @@ const submitAvatar = async () => {
   }
 };
 
-/** 顶部用户下拉命令：打开全局功能弹框 / 换头像弹窗 或 登出回登录页 */
+/** 顶部用户下拉命令：切换到主区功能视图 / 打开换头像弹窗 或 登出回登录页 */
 const handleCommand = (command: string) => {
   if (command === 'settings') {
-    uiStore.openDialog('settings');
+    uiStore.openView('settings', 'system');
   } else if (command === 'stats') {
-    uiStore.openDialog('stats');
+    uiStore.openView('stats', 'data');
   } else if (command === 'graph') {
-    uiStore.openDialog('graph');
+    uiStore.openView('graph', 'data');
   } else if (command === 'uploadAvatar') {
     avatarDialogVisible.value = true;
     avatarPreview.value = fullAvatarUrl.value || '';

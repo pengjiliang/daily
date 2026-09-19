@@ -11,12 +11,14 @@ import { chatApi } from '@/api/chat';
 import { uploadApi } from '@/api/upload';
 import type { Conversation, Message } from '@/api/chat';
 import type { UploadDocument } from '@/api/upload';
+import type { WorkBook } from 'xlsx';
+import { useUiStore } from '@/stores/ui';
 
 export const useChatStore = defineStore('chat', () => {
   // ---- 共享状态 ----
 
-  /** 左侧 Tab：文档管理 / 会话列表 */
-  const activeTab = ref<'documents' | 'conversations'>('documents');
+  /** 左侧 AI 助手子菜单：文档管理 / 会话列表（空串表示收起列表区），默认展开会话列表 */
+  const activeTab = ref<'documents' | 'conversations' | ''>('conversations');
   const loadingDocuments = ref(false);
   const documents = ref<UploadDocument[]>([]);
   const conversations = ref<Conversation[]>([]);
@@ -40,6 +42,18 @@ export const useChatStore = defineStore('chat', () => {
   // 文件夹上传
   const uploadingFolder = ref(false);
 
+  // ---- 文档预览（右侧内容区）----
+  /** 当前预览状态：kind=image/pdf 用 objectURL 渲染；html 为转换后的内容；unsupported 提示下载 */
+  const previewState = ref<{
+    id: number;
+    originalName: string;
+    ext: string;
+    kind: 'image' | 'pdf' | 'html' | 'unsupported';
+    url: string | null;
+    html: string | null;
+  } | null>(null);
+  const previewLoading = ref(false);
+
   // ---- 工具函数 ----
 
   const formatDate = (dateStr: string) => {
@@ -57,6 +71,49 @@ export const useChatStore = defineStore('chat', () => {
   const extractFolderName = (relativePath: string) => {
     const slashIndex = Math.max(relativePath.lastIndexOf('/'), relativePath.lastIndexOf('\\'));
     return slashIndex > 0 ? relativePath.slice(0, slashIndex) : '';
+  };
+
+  /** HTML 转义（预览文本/表格时防止 XSS 与样式破坏） */
+  const escapeHtml = (text: string) =>
+    text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  /**
+   * 轻量 Markdown → HTML 渲染（先转义再按行/块转换，覆盖标题、代码块、引用、
+   * 列表、加粗/斜体、行内代码、链接、分隔线与换行；不含高级语法）。
+   */
+  const renderMarkdown = (raw: string) => {
+    let html = escapeHtml(raw);
+    // 代码块（先处理，避免内部语法被二次转换）
+    html = html.replace(/```([\s\S]*?)```/g, (_match, code: string) => `<pre class="md-code">${code.trim()}</pre>`);
+    html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    // 标题
+    html = html.replace(/^###### (.*)$/gm, '<h6>$1</h6>');
+    html = html.replace(/^##### (.*)$/gm, '<h5>$1</h5>');
+    html = html.replace(/^#### (.*)$/gm, '<h4>$1</h4>');
+    html = html.replace(/^### (.*)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^## (.*)$/gm, '<h2>$1</h2>');
+    html = html.replace(/^# (.*)$/gm, '<h1>$1</h1>');
+    // 加粗 / 斜体
+    html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+    // 链接
+    html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    // 引用 / 分隔线
+    html = html.replace(/^&gt; (.*)$/gm, '<blockquote>$1</blockquote>');
+    html = html.replace(/^---$/gm, '<hr />');
+    // 无序 / 有序列表
+    html = html.replace(/^\s*[-*] (.*)$/gm, '<li>$1</li>');
+    html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+    html = html.replace(/^\s*\d+\. (.*)$/gm, '<li>$1</li>');
+    html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ol>$&</ol>');
+    // 段落与换行
+    html = html.replace(/\n{2,}/g, '</p><p>');
+    html = html.replace(/\n/g, '<br />');
+    return `<p>${html}</p>`;
   };
 
   /** 支持扩展名白名单（与 server upload.storage.ts 保持一致） */
@@ -78,19 +135,10 @@ export const useChatStore = defineStore('chat', () => {
     '.tiff',
     '.tif',
   ]);
-  /** 可在线预览的扩展名（浏览器原生渲染；Office 类不支持） */
-  const PREVIEWABLE_EXTENSIONS = new Set([
-    '.pdf',
-    '.txt',
-    '.md',
-    '.jpg',
-    '.jpeg',
-    '.png',
-    '.gif',
-    '.bmp',
-    '.tiff',
-    '.tif',
-  ]);
+  /** 图片类扩展名：objectURL 后用 <img> 直接渲染 */
+  const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif']);
+  /** 文本/Office 类扩展名：转成 HTML 后渲染（旧版 .doc 二进制无法解析，仅提示下载） */
+  const HTML_EXTENSIONS = new Set(['.txt', '.md', '.docx', '.xlsx', '.xls', '.xlx', '.csv']);
   /** 文件夹上传并发数（避免同时发起过多请求） */
   const FOLDER_UPLOAD_CONCURRENCY = 3;
 
@@ -428,22 +476,90 @@ export const useChatStore = defineStore('chat', () => {
 
   // ---- 预览 / 来源定位 ----
 
-  /** 预览文档：拉取 blob 后 window.open 新标签页（浏览器原生渲染 PDF/图片/文本） */
+  /** 释放当前预览的 objectURL（避免内存泄漏） */
+  const clearPreviewUrl = () => {
+    if (previewState.value?.url) {
+      URL.revokeObjectURL(previewState.value.url);
+      previewState.value.url = null;
+    }
+  };
+
+  /** 关闭预览：清空状态并回到聊天视图 */
+  const closePreview = () => {
+    releasePreview();
+    const uiStore = useUiStore();
+    if (uiStore.mainView === 'preview') {
+      uiStore.setMainView('chat');
+    }
+  };
+
+  /** 释放预览资源（不切换视图）：预览面板卸载/离开预览视图时调用 */
+  const releasePreview = () => {
+    clearPreviewUrl();
+    previewState.value = null;
+    previewLoading.value = false;
+  };
+
+  /** 取工作簿第一个工作表并转成带样式的 HTML 表格（SheetJS 输出） */
+  const sheetToHtml = (XLSX: typeof import('xlsx'), workbook: WorkBook) => {
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) return '<div class="xlsx-empty">工作表为空</div>';
+    return XLSX.utils.sheet_to_html(workbook.Sheets[sheetName], { header: '', footer: '' });
+  };
+
+  /**
+   * 预览文档：拉取 blob 后在右侧内容区渲染（不再打开新窗口）。
+   * 图片/PDF 用 objectURL；docx（mammoth）、xlsx/xls/xlx/csv（SheetJS）、txt/md 转为 HTML；
+   * 旧版 .doc 等无法解析的格式保留预览面板并提供下载按钮。
+   */
   const previewDocument = async (doc: UploadDocument) => {
     const ext = getExtension(doc.originalName);
-    if (!PREVIEWABLE_EXTENSIONS.has(ext)) {
-      ElMessage.warning('该格式暂不支持在线预览，请下载查看');
-      return;
-    }
+    let kind: 'image' | 'pdf' | 'html' | 'unsupported';
+    if (IMAGE_EXTENSIONS.has(ext)) kind = 'image';
+    else if (ext === '.pdf') kind = 'pdf';
+    else if (HTML_EXTENSIONS.has(ext)) kind = 'html';
+    else kind = 'unsupported';
+
+    // 清掉上一次预览的 objectURL，避免泄漏
+    clearPreviewUrl();
+    // 左侧点击文件预览时，同步切换来源高亮
+    highlightedDocumentId.value = doc.id;
+    previewState.value = { id: doc.id, originalName: doc.originalName, ext, kind, url: null, html: null };
+    previewLoading.value = false;
+    useUiStore().setMainView('preview');
+
+    // 无法解析的格式：保留预览面板（含下载按钮），无需拉取内容
+    if (kind === 'unsupported') return;
+
+    previewLoading.value = true;
     try {
       const blob = await uploadApi.fetchDocumentBlob(doc.id);
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      // 延时释放 blob URL，避免新窗口尚未加载完就失效
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      if (kind === 'image' || kind === 'pdf') {
+        previewState.value.url = URL.createObjectURL(blob);
+      } else if (ext === '.docx') {
+        const mammoth = await import('mammoth');
+        const result = await mammoth.convertToHtml({ arrayBuffer: await blob.arrayBuffer() });
+        previewState.value.html = result.value;
+      } else if (ext === '.xlsx' || ext === '.xls' || ext === '.xlx') {
+        const XLSX = await import('xlsx');
+        const workbook = XLSX.read(await blob.arrayBuffer(), { type: 'array' });
+        previewState.value.html = sheetToHtml(XLSX, workbook);
+      } else if (ext === '.csv') {
+        const XLSX = await import('xlsx');
+        const workbook = XLSX.read(await blob.text(), { type: 'string' });
+        previewState.value.html = sheetToHtml(XLSX, workbook);
+      } else if (ext === '.md') {
+        previewState.value.html = renderMarkdown(await blob.text());
+      } else {
+        previewState.value.html = escapeHtml(await blob.text());
+      }
     } catch (error) {
       console.error(error);
-      ElMessage.error('预览加载失败');
+      previewState.value.html = null;
+      previewState.value.kind = 'unsupported';
+      ElMessage.error('预览加载失败，可下载后查看');
+    } finally {
+      previewLoading.value = false;
     }
   };
 
@@ -467,6 +583,9 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     activeTab.value = 'documents';
+    // 切换到聊天主视图，并展开左侧「AI 助手」一级菜单（保证文档列表可见）
+    const uiStore = useUiStore();
+    uiStore.openView('chat', 'ai');
     // 展开文件所在的顶层文件夹（folderName 如 `2026/文档` → 展开 `2026`）
     if (doc.folderName) {
       const folder = doc.folderName.split('/')[0];
@@ -481,6 +600,11 @@ export const useChatStore = defineStore('chat', () => {
     setTimeout(() => {
       document.getElementById(`doc-item-${doc.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 50);
+  };
+
+  /** 取消文档列表来源高亮（切换到其它菜单/会话时调用） */
+  const clearHighlight = () => {
+    highlightedDocumentId.value = null;
   };
 
   return {
@@ -499,6 +623,9 @@ export const useChatStore = defineStore('chat', () => {
     renameDialogTitle,
     renameDialogValue,
     uploadingFolder,
+    // 文档预览
+    previewState,
+    previewLoading,
     // 工具
     formatDate,
     // 数据加载
@@ -527,6 +654,9 @@ export const useChatStore = defineStore('chat', () => {
     handleFolderChange,
     // 预览/定位
     previewDocument,
+    closePreview,
+    releasePreview,
+    clearHighlight,
     openSourceInDocuments,
   };
 });

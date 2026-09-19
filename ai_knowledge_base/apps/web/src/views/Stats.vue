@@ -44,35 +44,38 @@
       </div>
     </div>
 
-    <!-- 趋势图 -->
-    <div class="panel">
-      <div class="panel-title">
-        <el-icon><TrendCharts /></el-icon>
-        近 14 天提问趋势
-      </div>
-      <div class="trend-wrap">
-        <div ref="trendChartRef" class="trend-chart"></div>
-        <div v-if="trend.length === 0" class="chart-empty-mask">
-          <el-empty description="暂无提问数据" :image-size="72" />
+    <!-- 底部区域：趋势图 + 热门问题，左右并排铺满剩余高度 -->
+    <div class="stats-bottom">
+      <!-- 趋势图 -->
+      <div class="panel trend-panel">
+        <div class="panel-title">
+          <el-icon><TrendCharts /></el-icon>
+          近 14 天提问趋势
+        </div>
+        <div class="trend-wrap">
+          <div ref="trendChartRef" class="trend-chart"></div>
+          <div v-if="trend.length === 0" class="chart-empty-mask">
+            <el-empty description="暂无提问数据" :image-size="72" />
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- 热门问题 -->
-    <div class="panel">
-      <div class="panel-title">
-        <el-icon><Histogram /></el-icon>
-        热门问题 Top{{ popularQuestions.length || 10 }}
-      </div>
-      <el-empty v-if="popularQuestions.length === 0" description="暂无提问数据" :image-size="72" />
-      <div v-else class="popular-list">
-        <div v-for="(item, index) in popularQuestions" :key="`${item.content}-${index}`" class="popular-item">
-          <span class="rank" :class="rankClass(index)">{{ index + 1 }}</span>
-          <span class="popular-content" :title="item.content">{{ item.content }}</span>
-          <div class="bar-track">
-            <div class="bar-fill" :style="{ width: barWidth(item.count) }"></div>
+      <!-- 热门问题 -->
+      <div class="panel popular-panel">
+        <div class="panel-title">
+          <el-icon><Histogram /></el-icon>
+          热门问题 Top{{ popularQuestions.length || 10 }}
+        </div>
+        <el-empty v-if="popularQuestions.length === 0" description="暂无提问数据" :image-size="72" />
+        <div v-else class="popular-list">
+          <div v-for="(item, index) in popularQuestions" :key="`${item.content}-${index}`" class="popular-item">
+            <span class="rank" :class="rankClass(index)">{{ index + 1 }}</span>
+            <span class="popular-content" :title="item.content">{{ item.content }}</span>
+            <div class="bar-track">
+              <div class="bar-fill" :style="{ width: barWidth(item.count) }"></div>
+            </div>
+            <span class="popular-count">{{ item.count }} 次</span>
           </div>
-          <span class="popular-count">{{ item.count }} 次</span>
         </div>
       </div>
     </div>
@@ -117,6 +120,7 @@ const barWidth = (count: number) => `${(count / maxPopularCount.value) * 100}%`;
 // ---------- ECharts 趋势图 ----------
 const trendChartRef = ref<HTMLDivElement | null>(null);
 let trendChart: echarts.ECharts | null = null;
+let resizeObserver: ResizeObserver | null = null;
 
 const setTrendOption = () => {
   ensureChart();
@@ -161,6 +165,11 @@ const ensureChart = () => {
   if (trendChart || !trendChartRef.value) return;
   trendChart = echarts.init(trendChartRef.value);
   window.addEventListener('resize', handleResize);
+  // 容器随 flex 布局自适应变化时同步图表尺寸
+  if (typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(() => trendChart?.resize());
+    resizeObserver.observe(trendChartRef.value);
+  }
 };
 
 // ---------- 数据加载 ----------
@@ -186,6 +195,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize);
+  resizeObserver?.disconnect();
+  resizeObserver = null;
   if (trendChart) {
     trendChart.dispose();
     trendChart = null;
@@ -195,6 +206,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .stats-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   padding: 0 2px;
 }
 
@@ -203,6 +217,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
+  flex: 0 0 auto;
 }
 
 .toolbar-tip {
@@ -215,6 +230,7 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
   margin-bottom: 14px;
+  flex: 0 0 auto;
 }
 
 .kpi-card {
@@ -265,6 +281,34 @@ onBeforeUnmount(() => {
   margin-bottom: 16px;
 }
 
+/* 底部区域：趋势图 + 热门问题左右并排，铺满剩余高度 */
+.stats-bottom {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 16px;
+}
+
+.trend-panel {
+  flex: 1 1 58%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+
+.popular-panel {
+  flex: 1 1 42%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+
+.popular-panel .panel-title {
+  flex: 0 0 auto;
+}
+
 .panel-title {
   display: flex;
   align-items: center;
@@ -277,7 +321,14 @@ onBeforeUnmount(() => {
 
 .trend-wrap {
   position: relative;
-  height: 200px;
+  flex: 1 1 auto;
+  min-height: 180px;
+}
+
+.popular-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .trend-chart {
@@ -353,5 +404,26 @@ onBeforeUnmount(() => {
   color: #909399;
   min-width: 56px;
   text-align: right;
+}
+
+/* 窄屏（小窗口）回退为上下堆叠，趋势图固定高度 */
+@media (max-width: 900px) {
+  .stats-bottom {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .trend-panel {
+    flex: none;
+    height: 280px;
+  }
+
+  .popular-panel {
+    flex: none;
+  }
+
+  .popular-list {
+    overflow: visible;
+  }
 }
 </style>

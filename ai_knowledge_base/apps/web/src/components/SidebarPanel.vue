@@ -1,266 +1,384 @@
 <!--
-  左侧面板（左）：Tab 切换「文档管理」与「会话列表」。
-  文档管理：上传文档/上传文件夹、文件夹列表（内联展开）、文件列表（两区均支持一键删除与行级预览/重命名/删除）；
+  左侧面板（左）：三级嵌套菜单。
+  一级：AI 助手 / 数据中心 / 系统设置，均可展开收起（互斥）。
+  AI 助手 → 二级「会话列表 / 文档管理」，点击展开三级功能按钮与列表区（互斥收起，再点收起）；
+  数据中心 → 二级「使用统计 / 知识图谱」，系统设置 → 二级「模型配置」，点击切换右侧主区内容。
+  文档管理：上传文档/上传文件夹、文件夹列表（内联展开）、文件列表（均支持一键删除与行级预览/重命名/删除）；
   会话列表：新建对话、一键删除全部、每行主题描述 + 重命名/删除。
-  共享状态来自 useChatStore；删除/重命名弹窗由 Home 统一渲染。
+  共享状态来自 useChatStore / useUiStore；删除/重命名弹窗由 Home 统一渲染。
 -->
 <template>
   <el-aside width="320px" class="sidebar">
-    <el-tabs v-model="chatStore.activeTab" class="sidebar-tabs">
-      <el-tab-pane label="文档管理" name="documents">
-        <div class="tab-content document-tab-content">
-          <!-- 上传文档按钮（居中，鼠标悬浮问号显示提示） -->
-          <div class="upload-section">
-            <div class="upload-header">
-              <el-upload
-                class="uploader"
-                :show-file-list="false"
-                :before-upload="chatStore.beforeUpload"
-                :http-request="chatStore.handleUpload"
-                multiple
-              >
-                <el-button type="primary" :icon="UploadFilled">上传文档</el-button>
-              </el-upload>
-              <!-- 上传文件夹：优先 File System Access API，不支持则回退 webkitdirectory 原生 input -->
-              <el-button
-                type="primary"
-                plain
-                :icon="FolderOpened"
-                :loading="chatStore.uploadingFolder"
-                @click="pickFolder"
-              >
-                上传文件夹
-              </el-button>
-              <input
-                ref="folderInput"
-                type="file"
-                webkitdirectory
-                multiple
-                class="folder-input-hidden"
-                @change="chatStore.handleFolderChange"
-              />
-              <el-tooltip
-                content="支持 PDF、Word(.docx)、Excel(.xlsx/.xls)、CSV、Markdown、TXT、JPG/PNG/GIF 图片(OCR)，单个文件不超过 10MB"
-                placement="top"
-              >
-                <el-icon class="question-icon"><QuestionFilled /></el-icon>
-              </el-tooltip>
-            </div>
-          </div>
-
-          <!-- 我的文档：分"文件夹列表"和"文件列表"两个区域；文件夹点击内联展开内部文件 -->
-          <div class="file-list-section">
-            <div class="section-title">文档列表</div>
-            <div v-loading="chatStore.loadingDocuments" class="document-list" element-loading-text="加载中...">
-              <!-- 文件夹列表区：区级一键删除 + 每个文件夹行可展开/删除 -->
-              <div class="sub-section-title">
-                <span>文件夹列表（{{ folderGroups.length }}）</span>
-                <el-button
-                  :icon="Delete"
-                  text
-                  size="small"
-                  class="bulk-delete-btn"
-                  :disabled="folderGroups.length === 0"
-                  @click="confirmDeleteAllFolders"
-                >
-                  一键删除
-                </el-button>
+    <div class="sidebar-menu">
+      <!-- ==================== 一级：AI 助手 ==================== -->
+      <div class="menu-group">
+        <div class="menu-title" :class="{ active: uiStore.expandedMenu === 'ai' }" @click="toggleMenu('ai')">
+          <el-icon class="menu-icon"><ChatDotRound /></el-icon>
+          <span class="menu-label">AI 助手</span>
+          <el-icon class="menu-arrow" :class="{ 'is-expanded': uiStore.expandedMenu === 'ai' }"><ArrowDown /></el-icon>
+        </div>
+        <el-collapse-transition>
+          <div v-show="uiStore.expandedMenu === 'ai'" class="menu-body">
+            <!-- 二级：会话列表 -->
+            <div class="sub-menu" :class="{ active: chatStore.activeTab === 'conversations' }">
+              <div class="sub-menu-title" @click="switchAiTab('conversations')">
+                <el-icon class="sub-icon"><ChatLineRound /></el-icon>
+                <span class="sub-label">会话列表</span>
+                <span class="sub-count">{{ chatStore.conversations.length }}</span>
+                <el-icon
+                  class="sub-arrow"
+                  :class="{ 'is-expanded': chatStore.activeTab === 'conversations' }"
+                ><ArrowDown /></el-icon>
               </div>
-              <template v-for="group in folderGroups" :key="group.name">
-                <div class="document-item folder-item" @click="toggleFolder(group.name)">
-                  <el-icon class="folder-icon"><FolderOpened /></el-icon>
-                  <span class="document-name folder-name">{{ group.name }}</span>
-                  <span class="folder-count">{{ group.files.length }} 个文件</span>
-                  <el-tooltip content="删除文件夹" placement="top">
+              <el-collapse-transition>
+                <div v-show="chatStore.activeTab === 'conversations'" class="sub-content conv-sub">
+                  <!-- 新建对话按钮居中显示 -->
+                  <div class="new-conv-btn-wrapper">
+                    <el-button type="primary" :icon="Plus" @click="chatStore.createNewConversation">新建对话</el-button>
+                  </div>
+
+                  <!-- 会话区标题 + 一键删除全部会话 -->
+                  <div class="conv-section-header">
+                    <span>会话列表（{{ chatStore.conversations.length }}）</span>
                     <el-button
                       :icon="Delete"
                       text
                       size="small"
-                      style="color: #909399"
-                      @click.stop="confirmDeleteFolder(group.name)"
-                    />
-                  </el-tooltip>
+                      class="bulk-delete-btn"
+                      :disabled="chatStore.conversations.length === 0"
+                      @click="chatStore.confirmDeleteAllConversations"
+                    >
+                      一键删除
+                    </el-button>
+                  </div>
+
+                  <el-scrollbar>
+                    <div
+                      v-for="conv in chatStore.conversations"
+                      :key="conv.id"
+                      :class="['conversation-item-sidebar', { active: chatStore.currentConversation?.id === conv.id }]"
+                      @click="chatStore.selectConversation(conv)"
+                    >
+                      <div class="conv-info-sidebar">
+                        <!-- 主题描述：手动重命名优先，否则首条用户消息前 20 字；空会话显示"新对话" -->
+                        <span class="conv-title">{{ conv.title || '新对话' }}</span>
+                        <span class="conv-time">{{ chatStore.formatDate(conv.updatedAt) }}</span>
+                      </div>
+                      <div class="conv-actions">
+                        <!-- 会话重命名按钮 -->
+                        <el-tooltip content="重命名" placement="top">
+                          <el-button
+                            :icon="EditPen"
+                            text
+                            size="small"
+                            style="color: #909399"
+                            @click.stop="chatStore.openRenameConversationDialog(conv)"
+                          />
+                        </el-tooltip>
+                        <!-- 会话列表删除按钮：改灰色文字图标 -->
+                        <el-tooltip content="删除该对话" placement="top">
+                          <el-button
+                            :icon="Delete"
+                            text
+                            size="small"
+                            style="color: #909399"
+                            @click.stop="chatStore.confirmDeleteConversation(conv)"
+                          />
+                        </el-tooltip>
+                      </div>
+                    </div>
+                    <div v-if="chatStore.conversations.length === 0" class="section-empty">暂无会话</div>
+                  </el-scrollbar>
                 </div>
-                <!-- 内联展开：文件夹内的文件列表（显示文件名，深层子路径带前缀，支持单个删除） -->
-                <template v-if="chatStore.expandedFolders.has(group.name)">
-                  <div
-                    v-for="doc in group.files"
-                    :id="'doc-item-' + doc.id"
-                    :key="doc.id"
-                    :class="[
-                      'document-item folder-file-item',
-                      { 'highlighted-doc': doc.id === chatStore.highlightedDocumentId },
-                    ]"
-                  >
-                    <el-tooltip :content="displayFolderFileName(group.name, doc)" placement="top-start">
-                      <span class="document-name">{{ displayFolderFileName(group.name, doc) }}</span>
-                    </el-tooltip>
-                    <div class="doc-actions">
-                      <el-tooltip content="预览" placement="top">
-                        <el-button
-                          :icon="View"
-                          text
-                          size="small"
-                          style="color: #909399"
-                          @click="chatStore.previewDocument(doc)"
-                        />
+              </el-collapse-transition>
+            </div>
+
+            <!-- 二级：文档管理 -->
+            <div class="sub-menu" :class="{ active: chatStore.activeTab === 'documents' }">
+              <div class="sub-menu-title" @click="switchAiTab('documents')">
+                <el-icon class="sub-icon"><FolderOpened /></el-icon>
+                <span class="sub-label">文档管理</span>
+                <span class="sub-count">{{ chatStore.documents.length }}</span>
+                <el-icon class="sub-arrow" :class="{ 'is-expanded': chatStore.activeTab === 'documents' }"><ArrowDown /></el-icon>
+              </div>
+              <el-collapse-transition>
+                <div v-show="chatStore.activeTab === 'documents'" class="sub-content doc-sub">
+                  <!-- 上传文档按钮（居中，鼠标悬浮问号显示提示） -->
+                  <div class="upload-section">
+                    <div class="upload-header">
+                      <el-upload
+                        class="uploader"
+                        :show-file-list="false"
+                        :before-upload="chatStore.beforeUpload"
+                        :http-request="chatStore.handleUpload"
+                        multiple
+                      >
+                        <el-button type="primary" :icon="UploadFilled">上传文档</el-button>
+                      </el-upload>
+                      <!-- 上传文件夹：优先 File System Access API，不支持则回退 webkitdirectory 原生 input -->
+                      <el-button
+                        type="primary"
+                        plain
+                        :icon="FolderOpened"
+                        :loading="chatStore.uploadingFolder"
+                        @click="pickFolder"
+                      >
+                        上传文件夹
+                      </el-button>
+                      <input
+                        ref="folderInput"
+                        type="file"
+                        webkitdirectory
+                        multiple
+                        class="folder-input-hidden"
+                        @change="chatStore.handleFolderChange"
+                      />
+                      <el-tooltip
+                        content="支持 PDF、Word(.docx)、Excel(.xlsx/.xls)、CSV、Markdown、TXT、JPG/PNG/GIF 图片(OCR)，单个文件不超过 10MB"
+                        placement="top"
+                      >
+                        <el-icon class="question-icon"><QuestionFilled /></el-icon>
                       </el-tooltip>
-                      <el-tooltip content="重命名" placement="top">
-                        <el-button
-                          :icon="EditPen"
-                          text
-                          size="small"
-                          style="color: #909399"
-                          @click="chatStore.openRenameDocumentDialog(doc)"
-                        />
-                      </el-tooltip>
-                      <el-tooltip content="删除" placement="top">
+                    </div>
+                  </div>
+
+                  <!-- 我的文档：分"文件夹列表"和"文件列表"两个区域；文件夹点击内联展开内部文件 -->
+                  <div class="file-list-section">
+                    <div class="section-title">文档列表</div>
+                    <div v-loading="chatStore.loadingDocuments" class="document-list" element-loading-text="加载中...">
+                      <!-- 文件夹列表区：区级一键删除 + 每个文件夹行可展开/删除 -->
+                      <div class="sub-section-title">
+                        <span>文件夹列表（{{ folderGroups.length }}）</span>
                         <el-button
                           :icon="Delete"
                           text
                           size="small"
-                          style="color: #909399"
-                          @click="chatStore.confirmDeleteDocument(doc)"
-                        />
-                      </el-tooltip>
+                          class="bulk-delete-btn"
+                          :disabled="folderGroups.length === 0"
+                          @click="confirmDeleteAllFolders"
+                        >
+                          一键删除
+                        </el-button>
+                      </div>
+                      <template v-for="group in folderGroups" :key="group.name">
+                        <div class="document-item folder-item" @click="toggleFolder(group.name)">
+                          <el-icon class="folder-icon"><FolderOpened /></el-icon>
+                          <span class="document-name folder-name">{{ group.name }}</span>
+                          <span class="folder-count">{{ group.files.length }} 个文件</span>
+                          <el-tooltip content="删除文件夹" placement="top">
+                            <el-button
+                              :icon="Delete"
+                              text
+                              size="small"
+                              style="color: #909399"
+                              @click.stop="confirmDeleteFolder(group.name)"
+                            />
+                          </el-tooltip>
+                        </div>
+                        <!-- 内联展开：文件夹内的文件列表（显示文件名，深层子路径带前缀，支持单个删除） -->
+                        <template v-if="chatStore.expandedFolders.has(group.name)">
+                          <div
+                            v-for="doc in group.files"
+                            :id="'doc-item-' + doc.id"
+                            :key="doc.id"
+                            @click="chatStore.previewDocument(doc)"
+                            :class="[
+                              'document-item folder-file-item',
+                              { 'highlighted-doc': doc.id === chatStore.highlightedDocumentId },
+                            ]"
+                          >
+                            <el-tooltip :content="displayFolderFileName(group.name, doc)" placement="top-start">
+                              <span class="document-name">{{ displayFolderFileName(group.name, doc) }}</span>
+                            </el-tooltip>
+                            <div class="doc-actions">
+                              <el-tooltip content="预览" placement="top">
+                                <el-button
+                                  :icon="View"
+                                  text
+                                  size="small"
+                                  style="color: #909399"
+                                  @click.stop="chatStore.previewDocument(doc)"
+                                />
+                              </el-tooltip>
+                              <el-tooltip content="重命名" placement="top">
+                                <el-button
+                                  :icon="EditPen"
+                                  text
+                                  size="small"
+                                  style="color: #909399"
+                                  @click="chatStore.openRenameDocumentDialog(doc)"
+                                />
+                              </el-tooltip>
+                              <el-tooltip content="删除" placement="top">
+                                <el-button
+                                  :icon="Delete"
+                                  text
+                                  size="small"
+                                  style="color: #909399"
+                                  @click="chatStore.confirmDeleteDocument(doc)"
+                                />
+                              </el-tooltip>
+                            </div>
+                          </div>
+                          <div v-if="group.files.length === 0" class="section-empty">文件夹为空</div>
+                        </template>
+                      </template>
+                      <div v-if="folderGroups.length === 0" class="section-empty">暂无文件夹</div>
+
+                      <!-- 文件列表区：区级一键删除 + 每行单个删除 -->
+                      <div class="sub-section-title">
+                        <span>文件列表（{{ rootFiles.length }}）</span>
+                        <el-button
+                          :icon="Delete"
+                          text
+                          size="small"
+                          class="bulk-delete-btn"
+                          :disabled="rootFiles.length === 0"
+                          @click="confirmDeleteAllFiles"
+                        >
+                          一键删除
+                        </el-button>
+                      </div>
+                      <div
+                        v-for="doc in rootFiles"
+                        :id="'doc-item-' + doc.id"
+                        :key="doc.id"
+                        @click="chatStore.previewDocument(doc)"
+                        :class="['document-item', { 'highlighted-doc': doc.id === chatStore.highlightedDocumentId }]"
+                      >
+                        <el-tooltip :content="doc.originalName" placement="top-start">
+                          <span class="document-name">{{ doc.originalName }}</span>
+                        </el-tooltip>
+                        <div class="doc-actions">
+                          <el-tooltip content="预览" placement="top">
+                            <el-button
+                              :icon="View"
+                              text
+                              size="small"
+                              style="color: #909399"
+                              @click.stop="chatStore.previewDocument(doc)"
+                            />
+                          </el-tooltip>
+                          <el-tooltip content="重命名" placement="top">
+                            <el-button
+                              :icon="EditPen"
+                              text
+                              size="small"
+                              style="color: #909399"
+                              @click="chatStore.openRenameDocumentDialog(doc)"
+                            />
+                          </el-tooltip>
+                          <el-tooltip content="删除" placement="top">
+                            <el-button
+                              :icon="Delete"
+                              text
+                              size="small"
+                              style="color: #909399"
+                              @click="chatStore.confirmDeleteDocument(doc)"
+                            />
+                          </el-tooltip>
+                        </div>
+                      </div>
+                      <div v-if="rootFiles.length === 0" class="section-empty">暂无文件</div>
                     </div>
                   </div>
-                  <div v-if="group.files.length === 0" class="section-empty">文件夹为空</div>
-                </template>
-              </template>
-              <div v-if="folderGroups.length === 0" class="section-empty">暂无文件夹</div>
-
-              <!-- 文件列表区：区级一键删除 + 每行单个删除 -->
-              <div class="sub-section-title">
-                <span>文件列表（{{ rootFiles.length }}）</span>
-                <el-button
-                  :icon="Delete"
-                  text
-                  size="small"
-                  class="bulk-delete-btn"
-                  :disabled="rootFiles.length === 0"
-                  @click="confirmDeleteAllFiles"
-                >
-                  一键删除
-                </el-button>
-              </div>
-              <div
-                v-for="doc in rootFiles"
-                :id="'doc-item-' + doc.id"
-                :key="doc.id"
-                :class="['document-item', { 'highlighted-doc': doc.id === chatStore.highlightedDocumentId }]"
-              >
-                <el-tooltip :content="doc.originalName" placement="top-start">
-                  <span class="document-name">{{ doc.originalName }}</span>
-                </el-tooltip>
-                <div class="doc-actions">
-                  <el-tooltip content="预览" placement="top">
-                    <el-button
-                      :icon="View"
-                      text
-                      size="small"
-                      style="color: #909399"
-                      @click="chatStore.previewDocument(doc)"
-                    />
-                  </el-tooltip>
-                  <el-tooltip content="重命名" placement="top">
-                    <el-button
-                      :icon="EditPen"
-                      text
-                      size="small"
-                      style="color: #909399"
-                      @click="chatStore.openRenameDocumentDialog(doc)"
-                    />
-                  </el-tooltip>
-                  <el-tooltip content="删除" placement="top">
-                    <el-button
-                      :icon="Delete"
-                      text
-                      size="small"
-                      style="color: #909399"
-                      @click="chatStore.confirmDeleteDocument(doc)"
-                    />
-                  </el-tooltip>
                 </div>
-              </div>
-              <div v-if="rootFiles.length === 0" class="section-empty">暂无文件</div>
+              </el-collapse-transition>
             </div>
           </div>
+        </el-collapse-transition>
+      </div>
+
+      <!-- ==================== 一级：数据中心 ==================== -->
+      <div class="menu-group">
+        <div class="menu-title" :class="{ active: uiStore.expandedMenu === 'data' }" @click="toggleMenu('data')">
+          <el-icon class="menu-icon"><DataAnalysis /></el-icon>
+          <span class="menu-label">数据中心</span>
+          <el-icon class="menu-arrow" :class="{ 'is-expanded': uiStore.expandedMenu === 'data' }"><ArrowDown /></el-icon>
         </div>
-      </el-tab-pane>
-
-      <el-tab-pane label="会话列表" name="conversations">
-        <div class="tab-content conversation-list-wrapper">
-          <!-- 新建对话按钮居中显示 -->
-          <div class="new-conv-btn-wrapper">
-            <el-button type="primary" :icon="Plus" @click="chatStore.createNewConversation">新建对话</el-button>
-          </div>
-
-          <!-- 会话区标题 + 一键删除全部会话 -->
-          <div class="conv-section-header">
-            <span>会话列表（{{ chatStore.conversations.length }}）</span>
-            <el-button
-              :icon="Delete"
-              text
-              size="small"
-              class="bulk-delete-btn"
-              :disabled="chatStore.conversations.length === 0"
-              @click="chatStore.confirmDeleteAllConversations"
-            >
-              一键删除
-            </el-button>
-          </div>
-
-          <el-scrollbar>
+        <el-collapse-transition>
+          <div v-show="uiStore.expandedMenu === 'data'" class="menu-body">
             <div
-              v-for="conv in chatStore.conversations"
-              :key="conv.id"
-              :class="['conversation-item-sidebar', { active: chatStore.currentConversation?.id === conv.id }]"
-              @click="chatStore.selectConversation(conv)"
+              class="sub-menu plain"
+              :class="{ active: uiStore.mainView === 'stats' }"
+              @click="openView('stats', 'data')"
             >
-              <div class="conv-info-sidebar">
-                <!-- 主题描述：手动重命名优先，否则首条用户消息前 20 字；空会话显示"新对话" -->
-                <span class="conv-title">{{ conv.title || '新对话' }}</span>
-                <span class="conv-time">{{ chatStore.formatDate(conv.updatedAt) }}</span>
-              </div>
-              <div class="conv-actions">
-                <!-- 会话重命名按钮 -->
-                <el-tooltip content="重命名" placement="top">
-                  <el-button
-                    :icon="EditPen"
-                    text
-                    size="small"
-                    style="color: #909399"
-                    @click.stop="chatStore.openRenameConversationDialog(conv)"
-                  />
-                </el-tooltip>
-                <!-- 会话列表删除按钮：改灰色文字图标 -->
-                <el-tooltip content="删除该对话" placement="top">
-                  <el-button
-                    :icon="Delete"
-                    text
-                    size="small"
-                    style="color: #909399"
-                    @click.stop="chatStore.confirmDeleteConversation(conv)"
-                  />
-                </el-tooltip>
-              </div>
+              <el-icon class="sub-icon"><TrendCharts /></el-icon>
+              <span class="sub-label">使用统计</span>
             </div>
-            <div v-if="chatStore.conversations.length === 0" class="section-empty">暂无会话</div>
-          </el-scrollbar>
+            <div
+              class="sub-menu plain"
+              :class="{ active: uiStore.mainView === 'graph' }"
+              @click="openView('graph', 'data')"
+            >
+              <el-icon class="sub-icon"><Share /></el-icon>
+              <span class="sub-label">知识图谱</span>
+            </div>
+          </div>
+        </el-collapse-transition>
+      </div>
+
+      <!-- ==================== 一级：系统设置 ==================== -->
+      <div class="menu-group">
+        <div class="menu-title" :class="{ active: uiStore.expandedMenu === 'system' }" @click="toggleMenu('system')">
+          <el-icon class="menu-icon"><Setting /></el-icon>
+          <span class="menu-label">系统设置</span>
+          <el-icon class="menu-arrow" :class="{ 'is-expanded': uiStore.expandedMenu === 'system' }"><ArrowDown /></el-icon>
         </div>
-      </el-tab-pane>
-    </el-tabs>
+        <el-collapse-transition>
+          <div v-show="uiStore.expandedMenu === 'system'" class="menu-body">
+            <div
+              class="sub-menu plain"
+              :class="{ active: uiStore.mainView === 'settings' }"
+              @click="openView('settings', 'system')"
+            >
+              <el-icon class="sub-icon"><Operation /></el-icon>
+              <span class="sub-label">模型配置</span>
+            </div>
+          </div>
+        </el-collapse-transition>
+      </div>
+    </div>
   </el-aside>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { Delete, EditPen, FolderOpened, Plus, QuestionFilled, UploadFilled, View } from '@element-plus/icons-vue';
+import {
+  ArrowDown,
+  ChatDotRound,
+  ChatLineRound,
+  DataAnalysis,
+  Delete,
+  EditPen,
+  FolderOpened,
+  Operation,
+  Plus,
+  QuestionFilled,
+  Setting,
+  Share,
+  TrendCharts,
+  UploadFilled,
+  View,
+} from '@element-plus/icons-vue';
 import { useChatStore } from '@/stores/chat';
+import { useUiStore, type MainView, type SidebarMenuKey } from '@/stores/ui';
 import type { UploadDocument } from '@/api/upload';
 
 const chatStore = useChatStore();
+const uiStore = useUiStore();
+
+/** 一级菜单展开/收起：同时取消文档列表来源高亮 */
+const toggleMenu = (key: SidebarMenuKey) => {
+  uiStore.toggleMenu(key);
+  chatStore.clearHighlight();
+};
+
+/** 打开功能视图（使用统计/知识图谱/模型配置）：同时取消文档列表来源高亮 */
+const openView = (view: MainView, menu: SidebarMenuKey) => {
+  uiStore.openView(view, menu);
+  chatStore.clearHighlight();
+};
 
 /** 隐藏的原生文件夹选择 input（回退方案：webkitdirectory） */
 const folderInput = ref<HTMLInputElement | null>(null);
@@ -272,6 +390,17 @@ const pickFolder = async () => {
     await chatStore.pickFolderWithPicker();
   } else {
     folderInput.value?.click();
+  }
+};
+
+/** 点击 AI 助手二级菜单：展开对应列表区并切回聊天主视图；再次点击当前项则收起 */
+const switchAiTab = (tab: 'documents' | 'conversations') => {
+  const target = chatStore.activeTab === tab ? '' : tab;
+  chatStore.activeTab = target;
+  uiStore.openView('chat', 'ai');
+  // 切到会话列表或收起时取消文档高亮；切到文档管理时保留
+  if (target !== 'documents') {
+    chatStore.clearHighlight();
   }
 };
 
@@ -357,106 +486,216 @@ const confirmDeleteFolder = (name: string) => {
   padding: 0;
 }
 
-.sidebar-tabs {
+.sidebar-menu {
   height: 100%;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+/* ---- 一级菜单 ---- */
+.menu-group {
+  margin-bottom: 2px;
+}
+
+.menu-title {
   display: flex;
-  flex-direction: column;
-  margin: 0;
-}
-
-.sidebar-tabs :deep(.el-tabs__content) {
-  flex: 1;
-  overflow: hidden;
-}
-/* Tab 页签样式：浅灰轨道 + 选中态主色背景 */
-.sidebar-tabs :deep(.el-tabs__header) {
-  margin-bottom: 0;
-  padding: 12px 16px;
-  background-color: #f5f5f5;
-}
-
-.sidebar-tabs :deep(.el-tabs__nav-wrap::after) {
-  display: none;
-}
-
-.sidebar-tabs :deep(.el-tabs__nav) {
-  width: 100%;
-  display: flex;
-  justify-content: center;
-  gap: 6px;
-  padding: 4px;
-  border-radius: 8px;
-  background-color: #e9ecef;
-}
-
-.sidebar-tabs :deep(.el-tabs__item) {
-  flex: 1;
-  justify-content: center;
-  height: 32px;
-  line-height: 32px;
-  padding: 0 12px;
-  border-radius: 6px;
-  color: #606266;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 16px;
+  cursor: pointer;
   font-size: 14px;
+  font-weight: 500;
+  color: #303133;
   transition:
     background-color 0.2s,
     color 0.2s;
 }
 
-.sidebar-tabs :deep(.el-tabs__item:hover) {
+.menu-title:hover {
+  background-color: #e9edf2;
   color: #409eff;
 }
 
-.sidebar-tabs :deep(.el-tabs__item.is-active) {
+.menu-title.active {
+  position: relative;
+  background-color: #d9ecff;
+  color: #409eff;
+  font-weight: 600;
+}
+
+.menu-title.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 2px;
   background-color: #409eff;
-  color: #fff;
 }
 
-.sidebar-tabs :deep(.el-tabs__active-bar) {
-  display: none;
+.menu-title.active .menu-icon,
+.menu-title.active .menu-arrow {
+  color: #409eff;
 }
 
-.tab-content {
-  height: 100%;
-  overflow-y: auto;
-  padding: 16px;
-}
-
-/* 文档管理页：上传区固定，列表区占满并独立纵向滚动 */
-.document-tab-content {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 0;
-}
-
-.document-tab-content .upload-section {
+.menu-icon {
+  font-size: 18px;
   flex-shrink: 0;
-  padding: 16px 16px 0;
-  margin-bottom: 16px;
 }
 
-.document-tab-content .file-list-section {
+.menu-label {
   flex: 1;
-  min-height: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.menu-arrow {
+  font-size: 14px;
+  color: #909399;
+  transition: transform 0.25s;
+}
+
+.menu-arrow.is-expanded {
+  transform: rotate(180deg);
+}
+
+.menu-body {
+  padding: 2px 8px 6px;
+}
+
+/* ---- 二级菜单 ---- */
+.sub-menu {
+  border-radius: 8px;
+  margin-bottom: 2px;
+}
+
+.sub-menu-title {
   display: flex;
-  flex-direction: column;
-  margin-top: 0;
-  padding: 0 16px 16px;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #606266;
+  border-radius: 8px;
+  transition:
+    background-color 0.2s,
+    color 0.2s;
 }
 
-.document-tab-content .section-title {
+.sub-menu-title:hover {
+  background-color: #e9edf2;
+  color: #409eff;
+}
+
+.sub-menu.active .sub-menu-title {
+  position: relative;
+  background-color: #ecf5ff;
+  color: #409eff;
+  font-weight: 600;
+}
+
+.sub-menu.active .sub-menu-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  background-color: #409eff;
+}
+
+.sub-icon {
+  font-size: 16px;
   flex-shrink: 0;
-  margin-bottom: 10px;
 }
 
-/* 上传文档部分 */
-.upload-section {
-  margin-bottom: 20px;
-  text-align: center; /* 按钮和问号居中 */
+.sub-label {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.upload-header {
+.sub-count {
+  font-size: 12px;
+  color: #c0c4cc;
+  background-color: #f0f2f5;
+  border-radius: 10px;
+  padding: 0 7px;
+  line-height: 18px;
+}
+
+.sub-menu.active .sub-count {
+  background-color: #fff;
+  color: #409eff;
+}
+
+.sub-arrow {
+  font-size: 13px;
+  color: #c0c4cc;
+  transition: transform 0.25s;
+}
+
+.sub-arrow.is-expanded {
+  transform: rotate(180deg);
+}
+
+/* 数据中心/系统设置下的纯跳转二级项：整行可点、无展开箭头 */
+.sub-menu.plain {
+  cursor: pointer;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  font-size: 13px;
+  color: #606266;
+  transition:
+    background-color 0.2s,
+    color 0.2s;
+}
+
+.sub-menu.plain:hover {
+  background-color: #e9edf2;
+  color: #409eff;
+}
+
+.sub-menu.plain.active {
+  position: relative;
+  background-color: #ecf5ff;
+  color: #409eff;
+  font-weight: 600;
+}
+
+.sub-menu.plain.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  background-color: #409eff;
+}
+
+/* ---- 三级内容区 ---- */
+.sub-content {
+  padding: 8px 4px 12px;
+}
+
+/* 文档管理三级区：上传固定，列表自然撑开（超长时随侧栏整体滚动） */
+.doc-sub .upload-section {
+  margin-bottom: 14px;
+  text-align: center;
+}
+
+.doc-sub .upload-header {
   display: flex;
   justify-content: center;
   align-items: center;
@@ -474,19 +713,19 @@ const confirmDeleteFolder = (name: string) => {
   cursor: help;
 }
 
-/* 文档列表：行式展示，单行省略，超出纵向滚动 */
+.file-list-section {
+  display: flex;
+  flex-direction: column;
+}
+
 .section-title {
   font-size: 14px;
   font-weight: 500;
   color: #303133;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .document-list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding-right: 2px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -497,6 +736,7 @@ const confirmDeleteFolder = (name: string) => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  cursor: pointer;
   padding: 10px 12px;
   border: 1px solid #ebeef5;
   border-radius: 8px;
@@ -598,14 +838,21 @@ const confirmDeleteFolder = (name: string) => {
   padding: 12px 0;
 }
 
-/* 会话列表 */
-.conversation-list-wrapper {
-  padding: 0;
+/* ---- 会话列表三级区 ---- */
+.conv-sub .new-conv-btn-wrapper {
+  padding: 4px 0 12px;
+  text-align: center;
 }
 
-.new-conv-btn-wrapper {
-  padding: 16px;
-  text-align: center; /* 新建对话按钮居中 */
+.conv-sub .conv-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 500;
+  color: #909399;
+  margin: 0 2px 8px;
+  padding: 0 2px;
 }
 
 .conversation-item-sidebar {
@@ -626,8 +873,9 @@ const confirmDeleteFolder = (name: string) => {
 }
 
 .conversation-item-sidebar.active {
-  background-color: #e8f3ff;
-  border-color: #409eff;
+  background-color: #eaf4ff;
+  border-color: #a0cfff;
+  box-shadow: inset 3px 0 0 #409eff;
 }
 
 .conv-info-sidebar {
@@ -652,18 +900,6 @@ const confirmDeleteFolder = (name: string) => {
   line-height: 1.4;
 }
 
-/* 会话区标题行：标题 + 右侧"一键删除"按钮 */
-.conv-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 13px;
-  font-weight: 500;
-  color: #909399;
-  margin: 0 2px 8px;
-  padding: 0 2px;
-}
-
 /* 会话行操作按钮组（重命名/删除），默认隐藏、悬停显示 */
 .conv-actions {
   display: flex;
@@ -679,7 +915,8 @@ const confirmDeleteFolder = (name: string) => {
 
 /* 来源定位到文档列表后的高亮行 */
 .document-item.highlighted-doc {
-  border-color: #409eff;
-  background-color: #ecf5ff;
+  border-color: #a0cfff;
+  background-color: #f4faff;
+  box-shadow: inset 3px 0 0 #409eff;
 }
 </style>

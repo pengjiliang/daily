@@ -8,7 +8,6 @@
   <div class="settings-content">
     <div class="settings-toolbar">
       <span class="toolbar-tip">修改后保存立即生效；API Key 留空表示保留原值</span>
-      <el-button type="primary" :loading="saving" @click="saveAll">保存全部</el-button>
     </div>
 
     <!-- 重建索引进度提示 -->
@@ -63,13 +62,14 @@
               <el-input v-model="form.openai.baseUrl" placeholder="https://ark.cn-beijing.volces.com/api/v3" />
             </el-form-item>
             <el-form-item label="对话模型">
-              <el-input v-model="form.openai.model" placeholder="gpt-4o-mini / doubao-seed-1-6-250615" />
+              <el-input v-model="form.openai.model" autocomplete="off" placeholder="gpt-4o-mini / doubao-seed-1-6-250615" />
             </el-form-item>
             <el-form-item label="API Key">
               <el-input
                 v-model="form.openai.apiKey"
                 type="password"
                 show-password
+                autocomplete="new-password"
                 :placeholder="view.openai.hasApiKey ? '已配置（留空则不修改）' : '请输入 API Key'"
               />
             </el-form-item>
@@ -82,13 +82,14 @@
               <el-input v-model="form.anthropic.baseUrl" placeholder="https://api.anthropic.com/v1/messages" />
             </el-form-item>
             <el-form-item label="对话模型">
-              <el-input v-model="form.anthropic.model" placeholder="claude-3-5-sonnet-20241022" />
+              <el-input v-model="form.anthropic.model" autocomplete="off" placeholder="claude-3-5-sonnet-20241022" />
             </el-form-item>
             <el-form-item label="API Key">
               <el-input
                 v-model="form.anthropic.apiKey"
                 type="password"
                 show-password
+                autocomplete="new-password"
                 :placeholder="view.anthropic.hasApiKey ? '已配置（留空则不修改）' : '请输入 API Key'"
               />
             </el-form-item>
@@ -106,13 +107,14 @@
             <el-input v-model="form.embedding.baseUrl" placeholder="https://ark.cn-beijing.volces.com/api/v3" />
           </el-form-item>
           <el-form-item label="向量模型">
-            <el-input v-model="form.embedding.model" placeholder="text-embedding-ada-002 / doubao-embedding-large" />
+            <el-input v-model="form.embedding.model" autocomplete="off" placeholder="text-embedding-ada-002 / doubao-embedding-large" />
           </el-form-item>
           <el-form-item label="API Key">
             <el-input
               v-model="form.embedding.apiKey"
               type="password"
               show-password
+              autocomplete="new-password"
               :placeholder="view.embedding.hasApiKey ? '已配置（留空则不修改）' : '请输入 API Key'"
             />
           </el-form-item>
@@ -146,6 +148,11 @@
         </el-form>
       </el-tab-pane>
     </el-tabs>
+
+    <!-- 底部操作栏：保存按钮固定在右下角 -->
+    <div class="settings-footer">
+      <el-button type="primary" :loading="saving" @click="saveAll">保存全部</el-button>
+    </div>
   </div>
 </template>
 
@@ -302,6 +309,9 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .settings-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   padding: 0 2px;
 }
 
@@ -334,5 +344,25 @@ onBeforeUnmount(() => {
   color: #909399;
   margin-left: 12px;
   align-self: center;
+}
+
+.settings-tabs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-tabs :deep(.el-tabs__content) {
+  flex: 1;
+  overflow: auto;
+}
+
+.settings-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 12px;
+  margin-top: 8px;
+  border-top: 1px solid #ebeef5;
 }
 </style>

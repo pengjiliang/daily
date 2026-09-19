@@ -1,21 +1,31 @@
 /**
- * 全局 UI 状态：模型配置 / 使用统计 / 知识图谱 三个面板以全局弹框形式打开（而非路由页面）。
- * AppHeader 头像下拉触发 openDialog；GlobalDialogs 宿主统一渲染对应弹框。
+ * 全局 UI 状态：
+ * - mainView：右侧主区当前展示的视图（聊天 / 文档预览 / 使用统计 / 知识图谱 / 模型配置），由左侧菜单与头像下拉切换。
+ * - expandedMenu：左侧一级菜单当前展开项（AI 助手 / 数据中心 / 系统设置），互斥展开，可再点收起。
+ * 功能不再以全局弹框打开，统一作为主区内容页展示。
  */
 import { defineStore } from 'pinia';
 
-export type GlobalDialog = 'settings' | 'stats' | 'graph';
+export type MainView = 'chat' | 'preview' | 'stats' | 'graph' | 'settings';
+export type SidebarMenuKey = 'ai' | 'data' | 'system';
 
 export const useUiStore = defineStore('ui', {
   state: () => ({
-    activeDialog: null as GlobalDialog | null,
+    mainView: 'chat' as MainView,
+    expandedMenu: 'ai' as SidebarMenuKey | null,
   }),
   actions: {
-    openDialog(name: GlobalDialog) {
-      this.activeDialog = name;
+    setMainView(view: MainView) {
+      this.mainView = view;
     },
-    closeDialog() {
-      this.activeDialog = null;
+    /** 切换一级菜单展开/收起（互斥：展开该项并收起其它项） */
+    toggleMenu(key: SidebarMenuKey) {
+      this.expandedMenu = this.expandedMenu === key ? null : key;
+    },
+    /** 打开某个功能视图：切换主区内容并展开对应一级菜单 */
+    openView(view: MainView, menu: SidebarMenuKey) {
+      this.mainView = view;
+      this.expandedMenu = menu;
     },
   },
 });

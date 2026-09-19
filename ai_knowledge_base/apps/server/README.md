@@ -5,8 +5,10 @@ AI 知识库的后端 API 服务，基于 NestJS + TypeORM + PostgreSQL，负责
 ## 功能
 
 - 用户认证：注册 / 登录 / 个人资料，JWT 鉴权
-- 文档管理：上传、列表、下载、删除；上传后自动异步调用 AI 服务进行向量化入库
-- 会话消息：创建 / 删除会话，发送消息时自动调用 AI 服务问答，并携带最近 10 轮对话历史
+- 文档管理：单文件/文件夹上传、列表、下载、删除、重命名；上传后自动异步调用 AI 服务进行向量化入库
+- 会话消息：创建 / 重命名 / 删除会话，发送消息时自动调用 AI 服务问答（SSE 流式返回），并携带最近 10 轮对话历史
+- 模型配置：GET/PUT 用户级 AI 设置（对话 / 向量模型、检索参数），向量模型变更时自动后台重建索引
+- 使用统计与知识图谱：`GET /stats` 返回统计面板数据（KPI、趋势、热门问题），`GET /stats/graph` 返回 3D 图谱的文档节点与相似度连线
 - 静态资源：`/uploads` 托管头像与文档文件
 
 ## 技术栈
@@ -32,7 +34,7 @@ AI 知识库的后端 API 服务，基于 NestJS + TypeORM + PostgreSQL，负责
 | `JWT_SECRET` | JWT 签名密钥 | `your_secret_key` |
 | `JWT_EXPIRES_IN` | Token 有效期 | `7d` |
 | `AI_SERVICE_URL` | AI 服务地址（需与 `AI_SERVICE_PORT` 一致） | `http://localhost:3001` |
-| `AI_SERVICE_PORT` | AI 服务监听端口 | `3001` |
+| `AI_SERVICE_PORT` | AI 服务监听端口（由 ai-service 读取） | `3001` |
 
 以下 AI 配置用于「模型配置」设置页回显默认值（用户未单独配置时展示），
 **与 ai-service 共用根 `.env` 中的同一份值**：
@@ -81,20 +83,24 @@ pnpm start:prod # 生产模式（需先 pnpm build）
 | `POST` | `/upload/document` | 上传文档（≤20MB，自动触发向量化） |
 | `GET` | `/upload/documents` | 文档列表 |
 | `GET` | `/upload/document/:id/download` | 下载文档 |
+| `PATCH` | `/upload/document/:id` | 重命名文档 |
 | `DELETE` | `/upload/document/:id` | 删除文档 |
 | `POST` | `/chat/conversations` | 创建会话 |
 | `GET` | `/chat/conversations` | 会话列表 |
+| `PATCH` | `/chat/conversations/:id` | 重命名会话 |
 | `DELETE` | `/chat/conversations/:id` | 删除会话 |
 | `GET` | `/chat/conversations/:id/messages` | 消息列表 |
-| `POST` | `/chat/conversations/:id/messages` | 发送消息并获取 AI 回答 |
+| `POST` | `/chat/conversations/:id/messages` | 发送消息并获取 AI 回答（SSE 流式） |
+| `GET` | `/settings` | 当前用户 AI 设置回显 |
+| `PUT` | `/settings` | 保存 AI 设置，向量模型变更时触发重建索引 |
+| `GET` | `/stats` | 使用统计（KPI、近 14 天趋势、热门问题 Top10） |
+| `GET` | `/stats/graph` | 知识图谱数据（文档节点 + 相似度连线） |
 
 ## 常用脚本
 
 ```bash
 pnpm build       # 编译
 pnpm start:dev   # 开发模式
-pnpm test        # 单元测试
-pnpm test:e2e    # e2e 测试
 pnpm lint        # 代码检查（oxlint）
 pnpm format      # 代码格式化（Prettier）
 ```
@@ -110,6 +116,8 @@ src/
 ├── users/                  # 用户
 ├── upload/                 # 文件上传与文档管理
 ├── chat/                   # 会话与消息，桥接 AI 服务
+├── settings/               # AI 设置回显与保存（模型配置）
+├── stats/                  # 使用统计与知识图谱数据
 └── config/configuration.ts # 环境变量读取
 ```
 
