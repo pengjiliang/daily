@@ -324,7 +324,7 @@ onBeforeUnmount(() => {
 
 .toolbar-tip {
   font-size: 12px;
-  color: #909399;
+  color: var(--kb-text-secondary);
 }
 
 .reindex-alert {
@@ -341,7 +341,7 @@ onBeforeUnmount(() => {
 
 .field-tip {
   font-size: 12px;
-  color: #909399;
+  color: var(--kb-text-secondary);
   margin-left: 12px;
   align-self: center;
 }
@@ -363,6 +363,6 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
   padding-top: 12px;
   margin-top: 8px;
-  border-top: 1px solid #ebeef5;
+  border-top: 1px solid var(--kb-border-light);
 }
 </style>

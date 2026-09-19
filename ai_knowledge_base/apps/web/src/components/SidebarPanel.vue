@@ -510,8 +510,8 @@ const confirmDeleteFolder = (name: string) => {
 
 <style scoped>
 .sidebar {
-  background-color: #f5f5f5;
-  border-right: 1px solid #e4e7ed;
+  background-color: var(--kb-bg-sidebar);
+  border-right: 1px solid var(--kb-border);
   height: 100%;
   padding: 0;
 }
@@ -536,21 +536,21 @@ const confirmDeleteFolder = (name: string) => {
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
-  color: #303133;
+  color: var(--kb-text-primary);
   transition:
     background-color 0.2s,
     color 0.2s;
 }
 
 .menu-title:hover {
-  background-color: #e9edf2;
-  color: #409eff;
+  background-color: var(--kb-menu-hover);
+  color: var(--el-color-primary);
 }
 
 .menu-title.active {
   position: relative;
-  background-color: #d9ecff;
-  color: #409eff;
+  background-color: var(--kb-menu-active);
+  color: var(--el-color-primary);
   font-weight: 600;
 }
 
@@ -562,12 +562,12 @@ const confirmDeleteFolder = (name: string) => {
   bottom: 10px;
   width: 3px;
   border-radius: 2px;
-  background-color: #409eff;
+  background-color: var(--el-color-primary);
 }
 
 .menu-title.active .menu-icon,
 .menu-title.active .menu-arrow {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .menu-icon {
@@ -584,7 +584,7 @@ const confirmDeleteFolder = (name: string) => {
 
 .menu-arrow {
   font-size: 14px;
-  color: #909399;
+  color: var(--kb-text-secondary);
   transition: transform 0.25s;
 }
 
@@ -610,7 +610,7 @@ const confirmDeleteFolder = (name: string) => {
   padding: 0 10px;
   cursor: pointer;
   font-size: 13px;
-  color: #606266;
+  color: var(--kb-text-regular);
   border-radius: 8px;
   transition:
     background-color 0.2s,
@@ -618,14 +618,14 @@ const confirmDeleteFolder = (name: string) => {
 }
 
 .sub-menu-title:hover {
-  background-color: #e9edf2;
-  color: #409eff;
+  background-color: var(--kb-menu-hover);
+  color: var(--el-color-primary);
 }
 
 .sub-menu.active .sub-menu-title {
   position: relative;
-  background-color: #ecf5ff;
-  color: #409eff;
+  background-color: var(--kb-sub-active);
+  color: var(--el-color-primary);
   font-weight: 600;
 }
 
@@ -637,7 +637,7 @@ const confirmDeleteFolder = (name: string) => {
   bottom: 8px;
   width: 3px;
   border-radius: 2px;
-  background-color: #409eff;
+  background-color: var(--el-color-primary);
 }
 
 .sub-icon {
@@ -654,21 +654,21 @@ const confirmDeleteFolder = (name: string) => {
 
 .sub-count {
   font-size: 12px;
-  color: #c0c4cc;
-  background-color: #f0f2f5;
+  color: var(--kb-text-placeholder);
+  background-color: var(--kb-bg-input);
   border-radius: 10px;
   padding: 0 7px;
   line-height: 18px;
 }
 
 .sub-menu.active .sub-count {
-  background-color: #fff;
-  color: #409eff;
+  background-color: var(--kb-bg-card);
+  color: var(--el-color-primary);
 }
 
 .sub-arrow {
   font-size: 13px;
-  color: #c0c4cc;
+  color: var(--kb-text-placeholder);
   transition: transform 0.25s;
 }
 
@@ -685,21 +685,21 @@ const confirmDeleteFolder = (name: string) => {
   gap: 8px;
   padding: 0 10px;
   font-size: 13px;
-  color: #606266;
+  color: var(--kb-text-regular);
   transition:
     background-color 0.2s,
     color 0.2s;
 }
 
 .sub-menu.plain:hover {
-  background-color: #e9edf2;
-  color: #409eff;
+  background-color: var(--kb-menu-hover);
+  color: var(--el-color-primary);
 }
 
 .sub-menu.plain.active {
   position: relative;
-  background-color: #ecf5ff;
-  color: #409eff;
+  background-color: var(--kb-sub-active);
+  color: var(--el-color-primary);
   font-weight: 600;
 }
 
@@ -711,7 +711,7 @@ const confirmDeleteFolder = (name: string) => {
   bottom: 8px;
   width: 3px;
   border-radius: 2px;
-  background-color: #409eff;
+  background-color: var(--el-color-primary);
 }
 
 /* ---- 三级内容区 ---- */
@@ -739,7 +739,7 @@ const confirmDeleteFolder = (name: string) => {
 
 .question-icon {
   font-size: 16px;
-  color: #909399;
+  color: var(--kb-text-secondary);
   cursor: help;
 }
 
@@ -751,7 +751,7 @@ const confirmDeleteFolder = (name: string) => {
 .section-title {
   font-size: 14px;
   font-weight: 500;
-  color: #303133;
+  color: var(--kb-text-primary);
   margin-bottom: 8px;
 }
 
@@ -768,17 +768,17 @@ const confirmDeleteFolder = (name: string) => {
   gap: 8px;
   cursor: pointer;
   padding: 10px 12px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--kb-border-light);
   border-radius: 8px;
-  background-color: #fff;
+  background-color: var(--kb-bg-card);
   transition:
     background-color 0.2s,
     border-color 0.2s;
 }
 
 .document-item:hover {
-  background-color: #f8fafc;
-  border-color: #d9e4f5;
+  background-color: var(--kb-bg-hover);
+  border-color: var(--kb-border-hover);
 }
 
 .document-name {
@@ -787,7 +787,7 @@ const confirmDeleteFolder = (name: string) => {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  color: #303133;
+  color: var(--kb-text-primary);
   font-size: 13px;
 }
 
@@ -811,7 +811,7 @@ const confirmDeleteFolder = (name: string) => {
   justify-content: space-between;
   font-size: 13px;
   font-weight: 500;
-  color: #909399;
+  color: var(--kb-text-secondary);
   margin: 6px 0 4px;
   padding: 0 2px;
 }
@@ -824,7 +824,7 @@ const confirmDeleteFolder = (name: string) => {
 }
 
 .bulk-delete-btn:disabled {
-  color: #c0c4cc;
+  color: var(--kb-text-placeholder);
   cursor: not-allowed;
 }
 
@@ -845,7 +845,7 @@ const confirmDeleteFolder = (name: string) => {
 
 .folder-count {
   font-size: 12px;
-  color: #909399;
+  color: var(--kb-text-secondary);
   flex-shrink: 0;
 }
 
@@ -853,17 +853,17 @@ const confirmDeleteFolder = (name: string) => {
 .folder-file-item {
   margin-left: 18px;
   padding: 8px 12px;
-  background-color: #fafafa;
+  background-color: var(--kb-bg-folder);
 }
 
 .folder-file-item:hover {
-  background-color: #f0f6ff;
+  background-color: var(--kb-bg-folder-hover);
 }
 
 /* 空区域提示 */
 .section-empty {
   font-size: 12px;
-  color: #c0c4cc;
+  color: var(--kb-text-placeholder);
   text-align: center;
   padding: 12px 0;
 }
@@ -880,7 +880,7 @@ const confirmDeleteFolder = (name: string) => {
   justify-content: space-between;
   font-size: 13px;
   font-weight: 500;
-  color: #909399;
+  color: var(--kb-text-secondary);
   margin: 0 2px 8px;
   padding: 0 2px;
 }
@@ -894,18 +894,18 @@ const confirmDeleteFolder = (name: string) => {
   border-radius: 6px;
   cursor: pointer;
   transition: background-color 0.3s;
-  border: 1px solid #f0f0f0;
-  background-color: #fff;
+  border: 1px solid var(--kb-border-item);
+  background-color: var(--kb-bg-card);
 }
 
 .conversation-item-sidebar:hover {
-  background-color: #f0f2f5;
+  background-color: var(--kb-bg-item-hover);
 }
 
 .conversation-item-sidebar.active {
-  background-color: #eaf4ff;
-  border-color: #a0cfff;
-  box-shadow: inset 3px 0 0 #409eff;
+  background-color: var(--kb-item-active);
+  border-color: var(--kb-item-active-border);
+  box-shadow: inset 3px 0 0 var(--el-color-primary);
 }
 
 .conv-info-sidebar {
@@ -917,7 +917,7 @@ const confirmDeleteFolder = (name: string) => {
 .conv-info-sidebar .conv-title {
   display: block;
   font-size: 13px;
-  color: #303133;
+  color: var(--kb-text-primary);
   line-height: 1.4;
   overflow: hidden;
   white-space: nowrap;
@@ -926,7 +926,7 @@ const confirmDeleteFolder = (name: string) => {
 
 .conv-info-sidebar .conv-time {
   font-size: 12px;
-  color: #909399;
+  color: var(--kb-text-secondary);
   line-height: 1.4;
 }
 
@@ -949,8 +949,8 @@ const confirmDeleteFolder = (name: string) => {
 
 /* 来源定位到文档列表后的高亮行 */
 .document-item.highlighted-doc {
-  border-color: #a0cfff;
-  background-color: #f4faff;
-  box-shadow: inset 3px 0 0 #409eff;
+  border-color: var(--kb-item-active-border);
+  background-color: var(--kb-doc-highlight);
+  box-shadow: inset 3px 0 0 var(--el-color-primary);
 }
 </style>

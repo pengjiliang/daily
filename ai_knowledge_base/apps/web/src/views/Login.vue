@@ -92,7 +92,7 @@ async function handleLogin() {
   justify-content: center;
   align-items: center;
   height: 100vh;
-  background-color: #f5f5f5;
+  background-color: var(--kb-bg-page);
 }
 
 .login-card {
@@ -114,7 +114,7 @@ async function handleLogin() {
 }
 
 .footer a {
-  color: #409eff;
+  color: var(--el-color-primary);
   text-decoration: none;
 }
 </style>

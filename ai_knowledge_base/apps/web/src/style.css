@@ -1,21 +1,112 @@
+/**
+ * 全局样式与主题变量。
+ * - Element Plus 浅色/暗色通过 <html class="dark"> 切换（见 main.ts / stores/ui.ts）。
+ * - :root 定义浅色变量，html.dark 覆盖为暗色变量；组件内统一引用 var(--kb-*)，
+ *   部分场景直接复用 Element Plus 的 --el-* 变量。
+ */
 :root {
+  color-scheme: light;
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* ---- 自定义语义色（浅色） ---- */
+  --kb-bg-page: #f5f7fa; /* 主内容区背景 */
+  --kb-bg-card: #fff; /* 卡片/面板背景 */
+  --kb-bg-sidebar: #f5f5f5; /* 左侧栏背景 */
+  --kb-bg-hover: #f8fafc; /* 列表项悬停 */
+  --kb-bg-item-hover: #f0f2f5; /* 会话/文档行悬停 */
+  --kb-bg-input: #f0f2f5; /* 浅灰填充（计数/排名） */
+  --kb-bg-folder: #fafafa; /* 文件夹内联行 */
+  --kb-bg-folder-hover: #f0f6ff;
+  --kb-border: #e4e7ed;
+  --kb-border-light: #ebeef5;
+  --kb-border-lightest: #f0f2f5;
+  --kb-border-item: #f0f0f0;
+  --kb-border-hover: #d9e4f5;
+  --kb-text-primary: #303133;
+  --kb-text-regular: #606266;
+  --kb-text-secondary: #909399;
+  --kb-text-placeholder: #c0c4cc;
+  --kb-menu-hover: #e9edf2; /* 一二级菜单悬停 */
+  --kb-menu-active: #d9ecff; /* 一级菜单选中 */
+  --kb-sub-active: #ecf5ff; /* 二级菜单选中 */
+  --kb-item-active: #eaf4ff; /* 会话行选中 */
+  --kb-item-active-border: #a0cfff;
+  --kb-doc-highlight: #f4faff; /* 来源定位文档高亮 */
+  --kb-bubble-ai: #f5f5f5; /* AI 气泡 */
+  --kb-source-bg: #f5f7fa; /* 来源块 */
+  --kb-source-external-bg: #fdf6ec; /* 外部来源块 */
+  --kb-mark-bg: #fef08a; /* 来源片段高亮 */
+  --kb-code-bg: #f0f2f5;
+  --kb-code-color: #d14;
+  --kb-pre-bg: #f6f8fa;
+  --kb-avatar-placeholder: #f5f5f5;
+  --kb-scrollbar: #e0e0e0;
+  --kb-scrollbar-hover: #c0c4cc;
+  --kb-chart-axis: #606266;
+  --kb-chart-split: #eef0f3;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
+html.dark {
+  color-scheme: dark;
+
+  /* ---- 自定义语义色（暗色） ---- */
+  --kb-bg-page: #0a0a0a;
+  --kb-bg-card: #1d1e1f;
+  --kb-bg-sidebar: #141414;
+  --kb-bg-hover: #1f1f22;
+  --kb-bg-item-hover: #262628;
+  --kb-bg-input: #262628;
+  --kb-bg-folder: #1c1c1e;
+  --kb-bg-folder-hover: #15222f;
+  --kb-border: #2a2a2c;
+  --kb-border-light: #333337;
+  --kb-border-lightest: #2a2a2c;
+  --kb-border-item: #2a2a2c;
+  --kb-border-hover: #2a3a4a;
+  --kb-text-primary: #e5eaf3;
+  --kb-text-regular: #cfd3dc;
+  --kb-text-secondary: #a3a6ad;
+  --kb-text-placeholder: #6b6b6b;
+  --kb-menu-hover: #1f1f22;
+  --kb-menu-active: #1e2c3a;
+  --kb-sub-active: #16202c;
+  --kb-item-active: #1b2a3a;
+  --kb-item-active-border: #337ecc;
+  --kb-doc-highlight: #15222f;
+  --kb-bubble-ai: #262628;
+  --kb-source-bg: #1d1e1f;
+  --kb-source-external-bg: #2a2118;
+  --kb-mark-bg: #5b4b00;
+  --kb-code-bg: #262628;
+  --kb-code-color: #e06c75;
+  --kb-pre-bg: #16181d;
+  --kb-avatar-placeholder: #262628;
+  --kb-scrollbar: #3a3a3d;
+  --kb-scrollbar-hover: #4a4a4d;
+  --kb-chart-axis: #a3a6ad;
+  --kb-chart-split: #333337;
+}
+
+/* 页面基础色：跟随主题（浅色主内容区 / 暗色页面背景） */
+body {
+  color: var(--el-text-color-primary, var(--kb-text-primary));
+  background-color: var(--el-bg-color-page, var(--kb-bg-page));
+}
+/* 提示框（el-tooltip）背景跟随主题：浅色主题用浅色浮层、深色主题用深色浮层，
+   替代 Element 默认的"反色"（浅色主题深底白字 / 深色主题白底深字） */
+.el-popper.is-dark {
+  --el-popper-bg-color-dark: var(--el-bg-color-overlay);
+  color: var(--el-text-color-primary);
+  border-color: var(--el-border-color-light);
+}
+
+.el-popper.is-dark .el-popper__arrow:before {
+  background: var(--el-bg-color-overlay);
+  border-color: var(--el-border-color-light);
 }

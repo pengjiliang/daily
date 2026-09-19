@@ -83,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
 import {
   Refresh,
   Document,
@@ -96,8 +96,16 @@ import {
 import * as echarts from 'echarts';
 import type { StatsPayload } from '@ai-knowledge-base/shared';
 import { statsApi } from '@/api/stats';
+import { useUiStore } from '@/stores/ui';
 
 const loading = ref(false);
+const uiStore = useUiStore();
+
+/** 读取当前主题下的 CSS 变量值（随 <html class="dark"> 自动切换） */
+const themeCssVar = (name: string, fallback: string) => {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+};
 
 const overview = ref<StatsPayload['overview']>({
   documentCount: 0,
@@ -132,13 +140,13 @@ const setTrendOption = () => {
       type: 'category',
       boundaryGap: false,
       data: trend.value.map((point) => point.date),
-      axisLabel: { color: '#606266' },
+      axisLabel: { color: themeCssVar('--kb-chart-axis', '#606266') },
     },
     yAxis: {
       type: 'value',
       minInterval: 1,
-      axisLabel: { color: '#606266' },
-      splitLine: { lineStyle: { color: '#eef0f3' } },
+      axisLabel: { color: themeCssVar('--kb-chart-axis', '#606266') },
+      splitLine: { lineStyle: { color: themeCssVar('--kb-chart-split', '#eef0f3') } },
     },
     series: [
       {
@@ -159,6 +167,9 @@ const setTrendOption = () => {
 const handleResize = () => {
   trendChart?.resize();
 };
+
+// 主题切换后重设图表配色
+watch(() => uiStore.isDark, () => setTrendOption());
 
 /** 图表容器就绪后懒初始化（容器常驻渲染，确保 ref 一定存在） */
 const ensureChart = () => {
@@ -222,7 +233,7 @@ onBeforeUnmount(() => {
 
 .toolbar-tip {
   font-size: 12px;
-  color: #909399;
+  color: var(--kb-text-secondary);
 }
 
 .kpi-grid {
@@ -237,8 +248,8 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  background: #fff;
-  border: 1px solid #ebeef5;
+  background: var(--kb-bg-card);
+  border: 1px solid var(--kb-border-light);
   border-radius: 8px;
   padding: 14px 16px;
 }
@@ -264,18 +275,18 @@ onBeforeUnmount(() => {
   font-size: 26px;
   font-weight: 600;
   line-height: 1.2;
-  color: #303133;
+  color: var(--kb-text-primary);
 }
 
 .kpi-label {
   font-size: 13px;
-  color: #909399;
+  color: var(--kb-text-secondary);
   margin-top: 2px;
 }
 
 .panel {
-  background: #fff;
-  border: 1px solid #ebeef5;
+  background: var(--kb-bg-card);
+  border: 1px solid var(--kb-border-light);
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 16px;
@@ -315,7 +326,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   font-size: 15px;
   font-weight: 600;
-  color: #303133;
+  color: var(--kb-text-primary);
   margin-bottom: 12px;
 }
 
@@ -343,7 +354,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fff;
+  background: var(--kb-bg-card);
 }
 
 .popular-item {
@@ -351,7 +362,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
   padding: 6px 4px;
-  border-bottom: 1px solid #f0f2f5;
+  border-bottom: 1px solid var(--kb-border-lightest);
 }
 
 .popular-item:last-child {
@@ -365,8 +376,8 @@ onBeforeUnmount(() => {
   text-align: center;
   line-height: 22px;
   font-size: 12px;
-  color: #909399;
-  background: #f0f2f5;
+  color: var(--kb-text-secondary);
+  background: var(--kb-bg-input);
   flex-shrink: 0;
 }
 
@@ -380,13 +391,13 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 14px;
-  color: #303133;
+  color: var(--kb-text-primary);
 }
 
 .bar-track {
   flex: 1;
   height: 8px;
-  background: #f0f2f5;
+  background: var(--kb-bg-input);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -401,7 +412,7 @@ onBeforeUnmount(() => {
 .popular-count {
   flex-shrink: 0;
   font-size: 12px;
-  color: #909399;
+  color: var(--kb-text-secondary);
   min-width: 56px;
   text-align: right;
 }

@@ -13,10 +13,23 @@ export const useUiStore = defineStore('ui', {
   state: () => ({
     mainView: 'chat' as MainView,
     expandedMenu: 'ai' as SidebarMenuKey | null,
+    isDark: typeof document !== 'undefined' && document.documentElement.classList.contains('dark'),
   }),
   actions: {
     setMainView(view: MainView) {
       this.mainView = view;
+    },
+    /** 应用深浅主题：切换 <html> 上的 dark 类并持久化到 localStorage */
+    setDark(dark: boolean) {
+      this.isDark = dark;
+      const root = document.documentElement;
+      root.classList.toggle('dark', dark);
+      root.style.colorScheme = dark ? 'dark' : 'light';
+      localStorage.setItem('kb-theme', dark ? 'dark' : 'light');
+    },
+    /** 切换深浅主题 */
+    toggleTheme() {
+      this.setDark(!this.isDark);
     },
     /** 切换一级菜单展开/收起（互斥：展开该项并收起其它项） */
     toggleMenu(key: SidebarMenuKey) {

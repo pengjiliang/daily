@@ -1198,7 +1198,7 @@ onBeforeUnmount(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: var(--kb-bg-card);
 }
 
 .graph-header {
@@ -1206,14 +1206,14 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   padding: 12px 20px;
-  border-bottom: 1px solid #e4e7ed;
-  background: #fff;
+  border-bottom: 1px solid var(--kb-border);
+  background: var(--kb-bg-card);
   flex-shrink: 0;
 }
 
 .toolbar-tip {
   font-size: 12px;
-  color: #909399;
+  color: var(--kb-text-secondary);
 }
 
 .header-tools {
@@ -1227,7 +1227,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: #606266;
+  color: var(--kb-text-regular);
   cursor: pointer;
   user-select: none;
 }
@@ -1385,8 +1385,8 @@ onBeforeUnmount(() => {
 .graph-side {
   width: 280px;
   flex-shrink: 0;
-  background: #fff;
-  border-left: 1px solid #e4e7ed;
+  background: var(--kb-bg-card);
+  border-left: 1px solid var(--kb-border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1396,8 +1396,8 @@ onBeforeUnmount(() => {
   padding: 14px 16px;
   font-size: 14px;
   font-weight: 600;
-  border-bottom: 1px solid #f0f2f5;
-  color: #303133;
+  border-bottom: 1px solid var(--kb-border-lightest);
+  color: var(--kb-text-primary);
 }
 
 .node-list {
@@ -1413,12 +1413,12 @@ onBeforeUnmount(() => {
 }
 
 .node-list::-webkit-scrollbar-thumb {
-  background: #e0e0e0;
+  background: var(--kb-scrollbar);
   border-radius: 3px;
 }
 
 .node-list::-webkit-scrollbar-thumb:hover {
-  background: #c0c4cc;
+  background: var(--kb-scrollbar-hover);
 }
 
 .node-list::-webkit-scrollbar-track {
@@ -1436,11 +1436,11 @@ onBeforeUnmount(() => {
 }
 
 .node-list li:hover {
-  background: #f5f7fa;
+  background: var(--kb-bg-item-hover);
 }
 
 .node-list li.active {
-  background: #ecf5ff;
+  background: var(--kb-sub-active);
 }
 
 .node-dot {
@@ -1453,7 +1453,7 @@ onBeforeUnmount(() => {
 .node-name {
   flex: 1;
   font-size: 13px;
-  color: #303133;
+  color: var(--kb-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1461,14 +1461,14 @@ onBeforeUnmount(() => {
 
 .node-count {
   font-size: 12px;
-  color: #909399;
+  color: var(--kb-text-secondary);
   flex-shrink: 0;
 }
 
 .side-empty {
   padding: 24px;
   text-align: center;
-  color: #909399;
+  color: var(--kb-text-secondary);
   font-size: 13px;
 }
 

@@ -6,15 +6,20 @@
   <el-header class="header">
     <div class="title">AI 知识库</div>
     <div class="user-info">
+      <el-tooltip :content="uiStore.isDark ? '切换到浅色模式' : '切换到深色模式'" placement="bottom">
+        <el-button
+          text
+          class="theme-toggle"
+          :icon="uiStore.isDark ? Sunny : Moon"
+          @click="uiStore.toggleTheme()"
+        />
+      </el-tooltip>
       <el-dropdown @command="handleCommand">
         <div class="user-trigger">
           <span class="username">{{ userStore.userInfo?.username }}</span>
           <div class="avatar-wrapper">
             <el-avatar v-if="userStore.userInfo?.avatarUrl" :src="fullAvatarUrl" size="large" />
             <el-avatar v-else size="large" :icon="UserFilled" />
-            <div class="avatar-overlay">
-              <Upload />
-            </div>
           </div>
         </div>
         <template #dropdown>
@@ -66,12 +71,14 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { ElMessage } from 'element-plus';
-import { Upload, UserFilled } from '@element-plus/icons-vue';
+import { UserFilled, Sunny, Moon } from '@element-plus/icons-vue';
 import { useUserStore } from '@/stores/user';
+import { useUiStore } from '@/stores/ui';
 import { uploadApi } from '@/api/upload';
 import { authApi } from '@/api/auth';
 
 const userStore = useUserStore();
+const uiStore = useUiStore();
 
 /** 头像相对路径补全为 server 静态资源绝对地址 */
 const fullAvatarUrl = computed(() => {
@@ -143,14 +150,14 @@ const handleCommand = (command: string) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #fff;
-  border-bottom: 1px solid #e4e7ed;
+  background-color: var(--el-bg-color);
+  border-bottom: 1px solid var(--el-border-color-light);
 }
 
 .header .title {
   font-size: 20px;
   font-weight: bold;
-  color: #000;
+  color: var(--el-text-color-primary);
 }
 
 .header .user-info {
@@ -168,35 +175,22 @@ const handleCommand = (command: string) => {
 
 .username {
   font-size: 14px;
-  color: #333;
+  color: var(--el-text-color-regular);
   max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* 深浅主题切换按钮 */
+.theme-toggle {
+  font-size: 18px;
+  margin-right: 8px;
+}
+
 .avatar-wrapper {
   position: relative;
   cursor: pointer;
-}
-
-.avatar-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-
-.avatar-wrapper:hover .avatar-overlay {
-  opacity: 1;
 }
 
 .avatar-uploader {
@@ -215,11 +209,11 @@ const handleCommand = (command: string) => {
   width: 200px;
   height: 200px;
   border-radius: 50%;
-  background-color: #f5f5f5;
+  background-color: var(--kb-avatar-placeholder);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #909399;
+  color: var(--kb-text-secondary);
   font-size: 30px;
   margin: 0 auto;
 }
@@ -227,7 +221,7 @@ const handleCommand = (command: string) => {
 .upload-tip {
   margin-top: 16px;
   font-size: 12px;
-  color: #909399;
+  color: var(--kb-text-secondary);
 }
 
 .dialog-footer {

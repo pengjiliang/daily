@@ -114,21 +114,21 @@ onMounted(() => {
   height: 100%;
   padding: 16px 20px;
   overflow-y: auto;
-  background-color: #f5f7fa;
+  background-color: var(--kb-bg-page);
 }
 
 /* 知识图谱：无内边距，3D 画布撑满 */
 .graph-panel {
   padding: 0;
   overflow: hidden;
-  background-color: #fff;
+  background-color: var(--kb-bg-card);
 }
 
 /* 文档预览：无内边距，组件内部撑满 */
 .preview-panel {
   padding: 0;
   overflow: hidden;
-  background-color: #fff;
+  background-color: var(--kb-bg-card);
 }
 
 .dialog-footer {

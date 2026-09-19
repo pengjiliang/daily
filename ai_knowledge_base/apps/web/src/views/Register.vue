@@ -100,7 +100,7 @@ async function handleRegister() {
   justify-content: center;
   align-items: center;
   height: 100vh;
-  background-color: #f5f5f5;
+  background-color: var(--kb-bg-page);
 }
 
 .register-card {
@@ -122,7 +122,7 @@ async function handleRegister() {
 }
 
 .footer a {
-  color: #409eff;
+  color: var(--el-color-primary);
   text-decoration: none;
 }
 </style>

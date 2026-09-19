@@ -540,7 +540,7 @@ const formatMessageContent = (content: string) => {
   flex-direction: column;
   padding: 0;
   height: 100%;
-  background-color: #fff;
+  background-color: var(--kb-bg-card);
 }
 
 .messages-container {
@@ -555,13 +555,13 @@ const formatMessageContent = (content: string) => {
   display: flex;
   align-items: center;
   padding: 10px 16px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--kb-border-light);
 }
 
 .chat-toolbar-title {
   font-size: 14px;
   font-weight: 600;
-  color: #303133;
+  color: var(--kb-text-primary);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -620,27 +620,27 @@ const formatMessageContent = (content: string) => {
 }
 
 .message-item.assistant .message-bubble {
-  background-color: #f5f5f5;
-  color: #303133;
+  background-color: var(--kb-bubble-ai);
+  color: var(--kb-text-primary);
 }
 
 .sources {
   margin-top: 12px;
-  border-top: 1px solid #e4e7ed;
+  border-top: 1px solid var(--kb-border);
   padding-top: 12px;
 }
 
 .source-item {
   margin-bottom: 12px;
   padding: 10px;
-  background: #f5f7fa;
+  background: var(--kb-source-bg);
   border-radius: 6px;
-  border-left: 3px solid #409eff;
+  border-left: 3px solid var(--el-color-primary);
 }
 
 .source-item.external {
-  border-left-color: #e6a23c;
-  background: #fdf6ec;
+  border-left-color: var(--el-color-warning);
+  background: var(--kb-source-external-bg);
 }
 
 .source-meta {
@@ -652,12 +652,12 @@ const formatMessageContent = (content: string) => {
 
 .source-score {
   font-size: 12px;
-  color: #909399;
+  color: var(--kb-text-secondary);
 }
 
 .source-raw-score {
   font-size: 12px;
-  color: #c0c4cc;
+  color: var(--kb-text-placeholder);
 }
 
 .source-file {
@@ -668,7 +668,7 @@ const formatMessageContent = (content: string) => {
   word-break: break-all;
 }
 .source-file span {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .source-file.clickable {
@@ -679,7 +679,7 @@ const formatMessageContent = (content: string) => {
 
 .source-file.clickable:hover {
   text-decoration: underline;
-  color: #337ecc;
+  color: var(--el-color-primary-dark-2);
 }
 
 /* 来源文件名：点击定位到文档列表 */
@@ -689,12 +689,12 @@ const formatMessageContent = (content: string) => {
 
 .source-file .download-icon {
   cursor: pointer;
-  color: #909399;
+  color: var(--kb-text-secondary);
   flex-shrink: 0;
 }
 
 .source-file .download-icon:hover {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 /* 外部资料链接样式 */
@@ -703,7 +703,7 @@ const formatMessageContent = (content: string) => {
   align-items: center;
   gap: 6px;
   margin-bottom: 6px;
-  color: #409eff;
+  color: var(--el-color-primary);
   text-decoration: underline; /* 添加下划线，提示用户可点击 */
   cursor: pointer;
   word-break: break-all;
@@ -711,18 +711,18 @@ const formatMessageContent = (content: string) => {
 
 .source-link:hover {
   text-decoration: underline;
-  color: #337ecc;
+  color: var(--el-color-primary-dark-2);
 }
 
 .source-content {
   font-size: 13px;
-  color: #333;
+  color: var(--kb-text-primary);
   line-height: 1.5;
 }
 
 /* 来源片段关键词高亮 */
 .source-content mark {
-  background-color: #fef08a;
+  background-color: var(--kb-mark-bg);
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;
@@ -734,7 +734,7 @@ const formatMessageContent = (content: string) => {
 }
 
 .input-area {
-  border-top: 1px solid #e4e7ed;
+  border-top: 1px solid var(--kb-border);
   padding: 12px 16px;
   display: flex;
   gap: 12px;
@@ -776,7 +776,7 @@ const formatMessageContent = (content: string) => {
 .loading-placeholder {
   display: flex;
   align-items: center;
-  color: #909399;
+  color: var(--kb-text-secondary);
   font-size: 14px;
   padding: 8px 0;
 }
@@ -786,7 +786,7 @@ const formatMessageContent = (content: string) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #909399;
+  color: var(--kb-text-secondary);
   font-size: 14px;
 }
 </style>

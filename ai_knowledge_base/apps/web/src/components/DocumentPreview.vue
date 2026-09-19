@@ -65,7 +65,7 @@ onBeforeUnmount(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: var(--kb-bg-card);
 }
 
 .preview-header {
@@ -74,12 +74,12 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   padding: 12px 20px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--kb-border-light);
 }
 
 .preview-file-icon {
   font-size: 20px;
-  color: #409eff;
+  color: var(--el-color-primary);
   flex-shrink: 0;
 }
 
@@ -91,7 +91,7 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   font-size: 15px;
   font-weight: 600;
-  color: #303133;
+  color: var(--kb-text-primary);
 }
 
 .preview-ext {
@@ -109,7 +109,7 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: #f5f7fa;
+  background: var(--kb-bg-page);
 }
 
 .preview-loading {
@@ -122,7 +122,7 @@ onBeforeUnmount(() => {
 .preview-scroll {
   height: 100%;
   overflow: auto;
-  background: #fff;
+  background: var(--kb-bg-card);
 }
 
 /* 图片：等比缩放适配可视区域，超大图可滚动查看 */
@@ -131,7 +131,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: #fff;
+  background: var(--kb-bg-card);
 }
 
 .preview-image {
@@ -144,13 +144,13 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   border: none;
-  background: #fff;
+  background: var(--kb-bg-card);
 }
 
 /* 转 HTML 内容（md/txt/docx/xlsx）的排版 */
 .preview-html {
   padding: 24px 32px;
-  color: #303133;
+  color: var(--kb-text-primary);
   font-size: 14px;
   line-height: 1.7;
   word-break: break-word;
@@ -163,7 +163,7 @@ onBeforeUnmount(() => {
 .preview-html h5,
 .preview-html h6 {
   margin: 16px 0 8px;
-  color: #303133;
+  color: var(--kb-text-primary);
   line-height: 1.4;
 }
 
@@ -179,16 +179,16 @@ onBeforeUnmount(() => {
 }
 
 .preview-html code {
-  background: #f0f2f5;
+  background: var(--kb-code-bg);
   border-radius: 4px;
   padding: 1px 5px;
   font-size: 13px;
-  color: #d14;
+  color: var(--kb-code-color);
 }
 
 .preview-html pre.md-code {
-  background: #f6f8fa;
-  border: 1px solid #e4e7ed;
+  background: var(--kb-pre-bg);
+  border: 1px solid var(--kb-border);
   border-radius: 6px;
   padding: 12px 14px;
   overflow: auto;
@@ -205,9 +205,9 @@ onBeforeUnmount(() => {
 .preview-html blockquote {
   margin: 10px 0;
   padding: 6px 14px;
-  border-left: 4px solid #409eff;
-  background: #f5f7fa;
-  color: #606266;
+  border-left: 4px solid var(--el-color-primary);
+  background: var(--kb-bg-page);
+  color: var(--kb-text-regular);
 }
 
 .preview-html ul,
@@ -218,12 +218,12 @@ onBeforeUnmount(() => {
 
 .preview-html hr {
   border: none;
-  border-top: 1px solid #e4e7ed;
+  border-top: 1px solid var(--kb-border);
   margin: 16px 0;
 }
 
 .preview-html a {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 /* SheetJS 输出的表格 */
@@ -235,16 +235,16 @@ onBeforeUnmount(() => {
 
 .preview-html table th,
 .preview-html table td {
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--kb-border);
   padding: 6px 10px;
   white-space: nowrap;
   text-align: left;
 }
 
 .preview-html table th {
-  background: #f5f7fa;
+  background: var(--kb-bg-page);
   font-weight: 600;
-  color: #606266;
+  color: var(--kb-text-regular);
 }
 
 .preview-unsupported {
@@ -252,6 +252,6 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fff;
+  background: var(--kb-bg-card);
 }
 </style>
