@@ -185,6 +185,8 @@ export const useChatStore = defineStore('chat', () => {
       conversations.value.unshift(res);
       currentConversation.value = res;
       messages.value = [];
+      // 从其它页面点击"新建对话"时，切回聊天主视图
+      useUiStore().openView('chat', 'ai');
     } catch (error) {
       console.error(error);
       ElMessage.error('创建对话失败');
@@ -195,6 +197,8 @@ export const useChatStore = defineStore('chat', () => {
   const selectConversation = (conv: Conversation) => {
     currentConversation.value = conv;
     loadMessages();
+    // 从其它页面（统计/图谱/配置）点击会话时，切回聊天主视图并展开 AI 助手菜单
+    useUiStore().openView('chat', 'ai');
   };
 
   // ---- 删除弹窗（通用）：文档/会话/批量删除共用 ----

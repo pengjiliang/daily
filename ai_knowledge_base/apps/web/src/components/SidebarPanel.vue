@@ -12,7 +12,7 @@
     <div class="sidebar-menu">
       <!-- ==================== 一级：AI 助手 ==================== -->
       <div class="menu-group">
-        <div class="menu-title" :class="{ active: uiStore.expandedMenu === 'ai' }" @click="toggleMenu('ai')">
+        <div class="menu-title" :class="{ active: isTopActive('ai') }" @click="toggleMenu('ai')">
           <el-icon class="menu-icon"><ChatDotRound /></el-icon>
           <span class="menu-label">AI 助手</span>
           <el-icon class="menu-arrow" :class="{ 'is-expanded': uiStore.expandedMenu === 'ai' }"><ArrowDown /></el-icon>
@@ -20,21 +20,22 @@
         <el-collapse-transition>
           <div v-show="uiStore.expandedMenu === 'ai'" class="menu-body">
             <!-- 二级：会话列表 -->
-            <div class="sub-menu" :class="{ active: chatStore.activeTab === 'conversations' }">
+            <div class="sub-menu" :class="{ active: isSubActive('conversations') }">
               <div class="sub-menu-title" @click="switchAiTab('conversations')">
                 <el-icon class="sub-icon"><ChatLineRound /></el-icon>
                 <span class="sub-label">会话列表</span>
                 <span class="sub-count">{{ chatStore.conversations.length }}</span>
-                <el-icon
-                  class="sub-arrow"
-                  :class="{ 'is-expanded': chatStore.activeTab === 'conversations' }"
-                ><ArrowDown /></el-icon>
+                <el-icon class="sub-arrow" :class="{ 'is-expanded': chatStore.activeTab === 'conversations' }"
+                  ><ArrowDown
+                /></el-icon>
               </div>
               <el-collapse-transition>
                 <div v-show="chatStore.activeTab === 'conversations'" class="sub-content conv-sub">
                   <!-- 新建对话按钮居中显示 -->
                   <div class="new-conv-btn-wrapper">
-                    <el-button type="primary" :icon="Plus" @click="chatStore.createNewConversation">新建对话</el-button>
+                    <el-button type="primary" plain size="small" :icon="Plus" @click="chatStore.createNewConversation"
+                      >新建对话</el-button
+                    >
                   </div>
 
                   <!-- 会话区标题 + 一键删除全部会话 -->
@@ -94,12 +95,14 @@
             </div>
 
             <!-- 二级：文档管理 -->
-            <div class="sub-menu" :class="{ active: chatStore.activeTab === 'documents' }">
+            <div class="sub-menu" :class="{ active: isSubActive('documents') }">
               <div class="sub-menu-title" @click="switchAiTab('documents')">
                 <el-icon class="sub-icon"><FolderOpened /></el-icon>
                 <span class="sub-label">文档管理</span>
                 <span class="sub-count">{{ chatStore.documents.length }}</span>
-                <el-icon class="sub-arrow" :class="{ 'is-expanded': chatStore.activeTab === 'documents' }"><ArrowDown /></el-icon>
+                <el-icon class="sub-arrow" :class="{ 'is-expanded': chatStore.activeTab === 'documents' }"
+                  ><ArrowDown
+                /></el-icon>
               </div>
               <el-collapse-transition>
                 <div v-show="chatStore.activeTab === 'documents'" class="sub-content doc-sub">
@@ -113,12 +116,13 @@
                         :http-request="chatStore.handleUpload"
                         multiple
                       >
-                        <el-button type="primary" :icon="UploadFilled">上传文档</el-button>
+                        <el-button type="primary" plain size="small" :icon="UploadFilled">上传文档</el-button>
                       </el-upload>
                       <!-- 上传文件夹：优先 File System Access API，不支持则回退 webkitdirectory 原生 input -->
                       <el-button
                         type="primary"
                         plain
+                        size="small"
                         :icon="FolderOpened"
                         :loading="chatStore.uploadingFolder"
                         @click="pickFolder"
@@ -291,16 +295,18 @@
 
       <!-- ==================== 一级：数据中心 ==================== -->
       <div class="menu-group">
-        <div class="menu-title" :class="{ active: uiStore.expandedMenu === 'data' }" @click="toggleMenu('data')">
+        <div class="menu-title" :class="{ active: isTopActive('data') }" @click="toggleMenu('data')">
           <el-icon class="menu-icon"><DataAnalysis /></el-icon>
           <span class="menu-label">数据中心</span>
-          <el-icon class="menu-arrow" :class="{ 'is-expanded': uiStore.expandedMenu === 'data' }"><ArrowDown /></el-icon>
+          <el-icon class="menu-arrow" :class="{ 'is-expanded': uiStore.expandedMenu === 'data' }"
+            ><ArrowDown
+          /></el-icon>
         </div>
         <el-collapse-transition>
           <div v-show="uiStore.expandedMenu === 'data'" class="menu-body">
             <div
               class="sub-menu plain"
-              :class="{ active: uiStore.mainView === 'stats' }"
+              :class="{ active: isSubActive('stats') }"
               @click="openView('stats', 'data')"
             >
               <el-icon class="sub-icon"><TrendCharts /></el-icon>
@@ -308,7 +314,7 @@
             </div>
             <div
               class="sub-menu plain"
-              :class="{ active: uiStore.mainView === 'graph' }"
+              :class="{ active: isSubActive('graph') }"
               @click="openView('graph', 'data')"
             >
               <el-icon class="sub-icon"><Share /></el-icon>
@@ -320,16 +326,18 @@
 
       <!-- ==================== 一级：系统设置 ==================== -->
       <div class="menu-group">
-        <div class="menu-title" :class="{ active: uiStore.expandedMenu === 'system' }" @click="toggleMenu('system')">
+        <div class="menu-title" :class="{ active: isTopActive('system') }" @click="toggleMenu('system')">
           <el-icon class="menu-icon"><Setting /></el-icon>
           <span class="menu-label">系统设置</span>
-          <el-icon class="menu-arrow" :class="{ 'is-expanded': uiStore.expandedMenu === 'system' }"><ArrowDown /></el-icon>
+          <el-icon class="menu-arrow" :class="{ 'is-expanded': uiStore.expandedMenu === 'system' }"
+            ><ArrowDown
+          /></el-icon>
         </div>
         <el-collapse-transition>
           <div v-show="uiStore.expandedMenu === 'system'" class="menu-body">
             <div
               class="sub-menu plain"
-              :class="{ active: uiStore.mainView === 'settings' }"
+              :class="{ active: isSubActive('settings') }"
               @click="openView('settings', 'system')"
             >
               <el-icon class="sub-icon"><Operation /></el-icon>
@@ -380,6 +388,27 @@ const openView = (view: MainView, menu: SidebarMenuKey) => {
   chatStore.clearHighlight();
 };
 
+/** 一级菜单高亮：仅当该组展开且组内没有更深的选中项（二/三级）时点亮 */
+const isTopActive = (key: SidebarMenuKey) => {
+  if (uiStore.expandedMenu !== key) return false;
+  if (key === 'ai') return chatStore.activeTab === '';
+  if (key === 'data') return uiStore.mainView !== 'stats' && uiStore.mainView !== 'graph';
+  return uiStore.mainView !== 'settings';
+};
+
+/** 二级菜单高亮：AI 组仅在 tab 展开且无三级选中时点亮；数据中心/系统设置为最深层，按 mainView 点亮 */
+const isSubActive = (key: 'conversations' | 'documents' | 'stats' | 'graph' | 'settings') => {
+  if (key === 'conversations') {
+    return chatStore.activeTab === 'conversations' && !chatStore.currentConversation?.id;
+  }
+  if (key === 'documents') {
+    return chatStore.activeTab === 'documents' && !chatStore.highlightedDocumentId;
+  }
+  if (key === 'stats') return uiStore.mainView === 'stats';
+  if (key === 'graph') return uiStore.mainView === 'graph';
+  return uiStore.mainView === 'settings';
+};
+
 /** 隐藏的原生文件夹选择 input（回退方案：webkitdirectory） */
 const folderInput = ref<HTMLInputElement | null>(null);
 
@@ -395,11 +424,12 @@ const pickFolder = async () => {
 
 /** 点击 AI 助手二级菜单：展开对应列表区并切回聊天主视图；再次点击当前项则收起 */
 const switchAiTab = (tab: 'documents' | 'conversations') => {
-  const target = chatStore.activeTab === tab ? '' : tab;
-  chatStore.activeTab = target;
+  // 已在聊天视图且当前正展开该列表：再次点击收起；否则（从其它页面切回）总是展开对应列表并切回聊天视图
+  const collapse = uiStore.mainView === 'chat' && chatStore.activeTab === tab;
+  chatStore.activeTab = collapse ? '' : tab;
   uiStore.openView('chat', 'ai');
   // 切到会话列表或收起时取消文档高亮；切到文档管理时保留
-  if (target !== 'documents') {
+  if (chatStore.activeTab !== 'documents') {
     chatStore.clearHighlight();
   }
 };
@@ -907,6 +937,10 @@ const confirmDeleteFolder = (name: string) => {
   gap: 2px;
   opacity: 0;
   transition: opacity 0.2s;
+}
+.conv-actions .el-button,
+.doc-actions .el-button {
+  padding: 4px 0px !important;
 }
 
 .conversation-item-sidebar:hover .conv-actions {
