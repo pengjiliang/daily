@@ -9,8 +9,18 @@
 <template>
   <div class="graph-page">
     <div class="graph-header">
-      <span class="toolbar-tip">共 {{ nodes.length }} 个文档节点 · 关联 {{ visibleEdgeCount }} 条</span>
+      <span class="toolbar-tip">
+        {{
+          mode === 'doc'
+            ? `共 ${nodes.length} 个文档节点 · 关联 ${visibleEdgeCount} 条`
+            : `共 ${nodes.length} 个实体 · 关系 ${visibleEdgeCount} 条`
+        }}
+      </span>
       <div class="header-tools">
+        <el-radio-group v-model="mode" size="small" class="graph-mode-toggle">
+          <el-radio-button value="doc">文档图谱</el-radio-button>
+          <el-radio-button value="entity">实体图谱</el-radio-button>
+        </el-radio-group>
         <label class="hd-toggle">
           <el-switch v-model="autoRotate" size="small" />
           <span>自动旋转</span>
@@ -20,7 +30,7 @@
           <span>标签</span>
         </label>
         <el-button size="small" @click="resetView">重置视角</el-button>
-        <el-button size="small" :loading="loading" @click="loadGraph">
+        <el-button size="small" :loading="loading" @click="loadGraph(true)">
           <el-icon><Refresh /></el-icon> 刷新
         </el-button>
       </div>
@@ -28,14 +38,20 @@
 
     <div class="graph-body" v-loading="loading">
       <div v-if="empty" class="graph-empty-panel">
-        <el-empty description="暂无文档，先去上传资料建立知识库吧" />
+        <el-empty
+          :description="
+            mode === 'doc'
+              ? '暂无文档，先去上传资料建立知识库吧'
+              : '暂无实体数据：上传文档并完成索引后会自动提取实体关系'
+          "
+        />
       </div>
       <template v-else>
         <div class="graph-canvas">
           <canvas ref="canvasRef" class="gl-canvas"></canvas>
 
-          <!-- 关联度筛选 -->
-          <div class="graph-controls">
+          <!-- 关联度筛选（仅文档图谱） -->
+          <div v-if="mode === 'doc'" class="graph-controls">
             <div class="control-title">关联度筛选</div>
             <div class="control-row">
               <span class="control-label">下限</span>
@@ -55,10 +71,21 @@
 
           <!-- 图例 -->
           <div class="graph-legend">
-            <div class="legend-title">相关度</div>
-            <div class="legend-bar"></div>
-            <div class="legend-labels"><span>低</span><span>高</span></div>
-            <div class="legend-note">连线颜色 / 粗细代表两文档内容相关度</div>
+            <template v-if="mode === 'doc'">
+              <div class="legend-title">相关度</div>
+              <div class="legend-bar"></div>
+              <div class="legend-labels"><span>低</span><span>高</span></div>
+              <div class="legend-note">连线颜色 / 粗细代表两文档内容相关度</div>
+            </template>
+            <template v-else>
+              <div class="legend-title">实体类型</div>
+              <div class="type-legend">
+                <span v-for="type in entityTypesInUse" :key="type" class="type-legend-item">
+                  <span class="type-dot" :style="{ background: typeColorCss(type) }"></span>{{ type }}
+                </span>
+              </div>
+              <div class="legend-note">节点颜色代表实体类型，连线代表实体间的关系</div>
+            </template>
           </div>
 
           <!-- 悬停提示 -->
@@ -72,12 +99,15 @@
           </div>
 
           <div class="graph-hint">
-            <el-icon><Mouse /></el-icon> 拖拽旋转 · 滚轮缩放 · 悬停连线看相关度 · 点击节点聚焦
+            <el-icon><Mouse /></el-icon> 拖拽旋转 · 滚轮缩放 · 悬停连线看{{ mode === 'doc' ? '相关度' : '关系' }} ·
+            点击节点聚焦
           </div>
         </div>
 
         <aside class="graph-side">
-          <div class="side-title">文档节点（{{ nodes.length }}）</div>
+          <div class="side-title">
+            {{ mode === 'doc' ? `文档节点（${nodes.length}）` : `实体节点（${nodes.length}）` }}
+          </div>
           <ul v-if="nodes.length > 0" class="node-list">
             <li
               v-for="(node, index) in nodes"
@@ -87,10 +117,10 @@
             >
               <span class="node-dot" :style="{ background: nodeColor(index) }"></span>
               <span class="node-name" :title="node.name">{{ node.name }}</span>
-              <span class="node-count">{{ node.chunkCount }}</span>
+              <span class="node-count">{{ mode === 'doc' ? node.chunkCount : (node.entityType ?? '其他') }}</span>
             </li>
           </ul>
-          <div v-else class="side-empty">暂无文档</div>
+          <div v-else class="side-empty">{{ mode === 'doc' ? '暂无文档' : '暂无实体' }}</div>
         </aside>
       </template>
     </div>
@@ -109,8 +139,22 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
-import type { GraphNode } from '@ai-knowledge-base/shared';
+import type { EntityGraphData, GraphEdge, GraphNode } from '@ai-knowledge-base/shared';
 import { statsApi } from '@/api/stats';
+
+/** 渲染用节点：文档节点直接使用，实体节点附加 entityType / fileName */
+interface RenderNode extends GraphNode {
+  entityType?: string;
+  fileName?: string | null;
+}
+
+/** 渲染用连线：文档连线直接用 weight，实体连线附加关系文本 label */
+interface RenderEdge {
+  source: number;
+  target: number;
+  weight: number;
+  label?: string;
+}
 
 /** 单条关联边（Line2 管线，支持线宽与逐边透明度） */
 interface EdgeObj {
@@ -120,6 +164,8 @@ interface EdgeObj {
   a: number;
   b: number;
   weight: number;
+  /** 实体模式下：关系描述（悬停连线时展示） */
+  label?: string;
   color: THREE.Color;
   active: boolean;
 }
@@ -127,13 +173,32 @@ interface EdgeObj {
 // ---------- 响应式状态 ----------
 const loading = ref(false);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
-const nodes = ref<GraphNode[]>([]);
-const edges = ref<{ source: number; target: number; weight: number }[]>([]);
+const nodes = ref<RenderNode[]>([]);
+const edges = ref<RenderEdge[]>([]);
 const empty = computed(() => !loading.value && nodes.value.length === 0);
 const selectedIndex = ref(-1);
 const autoRotate = ref(false);
 const showLabels = ref(true);
 const minWeight = ref(0.5);
+
+/** 图谱模式：doc=文档图谱（默认）/ entity=实体级知识图谱 */
+const mode = ref<'doc' | 'entity'>('doc');
+const isEntityMode = computed(() => mode.value === 'entity');
+/** 文档图谱原始数据（切换模式后仍保留，避免重复请求） */
+const docNodes = ref<GraphNode[]>([]);
+const docEdges = ref<GraphEdge[]>([]);
+/** 实体图谱原始数据 */
+const entityData = ref<EntityGraphData>({ entities: [], relations: [] });
+/** 当前节点中出现的实体类型（图例展示用） */
+const entityTypesInUse = computed(() => {
+  const types = new Set<string>();
+  for (const node of nodes.value) {
+    if (node.entityType) {
+      types.add(node.entityType);
+    }
+  }
+  return Array.from(types);
+});
 
 const visibleEdgeCount = computed(
   () => edges.value.filter((e) => e.weight >= minWeight.value).length,
@@ -208,6 +273,46 @@ const colorForIndex = (index: number): THREE.Color => {
 const nodeColor = (index: number) => {
   const hue = hues[index];
   return hue !== undefined && hue >= 0 ? `hsl(${hue}, 85%, 58%)` : 'hsl(220, 10%, 55%)';
+};
+
+// ---------- 实体图谱配色 ----------
+/** 实体类型 → 色相：人物蓝 / 组织绿 / 地点橙 / 概念紫 / 项目粉 / 产品青 / 事件红 / 其他灰蓝 */
+const ENTITY_TYPE_HUES: Record<string, number> = {
+  人物: 210,
+  组织: 130,
+  地点: 32,
+  概念: 278,
+  项目: 335,
+  产品: 190,
+  事件: 0,
+  其他: 220,
+};
+
+/** 实体类型 → 色相（未知类型按名称哈希取色，保证稳定） */
+const entityHueFor = (type: string): number => {
+  const hue = ENTITY_TYPE_HUES[type];
+  if (hue !== undefined) {
+    return hue;
+  }
+  let hash = 0;
+  for (const ch of type) {
+    hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  }
+  return hash % 360;
+};
+
+/** 实体类型 → CSS 颜色（侧栏/图例小圆点） */
+const typeColorCss = (type: string): string => {
+  return `hsl(${entityHueFor(type)}, 80%, 58%)`;
+};
+
+/** 关系文本 → 连线颜色（按关系哈希取色，同一关系颜色一致） */
+const relationColorFor = (label: string): THREE.Color => {
+  let hash = 0;
+  for (const ch of label) {
+    hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  }
+  return new THREE.Color().setHSL((hash % 360) / 360, 0.7, 0.62);
 };
 
 /** 连线相关度 → 颜色（低蓝 → 紫 → 品红 → 橙） */
@@ -359,6 +464,13 @@ const computeHues = () => {
     if (s === undefined || t === undefined) continue;
     degreeByIndex[s] += 1;
     degreeByIndex[t] += 1;
+  }
+  // 实体图谱：按实体类型取色（与关联度无关）；文档图谱：按度数取色
+  if (isEntityMode.value) {
+    for (let i = 0; i < nodes.value.length; i += 1) {
+      hues.push(entityHueFor(nodes.value[i].entityType ?? '其他'));
+    }
+    return;
   }
   const maxDegree = Math.max(1, ...degreeByIndex);
   for (let i = 0; i < nodes.value.length; i += 1) {
@@ -525,18 +637,19 @@ const rebuildEdges = () => {
   const activeEdges: EdgeObj[] = [];
 
   for (const edge of edges.value) {
-    if (edge.weight < minWeight.value) continue;
+    // 文档图谱按关联度下限过滤；实体图谱显示全部关系
+    if (!isEntityMode.value && edge.weight < minWeight.value) continue;
     const s = posById.get(edge.source);
     const t = posById.get(edge.target);
     if (s === undefined || t === undefined) continue;
     const a = positions[s];
     const b = positions[t];
-    const color = edgeColorFor(edge.weight);
+    const color = isEntityMode.value ? relationColorFor(edge.label ?? '') : edgeColorFor(edge.weight);
     const geo = new LineGeometry();
     geo.setPositions([a.x, a.y, a.z, b.x, b.y, b.z]);
     const material = new LineMaterial({
       color,
-      linewidth: lineWidthFor(edge.weight),
+      linewidth: isEntityMode.value ? 2.2 : lineWidthFor(edge.weight),
       transparent: true,
       opacity: 0.75,
       depthWrite: false,
@@ -544,7 +657,17 @@ const rebuildEdges = () => {
     material.resolution.set(width, height);
     const line = new Line2(geo, material);
     scene.add(line);
-    const obj: EdgeObj = { line, geo, material, a: s, b: t, weight: edge.weight, color, active: true };
+    const obj: EdgeObj = {
+      line,
+      geo,
+      material,
+      a: s,
+      b: t,
+      weight: edge.weight,
+      label: edge.label,
+      color,
+      active: true,
+    };
     activeEdges.push(obj);
     edgeObjs.push(obj);
   }
@@ -701,7 +824,9 @@ const buildScene = () => {
   introFactor.length = 0;
   for (let i = 0; i < count; i += 1) {
     const node = nodes.value[i];
-    const size = Math.min(1.6, 0.55 + Math.cbrt(node.chunkCount) * 0.16);
+    const size = isEntityMode.value
+      ? 0.8
+      : Math.min(1.6, 0.55 + Math.cbrt(node.chunkCount) * 0.16);
     sizes.push(size);
     phases.push(Math.random() * Math.PI * 2);
     introFactor.push(0);
@@ -835,7 +960,9 @@ const onPointerMove = (event: PointerEvent) => {
       x: event.clientX - rect.left + 14,
       y: event.clientY - rect.top + 14,
       name: node.name,
-      meta: `分块 ${node.chunkCount} · 关联 ${degreeByIndex[index] ?? 0} 个文档`,
+      meta: isEntityMode.value
+        ? `${node.entityType ?? '其他'} · 来自 ${node.fileName ?? '未知文档'}`
+        : `分块 ${node.chunkCount} · 关联 ${degreeByIndex[index] ?? 0} 个文档`,
     };
     hoverIndex = index;
     edgeHoverObj = null;
@@ -851,7 +978,9 @@ const onPointerMove = (event: PointerEvent) => {
       x: event.clientX - rect.left + 14,
       y: event.clientY - rect.top + 14,
       name: `${nodes.value[edge.a].name} ↔ ${nodes.value[edge.b].name}`,
-      meta: `内容相关度 ${Math.round(edge.weight * 100)}%`,
+      meta: isEntityMode.value
+        ? `关系：${edge.label ?? '未知关系'}`
+        : `内容相关度 ${Math.round(edge.weight * 100)}%`,
     };
     hoverIndex = -1;
     edgeHoverObj = edge;
@@ -1159,14 +1288,38 @@ const disposeScene = () => {
   focusProgress = 1;
 };
 
-const loadGraph = async () => {
+const loadGraph = async (force = false) => {
   loading.value = true;
   try {
-    const data = await statsApi.getGraph();
-    nodes.value = data.nodes;
-    edges.value = data.edges;
+    if (mode.value === 'entity') {
+      if (force || entityData.value.entities.length === 0) {
+        entityData.value = await statsApi.getEntityGraph();
+      }
+      nodes.value = entityData.value.entities.map((e) => ({
+        id: e.id,
+        name: e.name,
+        chunkCount: 0,
+        createdAt: '',
+        entityType: e.entityType,
+        fileName: e.fileName ?? null,
+      }));
+      edges.value = entityData.value.relations.map((r) => ({
+        source: r.source,
+        target: r.target,
+        weight: 1,
+        label: r.relation,
+      }));
+    } else {
+      if (force || docNodes.value.length === 0) {
+        const docData = await statsApi.getGraph();
+        docNodes.value = docData.nodes;
+        docEdges.value = docData.edges;
+      }
+      nodes.value = docNodes.value;
+      edges.value = docEdges.value.map((e) => ({ ...e }));
+    }
     disposeScene();
-    if (data.nodes.length > 0) {
+    if (nodes.value.length > 0) {
       await nextTick();
       buildScene();
     }
@@ -1182,6 +1335,10 @@ watch(autoRotate, (value) => {
     controls.autoRotate = value;
     controls.autoRotateSpeed = 0.7;
   }
+});
+
+watch(mode, () => {
+  loadGraph();
 });
 
 onMounted(() => {
@@ -1342,6 +1499,28 @@ onBeforeUnmount(() => {
   color: rgba(255, 255, 255, 0.4);
   margin-top: 6px;
   max-width: 160px;
+}
+
+.type-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.type-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.type-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .graph-tooltip {

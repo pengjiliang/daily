@@ -131,6 +131,26 @@ export class SettingsService {
   }
 
   /**
+   * 手动触发全量重建索引（不改动任何模型配置）。
+   * 已在重建中（pending/running）则直接返回当前视图，避免重复触发。
+   */
+  async triggerReindex(userId: number): Promise<AiSettingsView> {
+    const row = await this.settingsRepository.findOneBy({ userId });
+    // 用户行可能尚未创建（从未保存过设置）：先建行，否则后续 update 影响 0 行、进度永远写不进去
+    if (!row) {
+      await this.settingsRepository.save(this.settingsRepository.create({ userId }));
+    }
+    const status = (row?.reindexStatus ?? 'idle') as ReindexStatus;
+    if (status === 'pending' || status === 'running') {
+      return this.getSettings(userId);
+    }
+    await this.markReindexPending(userId);
+    // 后台执行，不阻塞请求响应
+    void this.runReindex(userId);
+    return this.getSettings(userId);
+  }
+
+  /**
    * 后台重建索引：遍历用户全部文档，逐个请求 ai-service 以新向量模型重索引，
    * 每完成一个就更新一次进度；全部成功置 done，全部失败置 failed。
    */

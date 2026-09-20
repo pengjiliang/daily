@@ -33,4 +33,9 @@ export const settingsApi = {
   saveSettings(payload: SaveSettingsPayload) {
     return request.put<AiSettingsView>('/settings', payload);
   },
+
+  /** 手动触发全量重建向量索引（不改动模型配置） */
+  reindexAll() {
+    return request.post<AiSettingsView>('/settings/reindex');
+  },
 };

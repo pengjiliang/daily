@@ -6,15 +6,19 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DocumentChunk } from '../entities/document-chunk.entity.js';
 import { AiSettings } from '../entities/ai-settings.entity.js';
+import { GraphEntity } from '../entities/graph-entity.entity.js';
+import { GraphRelation } from '../entities/graph-relation.entity.js';
+import { SemanticCache } from '../entities/semantic-cache.entity.js';
 import { UserSettingsService } from '../settings/user-settings.service.js';
 import { AIController } from './ai.controller.js';
 import { AskService } from './ask.service.js';
 import { DocumentIndexService } from './document-index.service.js';
+import { EntityExtractionService } from './entity-extraction.service.js';
 import { ModelProvider } from './openai-model.provider.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([DocumentChunk, AiSettings])],
+  imports: [TypeOrmModule.forFeature([DocumentChunk, AiSettings, SemanticCache, GraphEntity, GraphRelation])],
   controllers: [AIController],
-  providers: [ModelProvider, UserSettingsService, DocumentIndexService, AskService],
+  providers: [ModelProvider, UserSettingsService, DocumentIndexService, EntityExtractionService, AskService],
 })
 export class AIModule {}

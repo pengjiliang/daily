@@ -114,6 +114,18 @@ export class ChatService {
     });
   }
 
+  /** 设置消息反馈（like/dislike，传 null 取消）：先按会话归属校验，再更新目标消息 */
+  async setMessageFeedback(messageId: number, userId: number, feedback: 'like' | 'dislike' | null): Promise<Message> {
+    const message = await this.messagesRepository.findOneBy({ id: messageId });
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+    // 校验消息归属（存在则属于当前用户；否则按他人会话抛 403）
+    await this.findOwnedConversation(message.conversationId, userId);
+    message.feedback = feedback;
+    return this.messagesRepository.save(message);
+  }
+
   /**
    * 流式发送消息：持久化用户提问后，调用 ai-service 的 SSE 接口并把事件透传给客户端。
    * onSources：检索到的知识库/外部资料；onToken：回答增量片段。
@@ -128,7 +140,7 @@ export class ChatService {
       onToken: (token: string) => void | Promise<void>;
     },
     clientSignal?: AbortSignal,
-  ): Promise<{ answer: string; sources: RetrievedChunk[]; message: Message | null }> {
+  ): Promise<{ answer: string; sources: RetrievedChunk[]; message: Message | null; cached?: boolean }> {
     const conversation = await this.findOwnedConversation(id, userId);
     await this.messagesRepository.save(
       this.messagesRepository.create({
@@ -151,12 +163,14 @@ export class ChatService {
     let answer = '';
     let sources: RetrievedChunk[] = [];
     let message: Message | null = null;
+    let cached = false;
     let clientAborted = false;
 
     try {
       const result = await this.askStream(content, conversation.id, userId, history, callbacks, clientSignal);
       answer = result.answer;
       sources = result.sources;
+      cached = result.cached === true;
     } catch (error) {
       // 客户端主动断开：尽力保存已流式生成的部分回答，不再向上抛
       if (clientSignal?.aborted) {
@@ -181,9 +195,9 @@ export class ChatService {
     }
 
     if (clientAborted) {
-      return { answer, sources, message };
+      return { answer, sources, message, cached };
     }
-    return { answer, sources, message };
+    return { answer, sources, message, cached };
   }
 
   /**
@@ -200,7 +214,7 @@ export class ChatService {
       onToken: (token: string) => void | Promise<void>;
     },
     clientSignal?: AbortSignal,
-  ): Promise<AskAnswer> {
+  ): Promise<AskAnswer & { cached?: boolean }> {
     const aiServiceUrl = this.configService.get<string>('aiService.url', 'http://localhost:3001');
 
     const upstreamController = new AbortController();
@@ -242,6 +256,7 @@ export class ChatService {
 
     let answer = '';
     let sources: RetrievedChunk[] = [];
+    let cached = false;
     let buffer = '';
     const decoder = new TextDecoder();
 
@@ -274,6 +289,7 @@ export class ChatService {
             const data = (frame.data ?? {}) as Partial<AskAnswer>;
             answer = typeof data.answer === 'string' && data.answer ? data.answer : answer;
             sources = Array.isArray(data.sources) ? data.sources : sources;
+            cached = data.cached === true;
           } else if (frame.event === 'error') {
             const message =
               frame.data && typeof frame.data === 'object' && 'message' in frame.data
@@ -294,7 +310,7 @@ export class ChatService {
       clientSignal?.removeEventListener('abort', abortUpstream);
     }
 
-    return { answer, sources };
+    return { answer, sources, cached };
   }
 
   /**

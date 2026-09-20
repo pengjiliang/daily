@@ -360,6 +360,7 @@ onBeforeUnmount(() => {
 
 .settings-footer {
   display: flex;
+  gap: 8px;
   justify-content: flex-end;
   padding-top: 12px;
   margin-top: 8px;

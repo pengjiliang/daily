@@ -30,6 +30,8 @@ export interface HistoryMessage {
 export interface AskResult {
   answer: string;
   sources: RetrievedChunk[];
+  /** 语义缓存命中标记：true 表示本次回答直接复用同类问题的缓存（未重新调用模型） */
+  cached?: boolean;
 }
 
 /** 对话模型协议：OpenAI 兼容（含火山方舟/豆包等网关）或 Anthropic 原生协议 */
@@ -120,4 +122,32 @@ export interface GraphEdge {
 export interface GraphData {
   nodes: GraphNode[];
   edges: GraphEdge[];
+}
+
+/** 实体级知识图谱节点：一个知识实体（人物/组织/概念等），由文档索引后的 LLM 抽取 */
+export interface EntityGraphNode {
+  id: number;
+  /** 实体名（如"张三""研发部"） */
+  name: string;
+  /** 实体类型：人物/组织/地点/概念/项目/产品/事件/其他 */
+  entityType: string;
+  /** 抽取自哪个上传文档（可在文档管理中定位） */
+  uploadFileId: number | null;
+  /** 来源文档名（便于回溯实体出处） */
+  fileName?: string | null;
+}
+
+/** 实体级知识图谱连线：两个实体间的一条具体关系 */
+export interface EntityGraphRelation {
+  id: number;
+  source: number;
+  target: number;
+  /** 关系描述（如"任职于""参与""位于"） */
+  relation: string;
+}
+
+/** 实体级知识图谱载荷 */
+export interface EntityGraphData {
+  entities: EntityGraphNode[];
+  relations: EntityGraphRelation[];
 }

@@ -3,7 +3,7 @@
  */
 import { Controller, Get, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
-import type { GraphData, StatsPayload } from '@ai-knowledge-base/shared';
+import type { EntityGraphData, GraphData, StatsPayload } from '@ai-knowledge-base/shared';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 import { StatsService } from './stats.service.js';
@@ -25,5 +25,11 @@ export class StatsController {
   @Get('graph')
   getGraph(@Req() request: AuthenticatedRequest): Promise<GraphData> {
     return this.statsService.getGraph(request.user.userId);
+  }
+
+  /** GET /stats/graph/entities：当前用户的实体级知识图谱（实体节点 + 关系连线） */
+  @Get('graph/entities')
+  getEntityGraph(@Req() request: AuthenticatedRequest): Promise<EntityGraphData> {
+    return this.statsService.getEntityGraph(request.user.userId);
   }
 }

@@ -6,7 +6,17 @@
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import type { GraphData, GraphEdge, GraphNode, StatsPayload, StatsPopularQuestion, StatsTrendPoint } from '@ai-knowledge-base/shared';
+import type {
+  EntityGraphData,
+  EntityGraphNode,
+  EntityGraphRelation,
+  GraphData,
+  GraphEdge,
+  GraphNode,
+  StatsPayload,
+  StatsPopularQuestion,
+  StatsTrendPoint,
+} from '@ai-knowledge-base/shared';
 
 /** 知识图谱连线阈值：两文档平均向量余弦相似度达到该值才连线 */
 const GRAPH_EDGE_THRESHOLD = 0.5;
@@ -171,6 +181,53 @@ export class StatsService {
   private async scalar<T>(sql: string, params: unknown[]): Promise<T> {
     const rows = (await this.dataSource.query(sql, params)) as [{ [key: string]: T }];
     return rows[0][Object.keys(rows[0])[0]];
+  }
+
+  /**
+   * 实体级知识图谱：graph_entities 为节点、graph_relations 为连线（均按 userId 隔离），
+   * 联查 upload_files 带出来源文档名。表由 ai-service 在索引后写入，若尚未建表则容错返回空。
+   */
+  async getEntityGraph(userId: number): Promise<EntityGraphData> {
+    try {
+      const entityRows = (await this.dataSource.query(
+        `SELECT e.id, e.name, e."entityType", e."uploadFileId", f."originalName" AS "fileName"
+           FROM graph_entities e
+           LEFT JOIN upload_files f ON f.id = e."uploadFileId"
+          WHERE e."userId" = $1
+          ORDER BY e.id
+          LIMIT ${GRAPH_DOC_LIMIT}`,
+        [userId],
+      )) as { id: number; name: string; entityType: string; uploadFileId: number; fileName: string | null }[];
+
+      const relationRows = (await this.dataSource.query(
+        `SELECT r.id, r."sourceEntityId", r."targetEntityId", r.relation
+           FROM graph_relations r
+           JOIN graph_entities e ON e.id = r."sourceEntityId"
+          WHERE e."userId" = $1
+          ORDER BY r.id
+          LIMIT ${GRAPH_DOC_LIMIT}`,
+        [userId],
+      )) as { id: number; sourceEntityId: number; targetEntityId: number; relation: string }[];
+
+      const entities: EntityGraphNode[] = entityRows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        entityType: row.entityType,
+        uploadFileId: row.uploadFileId,
+        fileName: row.fileName ?? null,
+      }));
+      const relations: EntityGraphRelation[] = relationRows.map((row) => ({
+        id: row.id,
+        source: row.sourceEntityId,
+        target: row.targetEntityId,
+        relation: row.relation,
+      }));
+      return { entities, relations };
+    } catch (error) {
+      // 表可能尚未创建（ai-service 首次启动建表时序）：返回空而非报错
+      this.logger.warn(`getEntityGraph failed (tables may not exist yet): ${String(error)}`);
+      return { entities: [], relations: [] };
+    }
   }
 }
 

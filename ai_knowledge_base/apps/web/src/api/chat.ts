@@ -23,6 +23,8 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   sources?: Source[] | null;
+  /** 用户对 AI 回答的反馈：like / dislike，未评价为 null */
+  feedback?: 'like' | 'dislike' | null;
   createdAt: string;
   /** 仅前端使用：AI 思考中占位 */
   loading?: boolean;
@@ -35,6 +37,8 @@ export interface StreamDoneResult {
   answer: string;
   sources: Source[];
   message: Message | null;
+  /** 语义缓存命中：true 表示回答直接复用同类问题缓存（未重新调用模型） */
+  cached?: boolean;
 }
 
 export interface StreamHandlers {
@@ -62,6 +66,11 @@ export const chatApi = {
 
   listMessages(id: number) {
     return request.get<Message[]>(`/chat/conversations/${id}/messages`);
+  },
+
+  /** 设置消息反馈（点赞/点踩/取消）：再次点击同一项即取消 */
+  setMessageFeedback(messageId: number, feedback: 'like' | 'dislike' | null) {
+    return request.patch<Message>(`/chat/messages/${messageId}/feedback`, { feedback });
   },
 
   /**
@@ -158,6 +167,7 @@ export const chatApi = {
             answer,
             sources,
             message: result.message ?? null,
+            cached: result.cached === true,
           };
         } else if (event === 'error') {
           const message =

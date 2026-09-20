@@ -11,6 +11,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DocumentChunk } from '../entities/document-chunk.entity.js';
+import { SemanticCache } from '../entities/semantic-cache.entity.js';
 import { createRagGraph, type GenerateResult, type RagState, type RetrievedChunk } from './langgraph/rag.graph.js';
 import type { AskResult } from '@ai-knowledge-base/shared';
 import { ModelProvider, type ChatMessage } from './openai-model.provider.js';
@@ -51,6 +52,10 @@ export const EXTERNAL_WITH_KB = 3;
 export const EXTERNAL_WITHOUT_KB = 5;
 /** 外部资料与知识库片段的 bigram 覆盖率达到该阈值时，视为对知识库内容的复述，予以剔除 */
 export const EXTERNAL_DEDUP_OVERLAP = 0.4;
+/** 语义缓存命中阈值：问题向量余弦相似度达到该值即视为同一类问题，直接复用上次回答 */
+export const CACHE_HIT_THRESHOLD = 0.95;
+/** 每用户缓存条数上限：超出时删除最旧缓存 */
+export const CACHE_LIMIT = 200;
 
 export interface AskRequest {
   question: string;
@@ -105,6 +110,8 @@ export class AskService {
   constructor(
     @InjectRepository(DocumentChunk)
     private readonly documentChunksRepository: Repository<DocumentChunk>,
+    @InjectRepository(SemanticCache)
+    private readonly semanticCacheRepository: Repository<SemanticCache>,
     private readonly models: ModelProvider,
     private readonly userSettings: UserSettingsService,
   ) {}
@@ -140,6 +147,26 @@ export class AskService {
     },
     signal?: AbortSignal,
   ): Promise<AskResult> {
+    // ① 语义缓存：同类问题直接复用上次结果，跳过检索与模型调用（仍按 SSE 协议输出，前端可正常收尾）
+    const cacheHit = await this.findCached(request);
+    if (cacheHit) {
+      const { cache, similarity } = cacheHit;
+      this.logger.log(
+        `Semantic cache hit (${(similarity * 100).toFixed(1)}%) for userId=${request.userId}: ${request.question}`,
+      );
+      // 命中次数 +1（仅统计，失败不阻塞）
+      await this.semanticCacheRepository
+        .increment({ id: cache.id }, 'hitCount', 1)
+        .catch((error) => this.logger.warn(`Failed to bump cache hitCount: ${String(error)}`));
+      const cachedSources = Array.isArray(cache.sources) ? cache.sources : [];
+      await callbacks.onSources(cachedSources);
+      if (cache.answer) {
+        // 整段答案作为单个 token 输出，保持流式协议一致
+        await callbacks.onToken(cache.answer);
+      }
+      return { answer: cache.answer || '', sources: cachedSources, cached: true };
+    }
+
     const kbSources = await this.retrieve(request.question, request.userId);
     await callbacks.onSources(kbSources);
 
@@ -156,7 +183,79 @@ export class AskService {
 
     const finalAnswer = answer.trim() || '暂时无法生成回答。';
     const sources = [...kbSources, ...externalSources];
+    // 生成完成后写入语义缓存（失败仅告警，不影响本次回答）
+    await this.saveCache(request, finalAnswer, sources);
     return { answer: finalAnswer, sources };
+  }
+
+  /** 语义缓存查询：embed 问题向量，与该用户近期缓存按余弦相似度比较，返回最优命中 */
+  private async findCached(
+    request: AskRequest,
+  ): Promise<{ cache: SemanticCache; similarity: number } | null> {
+    try {
+      const embeddingsModel = await this.models.getEmbeddings(request.userId);
+      const embedding = await embeddingsModel.embedQuery(request.question);
+      const rows = (await this.semanticCacheRepository.query(
+        `SELECT id, question, answer, sources, "hitCount", "createdAt", "updatedAt",
+                ("questionEmbedding"::vector <=> $1::vector) AS distance
+           FROM semantic_cache
+          WHERE "userId" = $2
+          ORDER BY "questionEmbedding"::vector <=> $1::vector
+          LIMIT 1`,
+        [`[${embedding.join(',')}]`, request.userId],
+      )) as Array<{ id: number; question: string; answer: string; sources: RetrievedChunk[]; distance: string }>;
+      if (rows.length === 0) {
+        return null;
+      }
+      const row = rows[0];
+      const similarity = 1 - Number(row.distance);
+      if (similarity < CACHE_HIT_THRESHOLD) {
+        return null;
+      }
+      const cache = this.semanticCacheRepository.create({
+        id: row.id,
+        question: row.question,
+        answer: row.answer,
+        sources: row.sources ?? [],
+      });
+      return { cache, similarity };
+    } catch (error) {
+      this.logger.warn(`Failed to query semantic cache: ${String(error)}`);
+      return null;
+    }
+  }
+
+  /** 写入语义缓存：新答案入库；每用户条数超限时删除最旧缓存，保持缓存规模可控 */
+  private async saveCache(request: AskRequest, answer: string, sources: RetrievedChunk[]): Promise<void> {
+    if (!answer.trim()) {
+      return;
+    }
+    try {
+      const embeddingsModel = await this.models.getEmbeddings(request.userId);
+      const embedding = await embeddingsModel.embedQuery(request.question);
+      const count = await this.semanticCacheRepository.count({ where: { userId: request.userId } });
+      if (count >= CACHE_LIMIT) {
+        const oldest = await this.semanticCacheRepository.find({
+          where: { userId: request.userId },
+          order: { createdAt: 'ASC' },
+          take: count - CACHE_LIMIT + 1,
+        });
+        if (oldest.length > 0) {
+          await this.semanticCacheRepository.remove(oldest);
+        }
+      }
+      await this.semanticCacheRepository.save(
+        this.semanticCacheRepository.create({
+          userId: request.userId,
+          question: request.question,
+          questionEmbedding: `[${embedding.join(',')}]`,
+          answer,
+          sources,
+        }),
+      );
+    } catch (error) {
+      this.logger.warn(`Failed to save semantic cache: ${String(error)}`);
+    }
   }
 
   /** 逐 token 调用模型，累积并回调每个增量片段（兼容 content 为字符串或片段数组） */

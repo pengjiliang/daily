@@ -11,7 +11,10 @@ import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { Repository } from 'typeorm';
 import { DocumentChunk } from '../entities/document-chunk.entity.js';
+import { GraphEntity } from '../entities/graph-entity.entity.js';
+import { GraphRelation } from '../entities/graph-relation.entity.js';
 import { UserSettingsService } from '../settings/user-settings.service.js';
+import { EntityExtractionService } from './entity-extraction.service.js';
 import { ModelProvider } from './openai-model.provider.js';
 import * as iconv from 'iconv-lite';
 import * as XLSX from 'xlsx';
@@ -50,8 +53,13 @@ export class DocumentIndexService {
   constructor(
     @InjectRepository(DocumentChunk)
     private readonly documentChunksRepository: Repository<DocumentChunk>,
+    @InjectRepository(GraphEntity)
+    private readonly graphEntityRepository: Repository<GraphEntity>,
+    @InjectRepository(GraphRelation)
+    private readonly graphRelationRepository: Repository<GraphRelation>,
     private readonly models: ModelProvider,
     private readonly userSettings: UserSettingsService,
+    private readonly entityExtraction: EntityExtractionService,
   ) {}
 
   /** 索引主流程：抽取文本 → 文件名前置一次（支持按文件名检索）→ 切片 → 批量 Embedding → 先删后插覆盖入库 */
@@ -95,6 +103,13 @@ export class DocumentIndexService {
       ),
     );
 
+    // 实体级知识图谱：后台抽取「实体—关系—实体」三元组（不阻塞上传/重建响应，失败仅告警）
+    void this.entityExtraction.rebuildForDocument({
+      uploadFileId: request.uploadFileId,
+      userId: request.uploaderId,
+      text,
+    });
+
     this.logger.log(`Indexed ${chunks.length} chunks for upload file ${request.uploadFileId}`);
     return { uploadFileId: request.uploadFileId, chunks: chunks.length };
   }
@@ -102,6 +117,9 @@ export class DocumentIndexService {
   /** 删除某上传文件的全部向量分块（文档删除时由 server 调用，避免孤儿分块残留被检索命中） */
   async deleteChunksByUploadFileId(uploadFileId: number): Promise<{ uploadFileId: number; deleted: number }> {
     const result = await this.documentChunksRepository.delete({ uploadFileId });
+    // 同步清理该文档的实体图谱数据，避免删除文档后图谱残留孤儿节点/连线
+    await this.graphEntityRepository.delete({ uploadFileId });
+    await this.graphRelationRepository.delete({ uploadFileId });
     this.logger.log(`Deleted ${result.affected ?? 0} chunks for upload file ${uploadFileId}`);
     return { uploadFileId, deleted: result.affected ?? 0 };
   }

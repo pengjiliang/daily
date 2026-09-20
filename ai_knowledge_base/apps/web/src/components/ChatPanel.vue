@@ -44,8 +44,13 @@
         </div>
       </div>
       <el-scrollbar ref="messageScrollRef">
-        <div class="message-list">
-          <div v-for="msg in chatStore.messages" :key="msg.id" :class="['message-item', msg.role]">
+        <div class="message-list" @click="onMessageClick">
+          <div
+            v-for="msg in chatStore.messages"
+            :key="msg.id"
+            :data-msg-id="msg.id"
+            :class="['message-item', msg.role]"
+          >
             <el-avatar
               v-if="msg.role === 'user' && fullAvatarUrl"
               class="message-avatar"
@@ -62,7 +67,7 @@
                 </div>
               </template>
               <template v-else>
-                <div v-html="formatMessageContent(msg.content)"></div>
+                <div v-html="formatMessageContent(msg.content, msg)"></div>
                 <el-collapse
                   v-if="msg.role === 'assistant' && hasAnySources(msg)"
                   v-model="activeSourceCollapse"
@@ -72,13 +77,19 @@
                     <div
                       v-for="(source, index) in knowledgeBaseSources(msg)"
                       :key="'kb-' + index"
+                      :id="'source-item-' + msg.id + '-' + (index + 1)"
                       class="source-item kb"
                     >
                       <div class="source-meta">
-                        <el-tag size="small" type="primary" effect="plain">知识库</el-tag>
-                        <span class="source-score"
-                          >相关度 {{ formatScore(source.similarity ?? source.score) }}%</span
+                        <!-- 来源编号徽标：与正文引用角标一一对应，点击回到正文对应引用处 -->
+                        <span
+                          class="source-cite-tag"
+                          :title="'来源 ' + (index + 1) + '（点击定位到正文引用）'"
+                          @click="highlightCitation(msg, index + 1)"
+                          >[{{ index + 1 }}]</span
                         >
+                        <el-tag size="small" type="primary" effect="plain">知识库</el-tag>
+                        <span class="source-score">相关度 {{ formatScore(source.similarity ?? source.score) }}%</span>
                         <span v-if="source.similarity != null" class="source-raw-score">
                           原始 {{ formatScore(source.score) }}%
                         </span>
@@ -117,9 +128,7 @@
                     >
                       <div class="source-meta">
                         <el-tag size="small" type="warning" effect="plain">外部资料</el-tag>
-                        <span class="source-score"
-                          >相关度 {{ formatScore(source.similarity ?? source.score) }}%</span
-                        >
+                        <span class="source-score">相关度 {{ formatScore(source.similarity ?? source.score) }}%</span>
                       </div>
                       <a
                         class="source-link"
@@ -139,6 +148,29 @@
                     </div>
                   </el-collapse-item>
                 </el-collapse>
+                <!-- 消息反馈：点赞/点踩，再次点击同一项取消（仅 AI 回答显示） -->
+                <div v-if="msg.role === 'assistant'" class="message-feedback">
+                  <el-tooltip :content="msg.feedback === 'like' ? '取消赞同' : '回答有帮助'" placement="top">
+                    <el-button
+                      text
+                      size="small"
+                      :class="['feedback-btn', { active: msg.feedback === 'like' }]"
+                      @click="setFeedback(msg, 'like')"
+                    >
+                      👍
+                    </el-button>
+                  </el-tooltip>
+                  <el-tooltip :content="msg.feedback === 'dislike' ? '取消反对' : '回答无帮助'" placement="top">
+                    <el-button
+                      text
+                      size="small"
+                      :class="['feedback-btn', { active: msg.feedback === 'dislike' }]"
+                      @click="setFeedback(msg, 'dislike')"
+                    >
+                      👎
+                    </el-button>
+                  </el-tooltip>
+                </div>
               </template>
             </div>
           </div>
@@ -165,14 +197,7 @@
             title="停止生成"
             @click="stopStreaming"
           />
-          <el-button
-            v-else
-            type="primary"
-            circle
-            :icon="Promotion"
-            class="send-btn"
-            @click="sendQuestion"
-          />
+          <el-button v-else type="primary" circle :icon="Promotion" class="send-btn" @click="sendQuestion" />
         </div>
       </div>
     </div>
@@ -309,7 +334,7 @@ const sendQuestion = async () => {
   const isCurrentView = () => chatStore.currentConversation?.id === conversationId;
 
   try {
-    await chatApi.sendMessage(
+    const result = await chatApi.sendMessage(
       conversationId,
       userQuestion,
       {
@@ -331,6 +356,11 @@ const sendQuestion = async () => {
       },
       controller.signal,
     );
+
+    // 语义缓存命中：直接提示"已从缓存返回"（不重新调用模型）
+    if (result.cached) {
+      ElMessage.info('已从缓存返回同类问题的回答');
+    }
 
     // 任务完成：若仍查看该会话，重新拉取服务端最终消息（含完整回答与来源）；
     // 若已切走，切回时 loadMessages 自然拿到完整回答
@@ -419,30 +449,44 @@ const downloadConversation = () => {
 const downloadSourceFile = async (source: any) => {
   if (!source?.uploadFileId) return;
   try {
-    await uploadApi.downloadDocument(
-      source.uploadFileId,
-      sourceFileName(source) || `document-${source.uploadFileId}`,
-    );
+    await uploadApi.downloadDocument(source.uploadFileId, sourceFileName(source) || `document-${source.uploadFileId}`);
   } catch (error) {
     console.error(error);
   }
 };
 
+/** 设置消息反馈：点赞/点踩，再次点击同一项取消（乐观更新，失败回滚） */
+const setFeedback = async (msg: any, feedback: 'like' | 'dislike') => {
+  if (msg.loading || typeof msg.id !== 'number') {
+    return;
+  }
+  const next = msg.feedback === feedback ? null : feedback;
+  const previous = msg.feedback;
+  msg.feedback = next;
+  try {
+    const updated = await chatApi.setMessageFeedback(msg.id, next);
+    msg.feedback = updated.feedback ?? null;
+  } catch (error) {
+    console.error(error);
+    msg.feedback = previous;
+    ElMessage.error('反馈保存失败');
+  }
+};
+
 // 来源处理工具函数
-// 与 ai-service 的 MIN_SCORE 保持一致：低于该相关度的知识库片段不在页面展示
-const KB_MIN_SCORE = 0.3;
+// 注意：前端保持 ai-service 下发 kbSources 的原始顺序——该顺序即模型输出
+// [知识库1]、[知识库2]… 引用的编号顺序（重排与相关度校准已在后端完成），
+// 前端不再按相似度重排，确保角标编号 ↔ 来源项一一对应。
 
 /** 是否为模型外部资料：无 uploadFileId 即不是知识库片段（兼容旧数据） */
 const isExternalSource = (source: any) => {
   return !source?.uploadFileId;
 };
 
-/** 取一条消息中可展示的知识库来源：非外部且相关度达标，按相关度从大到小排序（similarity 优先，缺省用 score） */
+/** 取一条消息中的知识库来源（保持后端编号顺序，与回答中的 [知识库N] 引用对齐） */
 const knowledgeBaseSources = (msg: any) => {
   const list = Array.isArray(msg?.sources) ? msg.sources : [];
-  return list
-    .filter((source: any) => !isExternalSource(source) && (source?.score ?? 1) >= KB_MIN_SCORE)
-    .sort((a: any, b: any) => (b.similarity ?? b.score) - (a.similarity ?? a.score));
+  return list.filter((source: any) => !isExternalSource(source));
 };
 
 /** 取一条消息中的外部资料列表 */
@@ -528,9 +572,61 @@ const formatScore = (score: number) => {
   return (score * 100).toFixed(1);
 };
 
-/** 消息正文渲染：换行转 <br>（配合 v-html，正文为模型输出的纯文本） */
-const formatMessageContent = (content: string) => {
-  return content.replace(/\n/g, '<br>');
+/**
+ * 消息正文渲染：HTML 转义 → 换行转 <br> → [知识库N] 引用标记渲染为可点击角标。
+ * 角标携带 data-cite（模型编号），点击由 onMessageClick 委托定位到对应来源项。
+ */
+const formatMessageContent = (content: string, msg: any) => {
+  const kbCount = knowledgeBaseSources(msg).length;
+  let html = escapeHtml(content);
+  html = html.replace(/\[知识库(\d+)\]/g, (match, n: string) => {
+    const index = Number.parseInt(n, 10);
+    // 仅当编号落在该消息可展示的来源范围内才渲染为角标，否则保留原文（如 [知识库] 无编号）
+    if (index >= 1 && index <= kbCount) {
+      return `<span class="cite-badge" id="cite-badge-${msg.id}-${index}" data-cite="${index}" title="查看对应来源">[${index}]</span>`;
+    }
+    return match;
+  });
+  return html.replace(/\n/g, '<br>');
+};
+
+/** 消息区点击委托：命中引用角标时，定位到对应消息中的来源项并闪烁高亮 */
+const onMessageClick = (event: MouseEvent) => {
+  const target = event.target as HTMLElement;
+  const badge = target.closest('.cite-badge') as HTMLElement | null;
+  if (!badge) return;
+  const item = target.closest('.message-item') as HTMLElement | null;
+  if (!item) return;
+  const msgId = Number(item.dataset.msgId);
+  const msg = chatStore.messages.find((m) => m.id === msgId);
+  const cite = Number(badge.dataset.cite);
+  if (!msg || !Number.isInteger(cite)) return;
+  scrollToCitation(msg, cite);
+};
+
+/** 定位到消息中第 cite 号来源项：展开内部知识库折叠面板、滚动居中并闪烁高亮 */
+const scrollToCitation = (msg: any, cite: number) => {
+  const count = knowledgeBaseSources(msg).length;
+  if (cite < 1 || cite > count) return;
+  if (!activeSourceCollapse.value.includes('kb')) {
+    activeSourceCollapse.value = [...activeSourceCollapse.value, 'kb'];
+  }
+  nextTick(() => {
+    const el = document.getElementById(`source-item-${msg.id}-${cite}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('cite-flash');
+    setTimeout(() => el.classList.remove('cite-flash'), 2000);
+  });
+};
+
+/** 点击来源编号徽标：定位到正文中对应引用角标并闪烁高亮（与角标→来源形成双向联动） */
+const highlightCitation = (msg: any, cite: number) => {
+  const el = document.getElementById(`cite-badge-${msg.id}-${cite}`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('cite-badge-flash');
+  setTimeout(() => el.classList.remove('cite-badge-flash'), 2000);
 };
 </script>
 
@@ -628,6 +724,31 @@ const formatMessageContent = (content: string) => {
   margin-top: 12px;
   border-top: 1px solid var(--kb-border);
   padding-top: 12px;
+}
+
+/* 消息反馈按钮：默认半透明，选中时高亮主色 */
+.message-feedback {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 8px;
+}
+
+.message-feedback .feedback-btn {
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+  opacity: 0.45;
+}
+
+.message-feedback .feedback-btn:hover {
+  opacity: 1;
+}
+
+.message-feedback .feedback-btn.active {
+  opacity: 1;
+  background-color: var(--el-color-primary-light-9);
 }
 
 .source-item {
@@ -733,6 +854,51 @@ const formatMessageContent = (content: string) => {
   padding-left: 8px;
 }
 
+/* 来源项编号徽标：与正文引用角标一一对应，浅色样式区分主次，点击可回到正文引用处 */
+.source-cite-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background-color: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  border: 1px solid var(--el-color-primary-light-5);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 0.15s,
+    color 0.15s,
+    transform 0.15s;
+}
+
+.source-cite-tag:hover {
+  background-color: var(--el-color-primary);
+  color: #fff;
+  transform: scale(1.1);
+}
+
+/* 引用定位高亮：来源项闪烁提示 */
+.source-item.cite-flash {
+  animation: cite-flash 0.6s ease 3;
+  border-color: var(--el-color-primary);
+}
+
+@keyframes cite-flash {
+  0%,
+  100% {
+    background-color: inherit;
+  }
+  50% {
+    background-color: var(--el-color-primary-light-8);
+  }
+}
+
 .input-area {
   border-top: 1px solid var(--kb-border);
   padding: 12px 16px;
@@ -788,5 +954,54 @@ const formatMessageContent = (content: string) => {
   justify-content: center;
   color: var(--kb-text-secondary);
   font-size: 14px;
+}
+</style>
+
+<style>
+/* 回答正文引用角标 [N]：做成"链接式可点击"——主色数字 + 下划线 + 虚线描边 + 手型光标，
+   一眼就能看出可以点击（点击定位到对应来源）；悬停填充主色并放大进一步强化反馈 */
+.cite-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  margin: 0 3px;
+  border-radius: 10px;
+  background-color: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  border: 1px dashed var(--el-color-primary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  vertical-align: baseline;
+  transition:
+    background-color 0.15s,
+    color 0.15s,
+    transform 0.15s,
+    box-shadow 0.15s;
+}
+
+.cite-badge:hover {
+  background-color: var(--el-color-primary);
+  color: #fff;
+  text-decoration: none;
+  transform: scale(1.12);
+  box-shadow: 0 3px 8px rgba(64, 158, 255, 0.45);
+}
+
+.cite-badge:active {
+  transform: scale(0.95);
+}
+
+/* 正文引用角标闪烁提示（点击来源编号徽标触发） */
+.cite-badge.cite-badge-flash {
+  animation: cite-flash 0.6s ease 3;
+  outline: 2px solid var(--el-color-warning);
+  outline-offset: 1px;
 }
 </style>

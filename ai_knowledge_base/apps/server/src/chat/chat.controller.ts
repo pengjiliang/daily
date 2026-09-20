@@ -68,6 +68,20 @@ export class ChatController {
     return this.chatService.listMessages(id, request.user.userId);
   }
 
+  /** PATCH /chat/messages/:id/feedback：设置消息反馈（like/dislike，null 取消），校验消息归属 */
+  @Patch('messages/:id/feedback')
+  async setMessageFeedback(
+    @Req() request: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { feedback?: 'like' | 'dislike' | null },
+  ): Promise<Message> {
+    const feedback = body.feedback ?? null;
+    if (feedback !== null && feedback !== 'like' && feedback !== 'dislike') {
+      throw new BadRequestException('无效的反馈类型');
+    }
+    return this.chatService.setMessageFeedback(id, request.user.userId, feedback);
+  }
+
   /**
    * POST /chat/conversations/:id/messages：发送消息，SSE 流式返回。
    * 事件协议：sources（来源列表）→ token（逐段答案，多次）→ done（最终结果）；异常发 error。

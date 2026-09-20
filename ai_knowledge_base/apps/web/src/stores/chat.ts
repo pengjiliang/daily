@@ -6,7 +6,7 @@
  */
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { chatApi } from '@/api/chat';
 import { uploadApi } from '@/api/upload';
 import type { Conversation, Message } from '@/api/chat';
@@ -311,6 +311,34 @@ export const useChatStore = defineStore('chat', () => {
     }
   };
 
+  /** 批量删除指定会话（并发），并清理可能指向已删会话的当前视图 */
+  const deleteBulkConversations = async (ids: number[]) => {
+    if (ids.length === 0) return;
+    let success = 0;
+    let failed = 0;
+    await Promise.all(
+      ids.map(async (id) => {
+        try {
+          await chatApi.deleteConversation(id);
+          success += 1;
+        } catch (error) {
+          console.error(`删除会话失败: ${id}`, error);
+          failed += 1;
+        }
+      }),
+    );
+    conversations.value = conversations.value.filter((c) => !ids.includes(c.id));
+    if (currentConversation.value && ids.includes(currentConversation.value.id)) {
+      currentConversation.value = null;
+      messages.value = [];
+    }
+    if (failed > 0) {
+      ElMessage.error(`会话删除完成：成功 ${success} 个，失败 ${failed} 个`);
+    } else {
+      ElMessage.success(`已删除 ${success} 个会话`);
+    }
+  };
+
   // ---- 重命名弹窗（通用）：文档/会话共用 ----
 
   const openRenameDialog = (title: string, initialValue: string, callback: () => void) => {
@@ -386,6 +414,21 @@ export const useChatStore = defineStore('chat', () => {
 
   /** 手动上传文档（:auto-upload 走自定义请求），成功后刷新列表（索引在服务端异步进行） */
   const handleUpload = async (options: { file: File }) => {
+    // 同名查重：单文件（无文件夹）同名视为重复，确认后仍可上传
+    const isDuplicate = documents.value.some(
+      (doc) => !doc.folderName && doc.originalName === options.file.name,
+    );
+    if (isDuplicate) {
+      try {
+        await ElMessageBox.confirm(
+          `知识库中已存在同名文件「${options.file.name}」。继续上传将产生重复文件，是否仍要上传？`,
+          '检测到重名',
+          { confirmButtonText: '仍要上传', cancelButtonText: '取消', type: 'warning' },
+        );
+      } catch {
+        return; // 用户取消，不上传
+      }
+    }
     try {
       await uploadApi.uploadDocument(options.file);
       ElMessage.success('上传成功，正在索引文档');
@@ -429,7 +472,20 @@ export const useChatStore = defineStore('chat', () => {
   };
 
   /**
-   * 上传文件夹内所有文件：过滤白名单扩展名 + 10MB 上限，
+   * 同名查重：找出与知识库现有文档"文件夹 + 文件名"完全一致的上传项
+   * （同一文件名在不同文件夹不算重复，folderName 为空表示根目录单文件）。
+   */
+  const findDuplicateUploads = (items: { file: File; folderName: string }[]) => {
+    const existingKeys = new Set(
+      documents.value.map((doc) => `${doc.folderName ?? ''}|${doc.originalName}`),
+    );
+    return items.filter(({ file, folderName }) =>
+      existingKeys.has(`${folderName ?? ''}|${file.name}`),
+    );
+  };
+
+  /**
+   * 上传文件夹内所有文件：过滤白名单扩展名 + 10MB 上限，并对已存在的同名文件做查重（确认后跳过），
    * 以独立 folderName 字段（含文件夹名与子路径）逐个复用单文件上传接口
    * （并发 FOLDER_UPLOAD_CONCURRENCY），结束后汇总提示并刷新文档列表（索引在服务端异步进行）。
    */
@@ -443,10 +499,29 @@ export const useChatStore = defineStore('chat', () => {
       return;
     }
 
+    // 同名查重：命中与现有文档完全一致的项，让用户选择跳过或取消
+    const duplicates = findDuplicateUploads(valid);
+    let toUpload = valid;
+    if (duplicates.length > 0) {
+      try {
+        await ElMessageBox.confirm(
+          `知识库中已存在 ${duplicates.length} 个同名文件（所在文件夹与文件名均相同）。是否跳过这些重复文件，仅上传其余文件？`,
+          '检测到重名',
+          { confirmButtonText: '跳过重复', cancelButtonText: '取消', type: 'warning' },
+        );
+        const dupKeys = new Set(
+          duplicates.map((d) => `${d.folderName ?? ''}|${d.file.name}`),
+        );
+        toUpload = valid.filter((item) => !dupKeys.has(`${item.folderName ?? ''}|${item.file.name}`));
+      } catch {
+        return; // 用户取消整个上传
+      }
+    }
+
     uploadingFolder.value = true;
     let success = 0;
     let failed = 0;
-    const queue = [...valid];
+    const queue = [...toUpload];
     const worker = async () => {
       while (queue.length > 0) {
         const { file, folderName } = queue.shift()!;
@@ -459,7 +534,7 @@ export const useChatStore = defineStore('chat', () => {
         }
       }
     };
-    await Promise.all(Array.from({ length: Math.min(FOLDER_UPLOAD_CONCURRENCY, valid.length) }, () => worker()));
+    await Promise.all(Array.from({ length: Math.min(FOLDER_UPLOAD_CONCURRENCY, toUpload.length) }, () => worker()));
     uploadingFolder.value = false;
     loadDocuments();
     ElMessage.success(`文件夹上传完成：成功 ${success} 个，跳过 ${skipped} 个，失败 ${failed} 个`);
@@ -645,6 +720,7 @@ export const useChatStore = defineStore('chat', () => {
     confirmDeleteConversation,
     deleteConversation,
     confirmDeleteAllConversations,
+    deleteBulkConversations,
     confirmDelete,
     // 重命名
     openRenameDocumentDialog,

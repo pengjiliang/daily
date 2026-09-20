@@ -13,6 +13,9 @@ import { AIModule } from './ai/ai.module.js';
 import configuration from './config/configuration.js';
 import { AiSettings } from './entities/ai-settings.entity.js';
 import { DocumentChunk } from './entities/document-chunk.entity.js';
+import { GraphEntity } from './entities/graph-entity.entity.js';
+import { GraphRelation } from './entities/graph-relation.entity.js';
+import { SemanticCache } from './entities/semantic-cache.entity.js';
 import { DatabaseInitializationService } from './services/database-initialization.service.js';
 
 @Module({
@@ -33,7 +36,7 @@ import { DatabaseInitializationService } from './services/database-initializatio
         username: configService.getOrThrow<string>('database.username'),
         password: configService.getOrThrow<string>('database.password'),
         database: configService.getOrThrow<string>('database.name'),
-        entities: [DocumentChunk, AiSettings],
+        entities: [DocumentChunk, AiSettings, SemanticCache, GraphEntity, GraphRelation],
         synchronize: false, // 不在此处自动同步，改由 DatabaseInitializationService 控制
       }),
     }),

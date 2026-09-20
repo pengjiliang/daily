@@ -27,6 +27,10 @@ export class Message {
   @Column({ type: 'jsonb', nullable: true })
   sources: RetrievedChunk[] | null;
 
+  /** 用户对 AI 回答的反馈：like（点赞）/ dislike（点踩），未评价为 null */
+  @Column({ type: 'varchar', nullable: true })
+  feedback: 'like' | 'dislike' | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }

@@ -38,16 +38,27 @@
                     >
                   </div>
 
-                  <!-- 会话区标题 + 一键删除全部会话 -->
+                  <!-- 会话搜索：按主题关键字过滤（所见即所得） -->
+                  <div class="conv-search-wrapper">
+                    <el-input
+                      v-model="convSearch"
+                      size="small"
+                      clearable
+                      :prefix-icon="Search"
+                      placeholder="搜索会话（主题）"
+                    />
+                  </div>
+
+                  <!-- 会话区标题 + 一键删除（作用于当前筛选结果） -->
                   <div class="conv-section-header">
-                    <span>会话列表（{{ chatStore.conversations.length }}）</span>
+                    <span>会话列表（{{ filteredConversations.length }}）</span>
                     <el-button
                       :icon="Delete"
                       text
                       size="small"
                       class="bulk-delete-btn"
-                      :disabled="chatStore.conversations.length === 0"
-                      @click="chatStore.confirmDeleteAllConversations"
+                      :disabled="filteredConversations.length === 0"
+                      @click="confirmDeleteFilteredConversations"
                     >
                       一键删除
                     </el-button>
@@ -55,7 +66,7 @@
 
                   <el-scrollbar>
                     <div
-                      v-for="conv in chatStore.conversations"
+                      v-for="conv in filteredConversations"
                       :key="conv.id"
                       :class="['conversation-item-sidebar', { active: chatStore.currentConversation?.id === conv.id }]"
                       @click="chatStore.selectConversation(conv)"
@@ -88,7 +99,7 @@
                         </el-tooltip>
                       </div>
                     </div>
-                    <div v-if="chatStore.conversations.length === 0" class="section-empty">暂无会话</div>
+                    <div v-if="filteredConversations.length === 0" class="section-empty">暂无会话</div>
                   </el-scrollbar>
                 </div>
               </el-collapse-transition>
@@ -149,6 +160,16 @@
                   <!-- 我的文档：分"文件夹列表"和"文件列表"两个区域；文件夹点击内联展开内部文件 -->
                   <div class="file-list-section">
                     <div class="section-title">文档列表</div>
+                    <!-- 文档搜索：按文件名/文件夹名过滤（所见即所得，影响分组与删除范围） -->
+                    <div class="doc-search-wrapper">
+                      <el-input
+                        v-model="docSearch"
+                        size="small"
+                        clearable
+                        :prefix-icon="Search"
+                        placeholder="搜索文件 / 文件夹"
+                      />
+                    </div>
                     <div v-loading="chatStore.loadingDocuments" class="document-list" element-loading-text="加载中...">
                       <!-- 文件夹列表区：区级一键删除 + 每个文件夹行可展开/删除 -->
                       <div class="sub-section-title">
@@ -304,19 +325,11 @@
         </div>
         <el-collapse-transition>
           <div v-show="uiStore.expandedMenu === 'data'" class="menu-body">
-            <div
-              class="sub-menu plain"
-              :class="{ active: isSubActive('stats') }"
-              @click="openView('stats', 'data')"
-            >
+            <div class="sub-menu plain" :class="{ active: isSubActive('stats') }" @click="openView('stats', 'data')">
               <el-icon class="sub-icon"><TrendCharts /></el-icon>
               <span class="sub-label">使用统计</span>
             </div>
-            <div
-              class="sub-menu plain"
-              :class="{ active: isSubActive('graph') }"
-              @click="openView('graph', 'data')"
-            >
+            <div class="sub-menu plain" :class="{ active: isSubActive('graph') }" @click="openView('graph', 'data')">
               <el-icon class="sub-icon"><Share /></el-icon>
               <span class="sub-label">知识图谱</span>
             </div>
@@ -351,7 +364,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
   ArrowDown,
   ChatDotRound,
@@ -363,6 +376,7 @@ import {
   Operation,
   Plus,
   QuestionFilled,
+  Search,
   Setting,
   Share,
   TrendCharts,
@@ -434,13 +448,38 @@ const switchAiTab = (tab: 'documents' | 'conversations') => {
   }
 };
 
+// ---- 搜索过滤（所见即所得：列表展示、区级一键删除均作用于过滤结果） ----
+
+/** 文档搜索关键字：匹配文件名或所属文件夹路径 */
+const docSearch = ref('');
+/** 会话搜索关键字：匹配会话主题 */
+const convSearch = ref('');
+
+/** 按文件名/文件夹名过滤后的文档列表（空关键字返回全部） */
+const filteredDocuments = computed(() => {
+  const q = docSearch.value.trim().toLowerCase();
+  if (!q) return chatStore.documents;
+  return chatStore.documents.filter((doc) => {
+    const name = (doc.originalName || '').toLowerCase();
+    const folder = (doc.folderName || '').toLowerCase();
+    return name.includes(q) || folder.includes(q);
+  });
+});
+
+/** 按主题过滤后的会话列表（空关键字返回全部） */
+const filteredConversations = computed(() => {
+  const q = convSearch.value.trim().toLowerCase();
+  if (!q) return chatStore.conversations;
+  return chatStore.conversations.filter((conv) => (conv.title || '').toLowerCase().includes(q));
+});
+
 /** 文件列表区：folderName 为空（单文件上传） */
-const rootFiles = computed(() => chatStore.documents.filter((doc) => !doc.folderName));
+const rootFiles = computed(() => filteredDocuments.value.filter((doc) => !doc.folderName));
 
 /** 文件夹列表区：folderName 非空，按首段文件夹名分组（组内含该文件夹的所有文件） */
 const folderGroups = computed(() => {
   const map = new Map<string, UploadDocument[]>();
-  chatStore.documents.forEach((doc) => {
+  filteredDocuments.value.forEach((doc) => {
     if (!doc.folderName) return;
     const folder = doc.folderName.split('/')[0];
     const list = map.get(folder) ?? [];
@@ -448,6 +487,24 @@ const folderGroups = computed(() => {
     map.set(folder, list);
   });
   return Array.from(map.entries()).map(([name, files]) => ({ name, files }));
+});
+
+/** 文档搜索时自动展开命中的顶层文件夹（仅自动展开，不自动收起；清空搜索后保留用户手动展开状态） */
+watch(docSearch, () => {
+  if (!docSearch.value.trim()) {
+    return;
+  }
+  const foldersToExpand = new Set<string>();
+  filteredDocuments.value.forEach((doc) => {
+    if (!doc.folderName) return;
+    foldersToExpand.add(doc.folderName.split('/')[0]);
+  });
+  if (foldersToExpand.size === 0) {
+    return;
+  }
+  const next = new Set(chatStore.expandedFolders);
+  foldersToExpand.forEach((folder) => next.add(folder));
+  chatStore.expandedFolders = next;
 });
 
 /** 展开项显示名：顶层文件夹内的文件显示文件名；有更深子路径时带上前缀（如 `文档/报告.pdf`） */
@@ -491,6 +548,15 @@ const confirmDeleteAllFolders = () => {
       chatStore.deleteBulkDocuments(folderFiles, '文件夹列表');
     },
   );
+};
+
+/** 删除会话列表区的当前筛选结果（确认后并发删除，保持一致且避免误删未筛出的会话） */
+const confirmDeleteFilteredConversations = () => {
+  if (filteredConversations.value.length === 0) return;
+  const count = filteredConversations.value.length;
+  chatStore.openDeleteDialog(`确定要删除当前筛选出的全部 ${count} 个会话吗？删除后无法恢复。`, () => {
+    chatStore.deleteBulkConversations(filteredConversations.value.map((conv) => conv.id));
+  });
 };
 
 /** 删除整个文件夹：确认后并发删除其下所有文件（复用单文件删除接口，逐条清库记录与向量分块） */
@@ -755,6 +821,11 @@ const confirmDeleteFolder = (name: string) => {
   margin-bottom: 8px;
 }
 
+/* 文档列表搜索框 */
+.doc-search-wrapper {
+  margin-bottom: 10px;
+}
+
 .document-list {
   display: flex;
   flex-direction: column;
@@ -874,6 +945,11 @@ const confirmDeleteFolder = (name: string) => {
   text-align: center;
 }
 
+/* 会话列表搜索框 */
+.conv-search-wrapper {
+  margin-bottom: 10px;
+}
+
 .conv-sub .conv-section-header {
   display: flex;
   align-items: center;
@@ -952,5 +1028,16 @@ const confirmDeleteFolder = (name: string) => {
   border-color: var(--kb-item-active-border);
   background-color: var(--kb-doc-highlight);
   box-shadow: inset 3px 0 0 var(--el-color-primary);
+}
+</style>
+
+<style>
+.conv-search-wrapper .el-input__wrapper {
+  border-radius: 6px;
+  height: 30px;
+}
+.doc-search-wrapper .el-input__wrapper {
+  border-radius: 6px;
+  height: 30px;
 }
 </style>
