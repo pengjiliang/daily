@@ -4,7 +4,10 @@
 -->
 <template>
   <el-header class="header">
-    <div class="title">AI 知识库</div>
+    <div class="title">
+      <span class="app-logo"><el-icon :size="15"><Collection /></el-icon></span>
+      AI 知识库
+    </div>
     <div class="user-info">
       <el-tooltip :content="uiStore.isDark ? '切换到浅色模式' : '切换到深色模式'" placement="bottom">
         <el-button
@@ -71,7 +74,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { ElMessage } from 'element-plus';
-import { UserFilled, Sunny, Moon } from '@element-plus/icons-vue';
+import { UserFilled, Sunny, Moon, Collection } from '@element-plus/icons-vue';
 import { useUserStore } from '@/stores/user';
 import { useUiStore } from '@/stores/ui';
 import { uploadApi } from '@/api/upload';
@@ -155,9 +158,25 @@ const handleCommand = (command: string) => {
 }
 
 .header .title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 20px;
   font-weight: bold;
   color: var(--el-text-color-primary);
+}
+
+/* 品牌小 logo：渐变圆角块，与 AI 助手头像同色系 */
+.app-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, #409eff, #7c5cff);
+  color: #fff;
+  flex-shrink: 0;
 }
 
 .header .user-info {

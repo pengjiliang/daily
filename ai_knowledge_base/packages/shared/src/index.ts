@@ -32,6 +32,20 @@ export interface AskResult {
   sources: RetrievedChunk[];
   /** 语义缓存命中标记：true 表示本次回答直接复用同类问题的缓存（未重新调用模型） */
   cached?: boolean;
+  /** 回答性能指标（缓存命中时检索/生成耗时为 0） */
+  stats?: AnswerStats;
+  /** 相关追问建议（2~3 条，生成失败或缓存命中时为空数组） */
+  suggestions?: string[];
+}
+
+/** 回答性能指标：问答各阶段耗时（毫秒） */
+export interface AnswerStats {
+  /** 知识库检索耗时 ms */
+  retrieveMs: number;
+  /** 模型生成回答耗时 ms */
+  answerMs: number;
+  /** 总耗时 ms */
+  totalMs: number;
 }
 
 /** 对话模型协议：OpenAI 兼容（含火山方舟/豆包等网关）或 Anthropic 原生协议 */

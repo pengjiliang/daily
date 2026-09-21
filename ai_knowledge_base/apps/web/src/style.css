@@ -39,8 +39,7 @@
   --kb-item-active-border: #a0cfff;
   --kb-doc-highlight: #f4faff; /* 来源定位文档高亮 */
   --kb-bubble-ai: #f5f5f5; /* AI 气泡 */
-  --kb-source-bg: #f5f7fa; /* 来源块 */
-  --kb-source-external-bg: #fdf6ec; /* 外部来源块 */
+  --kb-source-bg: #f5f7fa; /* 来源块（内/外部统一灰底，橙色只留左边条与徽章） */
   --kb-mark-bg: #fef08a; /* 来源片段高亮 */
   --kb-code-bg: #f0f2f5;
   --kb-code-color: #d14;
@@ -81,7 +80,6 @@ html.dark {
   --kb-doc-highlight: #15222f;
   --kb-bubble-ai: #262628;
   --kb-source-bg: #1d1e1f;
-  --kb-source-external-bg: #2a2118;
   --kb-mark-bg: #5b4b00;
   --kb-code-bg: #262628;
   --kb-code-color: #e06c75;
@@ -109,4 +107,29 @@ body {
 .el-popper.is-dark .el-popper__arrow:before {
   background: var(--el-bg-color-overlay);
   border-color: var(--el-border-color-light);
+}
+
+/* 全局细滚动条：统一 6px、颜色跟随主题（el-scrollbar 自绘滚动条不受影响） */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--kb-scrollbar);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--kb-scrollbar-hover);
+}
+
+/* Firefox */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--kb-scrollbar) transparent;
 }

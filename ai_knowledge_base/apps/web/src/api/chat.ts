@@ -4,7 +4,7 @@
  */
 import request from './request';
 import { useUserStore } from '../stores/user';
-import type { RetrievedChunk } from '@ai-knowledge-base/shared';
+import type { AnswerStats, RetrievedChunk } from '@ai-knowledge-base/shared';
 
 const API_BASE = 'http://localhost:3000';
 
@@ -28,6 +28,8 @@ export interface Message {
   createdAt: string;
   /** 仅前端使用：AI 思考中占位 */
   loading?: boolean;
+  /** 仅前端使用：本次回答的性能指标/追问建议/缓存标记（临时展示，非服务端持久化字段） */
+  meta?: { stats?: AnswerStats; suggestions?: string[]; cached?: boolean };
 }
 
 // 跨端共享类型：定义见 packages/shared（来源片段契约），前端保留旧名避免改动页面代码
@@ -39,6 +41,10 @@ export interface StreamDoneResult {
   message: Message | null;
   /** 语义缓存命中：true 表示回答直接复用同类问题缓存（未重新调用模型） */
   cached?: boolean;
+  /** 回答性能指标（检索/生成耗时） */
+  stats?: AnswerStats;
+  /** 相关追问建议 */
+  suggestions?: string[];
 }
 
 export interface StreamHandlers {
@@ -168,6 +174,8 @@ export const chatApi = {
             sources,
             message: result.message ?? null,
             cached: result.cached === true,
+            stats: result.stats,
+            suggestions: Array.isArray(result.suggestions) ? result.suggestions : [],
           };
         } else if (event === 'error') {
           const message =

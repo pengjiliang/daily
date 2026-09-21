@@ -43,139 +43,166 @@
           </el-button>
         </div>
       </div>
-      <el-scrollbar ref="messageScrollRef">
-        <div class="message-list" @click="onMessageClick">
-          <div
-            v-for="msg in chatStore.messages"
-            :key="msg.id"
-            :data-msg-id="msg.id"
-            :class="['message-item', msg.role]"
-          >
-            <el-avatar
-              v-if="msg.role === 'user' && fullAvatarUrl"
-              class="message-avatar"
-              :size="40"
-              :src="fullAvatarUrl"
-            />
-            <el-avatar v-else-if="msg.role === 'user'" class="message-avatar" :size="40" :icon="UserFilled" />
-            <el-avatar v-else class="message-avatar assistant-avatar" :size="40" :icon="Cpu" />
-            <div class="message-bubble">
-              <template v-if="msg.loading">
-                <div class="loading-placeholder">
-                  <el-icon class="is-loading"><Loading /></el-icon>
-                  <span>AI 正在思考...</span>
-                </div>
-              </template>
-              <template v-else>
-                <div v-html="formatMessageContent(msg.content, msg)"></div>
-                <el-collapse
-                  v-if="msg.role === 'assistant' && hasAnySources(msg)"
-                  v-model="activeSourceCollapse"
-                  class="sources"
-                >
-                  <el-collapse-item v-if="knowledgeBaseSources(msg).length" title="内部知识库" name="kb">
-                    <div
-                      v-for="(source, index) in knowledgeBaseSources(msg)"
-                      :key="'kb-' + index"
-                      :id="'source-item-' + msg.id + '-' + (index + 1)"
-                      class="source-item kb"
+      <div class="chat-scroll-wrapper">
+        <el-scrollbar ref="messageScrollRef">
+          <div class="message-list" @click="onMessageClick">
+            <div
+              v-for="msg in chatStore.messages"
+              :key="msg.id"
+              :data-msg-id="msg.id"
+              :class="['message-item', msg.role]"
+            >
+              <el-avatar
+                v-if="msg.role === 'user' && fullAvatarUrl"
+                class="message-avatar"
+                :size="40"
+                :src="fullAvatarUrl"
+              />
+              <el-avatar v-else-if="msg.role === 'user'" class="message-avatar" :size="40" :icon="UserFilled" />
+              <el-avatar v-else class="message-avatar assistant-avatar" :size="40" :icon="Cpu" />
+              <div class="message-bubble">
+                <template v-if="msg.loading">
+                  <div class="loading-placeholder">
+                    <el-icon class="is-loading"><Loading /></el-icon>
+                    <span>AI 正在思考...</span>
+                  </div>
+                </template>
+                <template v-else>
+                  <div v-html="formatMessageContent(msg.content, msg)"></div>
+                  <!-- 回答元信息：性能指标 / 缓存命中标记 -->
+                  <div v-if="msg.role === 'assistant' && msg.meta" class="answer-meta">
+                    <span v-if="msg.meta.cached" class="meta-cached">来自缓存</span>
+                    <span v-if="msg.meta.stats" class="meta-stats"
+                      >检索 {{ (msg.meta.stats.retrieveMs / 1000).toFixed(1) }}s · 生成
+                      {{ (msg.meta.stats.answerMs / 1000).toFixed(1) }}s · 总
+                      {{ (msg.meta.stats.totalMs / 1000).toFixed(1) }}s</span
                     >
-                      <div class="source-meta">
-                        <!-- 来源编号徽标：与正文引用角标一一对应，点击回到正文对应引用处 -->
-                        <span
-                          class="source-cite-tag"
-                          :title="'来源 ' + (index + 1) + '（点击定位到正文引用）'"
-                          @click="highlightCitation(msg, index + 1)"
-                          >[{{ index + 1 }}]</span
-                        >
-                        <el-tag size="small" type="primary" effect="plain">知识库</el-tag>
-                        <span class="source-score">相关度 {{ formatScore(source.similarity ?? source.score) }}%</span>
-                        <span v-if="source.similarity != null" class="source-raw-score">
-                          原始 {{ formatScore(source.score) }}%
-                        </span>
-                      </div>
+                  </div>
+                  <!-- 相关追问建议：一键继续追问 -->
+                  <div v-if="msg.role === 'assistant' && msg.meta?.suggestions?.length" class="answer-suggestions">
+                    <el-button
+                      v-for="(s, i) in msg.meta.suggestions"
+                      :key="i"
+                      size="small"
+                      type="primary"
+                      plain
+                      round
+                      class="suggestion-btn"
+                      @click="askSuggestion(s)"
+                      >{{ s }}</el-button
+                    >
+                  </div>
+                  <el-collapse
+                    v-if="msg.role === 'assistant' && hasAnySources(msg)"
+                    v-model="activeSourceCollapse"
+                    class="sources"
+                  >
+                    <el-collapse-item v-if="knowledgeBaseSources(msg).length" title="内部知识库" name="kb">
                       <div
-                        class="source-file"
-                        v-if="sourceFileName(source)"
-                        :class="{ clickable: !!source.uploadFileId }"
+                        v-for="(source, index) in knowledgeBaseSources(msg)"
+                        :key="'kb-' + index"
+                        :id="'source-item-' + msg.id + '-' + (index + 1)"
+                        class="source-item kb"
                       >
-                        <el-icon><DocumentIcon /></el-icon>
-                        <span
-                          class="source-file-name"
-                          :title="source.uploadFileId ? '点击定位到文档列表中的文件' : undefined"
-                          @click="chatStore.openSourceInDocuments(source)"
+                        <div class="source-meta">
+                          <!-- 来源编号徽标：与正文引用角标一一对应，点击回到正文对应引用处 -->
+                          <span
+                            class="source-cite-tag"
+                            :title="'来源 ' + (index + 1) + '（点击定位到正文引用）'"
+                            @click="highlightCitation(msg, index + 1)"
+                            >[{{ index + 1 }}]</span
+                          >
+                          <el-tag size="small" type="primary" effect="plain">知识库</el-tag>
+                          <span class="source-score">相关度 {{ formatScore(source.similarity ?? source.score) }}%</span>
+                          <span v-if="source.similarity != null" class="source-raw-score">
+                            原始 {{ formatScore(source.score) }}%
+                          </span>
+                        </div>
+                        <div
+                          class="source-file"
+                          v-if="sourceFileName(source)"
+                          :class="{ clickable: !!source.uploadFileId }"
                         >
-                          {{ sourceFileName(source) }}
-                        </span>
-                        <el-icon
-                          v-if="source.uploadFileId"
-                          class="download-icon"
-                          title="下载原文件"
-                          @click.stop="downloadSourceFile(source)"
-                        >
-                          <Download />
-                        </el-icon>
+                          <el-icon><DocumentIcon /></el-icon>
+                          <span
+                            class="source-file-name"
+                            :title="source.uploadFileId ? '点击定位到文档列表中的文件' : undefined"
+                            @click="chatStore.openSourceInDocuments(source)"
+                          >
+                            {{ sourceFileName(source) }}
+                          </span>
+                          <el-icon
+                            v-if="source.uploadFileId"
+                            class="download-icon"
+                            title="下载原文件"
+                            @click.stop="downloadSourceFile(source)"
+                          >
+                            <Download />
+                          </el-icon>
+                        </div>
+                        <div class="source-content" v-html="highlightedSourceContent(source, msg)"></div>
                       </div>
-                      <div class="source-content" v-html="highlightedSourceContent(source, msg)"></div>
-                    </div>
-                  </el-collapse-item>
+                    </el-collapse-item>
 
-                  <el-collapse-item v-if="externalSources(msg).length" title="外部资料" name="ext">
-                    <div
-                      v-for="(source, index) in externalSources(msg)"
-                      :key="'ext-' + index"
-                      class="source-item external"
-                    >
-                      <div class="source-meta">
-                        <el-tag size="small" type="warning" effect="plain">外部资料</el-tag>
-                        <span class="source-score">相关度 {{ formatScore(source.similarity ?? source.score) }}%</span>
-                      </div>
-                      <a
-                        class="source-link"
-                        v-if="externalSourceUrl(source)"
-                        :href="externalSourceUrl(source)"
-                        target="_blank"
-                        rel="noopener noreferrer"
+                    <el-collapse-item v-if="externalSources(msg).length" title="外部资料" name="ext">
+                      <div
+                        v-for="(source, index) in externalSources(msg)"
+                        :key="'ext-' + index"
+                        class="source-item external"
                       >
-                        <el-icon><Collection /></el-icon>
-                        <span>{{ externalSourceTitle(source) }}</span>
-                      </a>
-                      <div class="source-file" v-else>
-                        <el-icon><Collection /></el-icon>
-                        <span>{{ externalSourceTitle(source) }}</span>
+                        <div class="source-meta">
+                          <el-tag size="small" type="warning" effect="plain">外部资料</el-tag>
+                          <span class="source-score">相关度 {{ formatScore(source.similarity ?? source.score) }}%</span>
+                        </div>
+                        <a
+                          class="source-link"
+                          v-if="externalSourceUrl(source)"
+                          :href="externalSourceUrl(source)"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <el-icon><Collection /></el-icon>
+                          <span>{{ externalSourceTitle(source) }}</span>
+                        </a>
+                        <div class="source-file" v-else>
+                          <el-icon><Collection /></el-icon>
+                          <span>{{ externalSourceTitle(source) }}</span>
+                        </div>
+                        <div class="source-content" v-html="highlightedSourceContent(source, msg)"></div>
                       </div>
-                      <div class="source-content" v-html="highlightedSourceContent(source, msg)"></div>
-                    </div>
-                  </el-collapse-item>
-                </el-collapse>
-                <!-- 消息反馈：点赞/点踩，再次点击同一项取消（仅 AI 回答显示） -->
-                <div v-if="msg.role === 'assistant'" class="message-feedback">
-                  <el-tooltip :content="msg.feedback === 'like' ? '取消赞同' : '回答有帮助'" placement="top">
-                    <el-button
-                      text
-                      size="small"
-                      :class="['feedback-btn', { active: msg.feedback === 'like' }]"
-                      @click="setFeedback(msg, 'like')"
-                    >
-                      👍
-                    </el-button>
-                  </el-tooltip>
-                  <el-tooltip :content="msg.feedback === 'dislike' ? '取消反对' : '回答无帮助'" placement="top">
-                    <el-button
-                      text
-                      size="small"
-                      :class="['feedback-btn', { active: msg.feedback === 'dislike' }]"
-                      @click="setFeedback(msg, 'dislike')"
-                    >
-                      👎
-                    </el-button>
-                  </el-tooltip>
-                </div>
-              </template>
+                    </el-collapse-item>
+                  </el-collapse>
+                  <!-- 消息反馈：点赞/点踩，再次点击同一项取消（仅 AI 回答显示） -->
+                  <div v-if="msg.role === 'assistant'" class="message-feedback">
+                    <el-tooltip :content="msg.feedback === 'like' ? '取消赞同' : '回答有帮助'" placement="top">
+                      <el-button
+                        text
+                        size="small"
+                        :class="['feedback-btn', { active: msg.feedback === 'like' }]"
+                        @click="setFeedback(msg, 'like')"
+                      >
+                        👍
+                      </el-button>
+                    </el-tooltip>
+                    <el-tooltip :content="msg.feedback === 'dislike' ? '取消反对' : '回答无帮助'" placement="top">
+                      <el-button
+                        text
+                        size="small"
+                        :class="['feedback-btn', { active: msg.feedback === 'dislike' }]"
+                        @click="setFeedback(msg, 'dislike')"
+                      >
+                        👎
+                      </el-button>
+                    </el-tooltip>
+                  </div>
+                </template>
+              </div>
             </div>
           </div>
-        </div>
-      </el-scrollbar>
+        </el-scrollbar>
+        <!-- 输入区上方渐变遮罩：滚动内容从下方穿过时淡出，增强层次（不拦截点击） -->
+        <div class="input-fade-mask"></div>
+      </div>
       <div class="input-area">
         <el-input
           v-model="question"
@@ -366,6 +393,15 @@ const sendQuestion = async () => {
     // 若已切走，切回时 loadMessages 自然拿到完整回答
     if (isCurrentView()) {
       await chatStore.loadMessages();
+      // 把本次回答的性能指标 / 追问建议 / 缓存标记挂到刚生成的那条回答上（临时展示，不持久化）
+      const last = chatStore.messages[chatStore.messages.length - 1];
+      if (last?.role === 'assistant' && (result.stats || result.suggestions || result.cached)) {
+        last.meta = {
+          stats: result.stats,
+          suggestions: result.suggestions,
+          cached: result.cached,
+        };
+      }
     }
   } catch (error) {
     console.error(error);
@@ -398,6 +434,12 @@ const sendQuestion = async () => {
     // 刷新会话列表：让新会话/旧会话的主题标题、更新时间与排序反映本次问答
     chatStore.loadConversations();
   }
+};
+
+/** 点击追问建议：把建议问题填入输入框并直接发送 */
+const askSuggestion = (suggestion: string) => {
+  question.value = suggestion;
+  sendQuestion();
 };
 
 // 会话导出：把当前对话拼成 Markdown（复制到剪贴板 / 下载 .md 文件），纯前端实现
@@ -573,26 +615,85 @@ const formatScore = (score: number) => {
 };
 
 /**
- * 消息正文渲染：HTML 转义 → 换行转 <br> → [知识库N] 引用标记渲染为可点击角标。
- * 角标携带 data-cite（模型编号），点击由 onMessageClick 委托定位到对应来源项。
+ * 消息正文渲染：Markdown → HTML（流式逐 token 增量也适用）：
+ * 先 HTML 转义 → 代码块用占位符保护（避免内部语法被二次转换）→ 行内代码/标题/加粗/链接/列表
+ * → 段落换行 → 还原代码块（包"复制"按钮）→ [知识库N] 引用渲染为可点击角标。
  */
 const formatMessageContent = (content: string, msg: any) => {
-  const kbCount = knowledgeBaseSources(msg).length;
   let html = escapeHtml(content);
+
+  // 1. 代码块占位保护：先提取为占位符，避免内部 markdown 符号被后续正则二次转换
+  const codeBlocks: { lang: string; code: string }[] = [];
+  html = html.replace(/```([\w+-]*)\n?([\s\S]*?)```/g, (_match, lang: string, code: string) => {
+    codeBlocks.push({ lang, code: code.replace(/\n$/, '') });
+    return `\u0000CODE_${codeBlocks.length - 1}\u0000`;
+  });
+
+  // 2. 行内代码
+  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  // 3. 标题
+  html = html.replace(/^###### (.*)$/gm, '<h6>$1</h6>');
+  html = html.replace(/^##### (.*)$/gm, '<h5>$1</h5>');
+  html = html.replace(/^#### (.*)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^### (.*)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.*)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.*)$/gm, '<h1>$1</h1>');
+  // 4. 加粗 / 斜体
+  html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+  // 5. 链接
+  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // 6. 引用 / 分隔线
+  html = html.replace(/^&gt; (.*)$/gm, '<blockquote>$1</blockquote>');
+  html = html.replace(/^---$/gm, '<hr />');
+  // 7. 无序 / 有序列表
+  html = html.replace(/^\s*[-*] (.*)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+  html = html.replace(/^\s*\d+\. (.*)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ol>$&</ol>');
+  // 8. 段落与换行
+  html = html.replace(/\n{2,}/g, '</p><p>');
+  html = html.replace(/\n/g, '<br />');
+  html = `<p>${html}</p>`;
+
+  // 9. 还原代码块（带"复制"按钮，点击逻辑见 onMessageClick）
+  html = html.replace(/\u0000CODE_(\d+)\u0000/g, (_match, i: string) => {
+    const block = codeBlocks[Number(i)];
+    if (!block) return '';
+    const langTag = block.lang ? `<span class="md-code-lang">${escapeHtml(block.lang)}</span>` : '';
+    return `<div class="md-code-wrap"><div class="md-code-head">${langTag}<button class="code-copy-btn" title="复制代码">复制</button></div><pre class="md-code"><code>${block.code}</code></pre></div>`;
+  });
+
+  // 10. [知识库N] 引用 → 可点击角标（编号对齐该消息可展示的知识库来源）
+  const kbCount = knowledgeBaseSources(msg).length;
   html = html.replace(/\[知识库(\d+)\]/g, (match, n: string) => {
     const index = Number.parseInt(n, 10);
-    // 仅当编号落在该消息可展示的来源范围内才渲染为角标，否则保留原文（如 [知识库] 无编号）
     if (index >= 1 && index <= kbCount) {
       return `<span class="cite-badge" id="cite-badge-${msg.id}-${index}" data-cite="${index}" title="查看对应来源">[${index}]</span>`;
     }
     return match;
   });
-  return html.replace(/\n/g, '<br>');
+  return html;
 };
 
-/** 消息区点击委托：命中引用角标时，定位到对应消息中的来源项并闪烁高亮 */
+/** 消息区点击委托：代码块"复制"按钮 / 引用角标定位来源 */
 const onMessageClick = (event: MouseEvent) => {
   const target = event.target as HTMLElement;
+
+  // 代码块"复制"按钮：读取相邻 <pre> 文本复制到剪贴板
+  const copyBtn = target.closest('.code-copy-btn') as HTMLElement | null;
+  if (copyBtn) {
+    const pre = copyBtn.closest('.md-code-wrap')?.querySelector('pre.md-code');
+    const text = pre?.textContent ?? '';
+    if (text) {
+      navigator.clipboard.writeText(text).then(
+        () => ElMessage.success('代码已复制'),
+        () => ElMessage.error('复制失败，请手动选择复制'),
+      );
+    }
+    return;
+  }
+
   const badge = target.closest('.cite-badge') as HTMLElement | null;
   if (!badge) return;
   const item = target.closest('.message-item') as HTMLElement | null;
@@ -676,6 +777,32 @@ const highlightCitation = (msg: any, cite: number) => {
   padding: 16px;
 }
 
+/* 滚动区容器：撑满剩余高度，遮罩以它定位 */
+.chat-scroll-wrapper {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-scroll-wrapper :deep(.el-scrollbar) {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 输入区上方渐变遮罩：从背景色渐隐到透明 */
+.input-fade-mask {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 28px;
+  background: linear-gradient(to top, var(--kb-bg-card), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
 /* 让气泡适应文字宽度 */
 .message-item {
   display: flex;
@@ -705,9 +832,10 @@ const highlightCitation = (msg: any, cite: number) => {
 
 .message-bubble {
   min-width: 0;
-  padding: 12px 16px;
+  padding: 0px 16px;
   border-radius: 8px;
   word-break: break-word;
+  line-height: 1.65;
 }
 
 .message-item.user .message-bubble {
@@ -761,7 +889,7 @@ const highlightCitation = (msg: any, cite: number) => {
 
 .source-item.external {
   border-left-color: var(--el-color-warning);
-  background: var(--kb-source-external-bg);
+  background: var(--kb-source-bg);
 }
 
 .source-meta {
@@ -852,6 +980,112 @@ const highlightCitation = (msg: any, cite: number) => {
 /* 折叠面板标题内边距（原 Home 全局样式，随折叠面板迁入本组件） */
 .sources :deep(.el-collapse-item__title) {
   padding-left: 8px;
+}
+
+/* ---- 回答正文 Markdown 排版 ---- */
+.message-bubble :deep(h1),
+.message-bubble :deep(h2),
+.message-bubble :deep(h3),
+.message-bubble :deep(h4),
+.message-bubble :deep(h5),
+.message-bubble :deep(h6) {
+  margin: 10px 0 6px;
+  font-weight: 600;
+  color: var(--kb-text-primary);
+}
+
+.message-bubble :deep(h1) {
+  font-size: 18px;
+}
+.message-bubble :deep(h2) {
+  font-size: 16px;
+}
+.message-bubble :deep(h3) {
+  font-size: 15px;
+}
+
+.message-bubble :deep(strong) {
+  font-weight: 600;
+}
+
+.message-bubble :deep(a) {
+  color: var(--el-color-primary);
+  text-decoration: underline;
+}
+
+.message-bubble :deep(blockquote) {
+  margin: 8px 0;
+  padding: 6px 12px;
+  border-left: 3px solid var(--el-color-primary-light-5);
+  background: var(--kb-bg-hover);
+  color: var(--kb-text-secondary);
+}
+
+.message-bubble :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--kb-border);
+  margin: 10px 0;
+}
+
+/* 段落与列表间距收紧：覆盖浏览器 <p> 默认 1em 外边距 */
+.message-bubble :deep(p) {
+  margin: 6px 0;
+}
+
+.message-bubble :deep(ul),
+.message-bubble :deep(ol) {
+  margin: 4px 0;
+  padding-left: 22px;
+}
+
+.message-bubble :deep(li) {
+  margin: 1px 0;
+}
+
+.message-bubble :deep(code) {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--kb-bg-hover);
+  color: var(--el-color-primary);
+  font-size: 13px;
+  font-family: 'JetBrains Mono', Consolas, Monaco, monospace;
+}
+
+/* ---- 回答元信息与追问建议 ---- */
+.answer-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--kb-text-secondary);
+}
+
+.meta-cached {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: var(--el-color-success-light-9);
+  color: var(--el-color-success);
+  border: 1px solid var(--el-color-success-light-5);
+  font-weight: 600;
+}
+
+.answer-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.answer-suggestions .suggestion-btn {
+  margin: 0;
+}
+
+.answer-suggestions .suggestion-btn:hover {
+  background-color: var(--el-color-primary);
+  color: #fff;
 }
 
 /* 来源项编号徽标：与正文引用角标一一对应，浅色样式区分主次，点击可回到正文引用处 */
@@ -1003,5 +1237,63 @@ const highlightCitation = (msg: any, cite: number) => {
   animation: cite-flash 0.6s ease 3;
   outline: 2px solid var(--el-color-warning);
   outline-offset: 1px;
+}
+
+/* ---- 回答正文代码块（含复制按钮） ----
+   与 .cite-badge 同理：代码块 DOM 由 v-html 动态生成、不带 scope 属性，
+   必须放在非 scoped 块才能生效（scoped 样式作用不到 v-html 内容） */
+.md-code-wrap {
+  margin: 10px 0;
+  border: 1px solid var(--kb-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #1e1e1e;
+}
+
+.md-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  background: #2d2d2d;
+}
+
+.md-code-lang {
+  font-size: 12px;
+  color: #9cdcfe;
+  font-family: Consolas, Monaco, monospace;
+}
+
+.code-copy-btn {
+  border: none;
+  background: transparent;
+  color: #cccccc;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+  transition: background-color 0.15s;
+}
+
+.code-copy-btn:hover {
+  background: #3c3c3c;
+  color: #fff;
+}
+
+.md-code-wrap pre.md-code {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  color: #d4d4d4;
+  font-size: 13px;
+  line-height: 1.6;
+  font-family: 'JetBrains Mono', Consolas, Monaco, monospace;
+}
+
+.md-code-wrap pre.md-code code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
 }
 </style>

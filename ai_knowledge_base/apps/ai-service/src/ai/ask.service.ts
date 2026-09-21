@@ -147,6 +147,7 @@ export class AskService {
     },
     signal?: AbortSignal,
   ): Promise<AskResult> {
+    const startedAt = Date.now();
     // ① 语义缓存：同类问题直接复用上次结果，跳过检索与模型调用（仍按 SSE 协议输出，前端可正常收尾）
     const cacheHit = await this.findCached(request);
     if (cacheHit) {
@@ -164,20 +165,31 @@ export class AskService {
         // 整段答案作为单个 token 输出，保持流式协议一致
         await callbacks.onToken(cache.answer);
       }
-      return { answer: cache.answer || '', sources: cachedSources, cached: true };
+      return {
+        answer: cache.answer || '',
+        sources: cachedSources,
+        cached: true,
+        stats: { retrieveMs: 0, answerMs: 0, totalMs: Date.now() - startedAt },
+        suggestions: [],
+      };
     }
 
-    const kbSources = await this.retrieve(request.question, request.userId);
+    // ② 混合检索（多轮记忆增强：结合历史把当前问题改写为独立查询），并统计检索耗时
+    const retrieveStart = Date.now();
+    const kbSources = await this.retrieve(request.question, request.userId, request.history);
+    const retrieveMs = Date.now() - retrieveStart;
     await callbacks.onSources(kbSources);
 
     const externalLimit = kbSources.length > 0 ? EXTERNAL_WITH_KB : EXTERNAL_WITHOUT_KB;
     const messages = this.buildMessages(request.question, request.history, kbSources);
 
-    // ① 答案流式输出；② 外部资料一次性生成（并行进行，不拖慢首字）
+    // ③ 答案流式输出；④ 外部资料一次性生成（并行进行，不拖慢首字），并统计生成耗时
+    const answerStart = Date.now();
     const [answer, rawExternalSources] = await Promise.all([
       this.streamAnswer(messages.answerMessages, callbacks.onToken, signal, request.userId),
       this.fetchExternalSources(messages.externalMessages, externalLimit, signal, request.userId),
     ]);
+    const answerMs = Date.now() - answerStart;
     // 兜底去重：剔除与内部知识库重复（同一文件/同内容改写）的“伪外部资料”
     const externalSources = this.dedupeAgainstKb(rawExternalSources, kbSources);
 
@@ -185,7 +197,14 @@ export class AskService {
     const sources = [...kbSources, ...externalSources];
     // 生成完成后写入语义缓存（失败仅告警，不影响本次回答）
     await this.saveCache(request, finalAnswer, sources);
-    return { answer: finalAnswer, sources };
+    // 相关追问建议（纯增强：失败静默返回空，不影响回答本身）
+    const suggestions = await this.generateSuggestions(request.question, finalAnswer, request.userId);
+    return {
+      answer: finalAnswer,
+      sources,
+      stats: { retrieveMs, answerMs, totalMs: Date.now() - startedAt },
+      suggestions,
+    };
   }
 
   /** 语义缓存查询：embed 问题向量，与该用户近期缓存按余弦相似度比较，返回最优命中 */
@@ -536,6 +555,84 @@ export class AskService {
   }
 
   /**
+   * 多轮记忆增强检索：结合最近对话历史，把当前问题改写为不依赖上下文的独立检索查询
+   * （补全"它/这个方案/上面的数据"等指代），供向量路 embedding 与关键词路召回。
+   * 无历史/改写失败/结果为空时回退原问题（额外一次 LLM 调用，失败不阻塞主流程）。
+   */
+  private async contextualizeQuery(
+    question: string,
+    history: HistoryMessage[] | undefined,
+    userId: number,
+  ): Promise<string> {
+    if (!history || history.length === 0) {
+      return question;
+    }
+    try {
+      const chatModel = await this.models.getChatModel(userId);
+      const historyText = history
+        .slice(-6)
+        .map((msg) => `${msg.role === 'user' ? '用户' : '助手'}：${msg.content.slice(0, 200)}`)
+        .join('\n');
+      const response = await chatModel.invoke([
+        {
+          role: 'system',
+          content:
+            '你是检索查询理解助手。用户在多轮对话中连续提问，最后一个问题可能含指代（如"它""这个方案""上面的数据"）。' +
+            '请结合对话历史，把最后一个问题改写为一条独立、完整、可直接检索知识库的查询（补全指代与上下文）。' +
+            '直接输出改写后的查询文本，不要任何解释、引号或多余标点。',
+        },
+        { role: 'user', content: `对话历史：\n${historyText}\n\n最后一个问题：${question}\n改写为：` },
+      ]);
+      const rewritten = response.text.trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, '');
+      return rewritten && rewritten !== question ? rewritten : question;
+    } catch (error) {
+      this.logger.warn(`Contextualize query failed, fallback to original query: ${String(error)}`);
+      return question;
+    }
+  }
+
+  /**
+   * 相关追问建议：基于「问题 + 回答」生成 2~3 条用户最可能继续追问的问题。
+   * 纯增强功能：任何失败仅告警并返回空数组，不影响回答本身。
+   */
+  private async generateSuggestions(question: string, answer: string, userId: number): Promise<string[]> {
+    try {
+      const chatModel = await this.models.getChatModel(userId);
+      const response = await chatModel.invoke([
+        {
+          role: 'system',
+          content:
+            '你是对话助手。根据用户的问题和 AI 的回答，生成 2~3 条用户最可能继续追问的问题。' +
+            '每条一句话、简短具体、不要编号。只输出 JSON 字符串数组，例如 ["问题1","问题2"]，不要任何解释文字。',
+        },
+        { role: 'user', content: `问题：${question}\n\n回答：${answer.slice(0, 800)}` },
+      ]);
+      return this.parseSuggestionList(response.text);
+    } catch (error) {
+      this.logger.warn(`Suggestions generation failed: ${String(error)}`);
+      return [];
+    }
+  }
+
+  /** 解析模型输出的字符串数组（兼容代码围栏/前后多余文字），失败返回空数组 */
+  private parseSuggestionList(raw: string): string[] {
+    const jsonText = this.extractJson(raw);
+    if (!jsonText) {
+      return [];
+    }
+    try {
+      const data = JSON.parse(jsonText) as unknown;
+      if (!Array.isArray(data)) {
+        return [];
+      }
+      return data.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).slice(0, 3);
+    } catch (error) {
+      this.logger.warn(`Failed to parse suggestions: ${String(error)}`);
+      return [];
+    }
+  }
+
+  /**
    * 混合检索（方案 B）：多路召回 → RRF 融合 → 每文件保留最优 → LLM 重排。
    * - 向量语义路：Embedding cosine 相似度（用改写后的查询，碎片“彭”的原始向量是噪声），
    *   内部做 minScore 绝对阈值过滤；
@@ -545,11 +642,14 @@ export class AskService {
    * 最终相关性由 LLM 重排把关；分数阈值与融合分数不可比，故融合后也不再做相对阈值过滤。
    * 检索参数（topK/keywordTopK/minScore/rerankTopN）取该用户在设置页保存的值。
    */
-  private async retrieve(question: string, userId: number): Promise<RetrievedChunk[]> {
+  private async retrieve(question: string, userId: number, history?: HistoryMessage[]): Promise<RetrievedChunk[]> {
     const settings = await this.userSettings.getEffectiveSettings(userId);
 
-    // ① 查询改写（方案 A）：短碎片 → 完整表达
-    const rewritten = await this.rewriteQuery(question, userId);
+    // ① 多轮记忆增强（方案）：结合最近对话历史把当前问题改写为独立可检索查询，
+    //    解决连续追问（如"它的优缺点呢"）缺失上文主题导致检索落空的问题；无历史/失败回退原问题。
+    const contextualized = await this.contextualizeQuery(question, history, userId);
+    // ② 查询改写（方案 A）：短碎片 → 完整表达（基于上下文化后的查询）
+    const rewritten = await this.rewriteQuery(contextualized, userId);
 
     // ② 向量语义路
     // LEFT JOIN upload_files：过滤已删除文档遗留的“孤儿分块”，并按 uploaderId 隔离用户——
@@ -578,7 +678,7 @@ export class AskService {
           .map((row, rank) => ({ rank, chunk: this.toFusionCandidate(row, 1 - Number(row.distance)) })),
       },
     ];
-    for (const term of new Set([question, rewritten].filter((t) => t.trim()))) {
+    for (const term of new Set([question, contextualized, rewritten].filter((t) => t.trim()))) {
       const rows = await this.keywordSearch(term, userId, settings.keywordTopK);
       legs.push({
         name: `keyword:${term}`,

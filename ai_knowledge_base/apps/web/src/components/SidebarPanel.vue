@@ -49,19 +49,29 @@
                     />
                   </div>
 
-                  <!-- 会话区标题 + 一键删除（作用于当前筛选结果） -->
+                  <!-- 会话区标题 + 操作菜单（一键删除收进 ··· 菜单，点击后仍有确认弹窗） -->
                   <div class="conv-section-header">
                     <span>会话列表（{{ filteredConversations.length }}）</span>
-                    <el-button
-                      :icon="Delete"
-                      text
-                      size="small"
-                      class="bulk-delete-btn"
+                    <el-dropdown
+                      trigger="click"
                       :disabled="filteredConversations.length === 0"
-                      @click="confirmDeleteFilteredConversations"
+                      @command="confirmDeleteFilteredConversations"
                     >
-                      一键删除
-                    </el-button>
+                      <el-button
+                        :icon="MoreFilled"
+                        text
+                        size="small"
+                        class="bulk-more-btn"
+                        :disabled="filteredConversations.length === 0"
+                      />
+                      <template #dropdown>
+                        <el-dropdown-menu>
+                          <el-dropdown-item command="bulk" style="color: var(--el-color-danger)"
+                            >一键删除</el-dropdown-item
+                          >
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
                   </div>
 
                   <el-scrollbar>
@@ -171,19 +181,29 @@
                       />
                     </div>
                     <div v-loading="chatStore.loadingDocuments" class="document-list" element-loading-text="加载中...">
-                      <!-- 文件夹列表区：区级一键删除 + 每个文件夹行可展开/删除 -->
+                      <!-- 文件夹列表区：操作菜单（···）+ 每个文件夹行可展开/删除 -->
                       <div class="sub-section-title">
                         <span>文件夹列表（{{ folderGroups.length }}）</span>
-                        <el-button
-                          :icon="Delete"
-                          text
-                          size="small"
-                          class="bulk-delete-btn"
+                        <el-dropdown
+                          trigger="click"
                           :disabled="folderGroups.length === 0"
-                          @click="confirmDeleteAllFolders"
+                          @command="confirmDeleteAllFolders"
                         >
-                          一键删除
-                        </el-button>
+                          <el-button
+                            :icon="MoreFilled"
+                            text
+                            size="small"
+                            class="bulk-more-btn"
+                            :disabled="folderGroups.length === 0"
+                          />
+                          <template #dropdown>
+                            <el-dropdown-menu>
+                              <el-dropdown-item command="bulk" style="color: var(--el-color-danger)"
+                                >一键删除</el-dropdown-item
+                              >
+                            </el-dropdown-menu>
+                          </template>
+                        </el-dropdown>
                       </div>
                       <template v-for="group in folderGroups" :key="group.name">
                         <div class="document-item folder-item" @click="toggleFolder(group.name)">
@@ -250,19 +270,29 @@
                       </template>
                       <div v-if="folderGroups.length === 0" class="section-empty">暂无文件夹</div>
 
-                      <!-- 文件列表区：区级一键删除 + 每行单个删除 -->
+                      <!-- 文件列表区：操作菜单（···）+ 每行单个删除 -->
                       <div class="sub-section-title">
                         <span>文件列表（{{ rootFiles.length }}）</span>
-                        <el-button
-                          :icon="Delete"
-                          text
-                          size="small"
-                          class="bulk-delete-btn"
+                        <el-dropdown
+                          trigger="click"
                           :disabled="rootFiles.length === 0"
-                          @click="confirmDeleteAllFiles"
+                          @command="confirmDeleteAllFiles"
                         >
-                          一键删除
-                        </el-button>
+                          <el-button
+                            :icon="MoreFilled"
+                            text
+                            size="small"
+                            class="bulk-more-btn"
+                            :disabled="rootFiles.length === 0"
+                          />
+                          <template #dropdown>
+                            <el-dropdown-menu>
+                              <el-dropdown-item command="bulk" style="color: var(--el-color-danger)"
+                                >一键删除</el-dropdown-item
+                              >
+                            </el-dropdown-menu>
+                          </template>
+                        </el-dropdown>
                       </div>
                       <div
                         v-for="doc in rootFiles"
@@ -373,6 +403,7 @@ import {
   Delete,
   EditPen,
   FolderOpened,
+  MoreFilled,
   Operation,
   Plus,
   QuestionFilled,
@@ -887,16 +918,14 @@ const confirmDeleteFolder = (name: string) => {
   padding: 0 2px;
 }
 
-/* 区级"一键删除"按钮：红色小字，不可用时置灰 */
-.bulk-delete-btn {
-  color: #f56c6c;
-  font-size: 12px;
+/* 区级"···"操作菜单触发按钮：收起危险操作，悬停提示危险色 */
+.bulk-more-btn {
+  color: var(--kb-text-secondary);
   padding: 0 4px;
 }
 
-.bulk-delete-btn:disabled {
-  color: var(--kb-text-placeholder);
-  cursor: not-allowed;
+.bulk-more-btn:not(.is-disabled):hover {
+  color: var(--el-color-danger);
 }
 
 /* 文件夹行：整行可点击展开/收起 */
@@ -965,7 +994,7 @@ const confirmDeleteFolder = (name: string) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 12px;
+  padding: 6px 12px;
   margin-bottom: 8px;
   border-radius: 6px;
   cursor: pointer;
@@ -987,6 +1016,9 @@ const confirmDeleteFolder = (name: string) => {
 .conv-info-sidebar {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 /* 会话主题描述：单行省略 */
@@ -1001,7 +1033,7 @@ const confirmDeleteFolder = (name: string) => {
 }
 
 .conv-info-sidebar .conv-time {
-  font-size: 12px;
+  font-size: 10px;
   color: var(--kb-text-secondary);
   line-height: 1.4;
 }

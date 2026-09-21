@@ -563,12 +563,12 @@ export const useChatStore = defineStore('chat', () => {
     }
   };
 
-  /** 关闭预览：清空状态并回到聊天视图 */
+  /** 关闭预览：清空状态并回到打开预览前的视图（如从知识图谱打开则回到图谱页） */
   const closePreview = () => {
     releasePreview();
     const uiStore = useUiStore();
     if (uiStore.mainView === 'preview') {
-      uiStore.setMainView('chat');
+      uiStore.setMainView(uiStore.previewOrigin);
     }
   };
 
@@ -605,7 +605,13 @@ export const useChatStore = defineStore('chat', () => {
     highlightedDocumentId.value = doc.id;
     previewState.value = { id: doc.id, originalName: doc.originalName, ext, kind, url: null, html: null };
     previewLoading.value = false;
-    useUiStore().setMainView('preview');
+    const uiStore = useUiStore();
+    // 记录打开预览前的视图：关闭预览时回到原处（从知识图谱打开则回到图谱页）；
+    // 已在预览中换看其它文件时保持最初来源不变
+    if (uiStore.mainView !== 'preview') {
+      uiStore.previewOrigin = uiStore.mainView;
+    }
+    uiStore.setMainView('preview');
 
     // 无法解析的格式：保留预览面板（含下载按钮），无需拉取内容
     if (kind === 'unsupported') return;
@@ -640,6 +646,23 @@ export const useChatStore = defineStore('chat', () => {
     } finally {
       previewLoading.value = false;
     }
+  };
+
+  /**
+   * 按文档 id 打开右侧预览（实体图谱节点联动入口）：
+   * 优先用文档列表里的完整对象，找不到则先拉取一次列表，仍无则提示。
+   */
+  const openDocumentById = async (doc: { id: number; originalName: string }) => {
+    let full = documents.value.find((d) => d.id === doc.id);
+    if (!full) {
+      await loadDocuments();
+      full = documents.value.find((d) => d.id === doc.id);
+    }
+    if (!full) {
+      ElMessage.warning('该文件已不在文档列表中（可能已被删除）');
+      return;
+    }
+    await previewDocument(full);
   };
 
   /**
@@ -734,6 +757,7 @@ export const useChatStore = defineStore('chat', () => {
     handleFolderChange,
     // 预览/定位
     previewDocument,
+    openDocumentById,
     closePreview,
     releasePreview,
     clearHighlight,

@@ -118,6 +118,17 @@
               <span class="node-dot" :style="{ background: nodeColor(index) }"></span>
               <span class="node-name" :title="node.name">{{ node.name }}</span>
               <span class="node-count">{{ mode === 'doc' ? node.chunkCount : (node.entityType ?? '其他') }}</span>
+              <!-- 实体节点联动：打开来源文档预览（数据已就位） -->
+              <el-button
+                v-if="mode === 'entity' && node.uploadFileId"
+                text
+                size="small"
+                class="node-preview-btn"
+                title="打开来源文档预览"
+                @click.stop="openEntitySource(node)"
+              >
+                <el-icon><Document /></el-icon>
+              </el-button>
             </li>
           </ul>
           <div v-else class="side-empty">{{ mode === 'doc' ? '暂无文档' : '暂无实体' }}</div>
@@ -129,7 +140,8 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
-import { Refresh, Mouse } from '@element-plus/icons-vue';
+import { Refresh, Mouse, Document } from '@element-plus/icons-vue';
+import { useChatStore } from '@/stores/chat';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -142,10 +154,20 @@ import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import type { EntityGraphData, GraphEdge, GraphNode } from '@ai-knowledge-base/shared';
 import { statsApi } from '@/api/stats';
 
-/** 渲染用节点：文档节点直接使用，实体节点附加 entityType / fileName */
+const chatStore = useChatStore();
+
+/** 实体节点联动：打开该实体来源文档的右侧预览（找不到时由 store 提示） */
+const openEntitySource = (node: RenderNode) => {
+  if (!node.uploadFileId) return;
+  chatStore.openDocumentById({ id: node.uploadFileId, originalName: node.fileName || 'document' });
+};
+
+/** 渲染用节点：文档节点直接使用，实体节点附加 entityType / fileName / uploadFileId */
 interface RenderNode extends GraphNode {
   entityType?: string;
   fileName?: string | null;
+  /** 实体模式下：该实体抽取自哪个文档（用于点击联动打开来源预览） */
+  uploadFileId?: number | null;
 }
 
 /** 渲染用连线：文档连线直接用 weight，实体连线附加关系文本 label */
@@ -902,6 +924,7 @@ const buildScene = () => {
   renderer.domElement.addEventListener('pointermove', onPointerMove);
   renderer.domElement.addEventListener('pointerleave', onPointerLeave);
   renderer.domElement.addEventListener('click', onCanvasClick);
+  renderer.domElement.addEventListener('dblclick', onCanvasDblClick);
 
   resizeObserver = new ResizeObserver(onResize);
   resizeObserver.observe(container);
@@ -910,7 +933,7 @@ const buildScene = () => {
 };
 
 /** 将事件坐标换算为 NDC，并同步 raycaster 指针 */
-const getPointerNDC = (event: PointerEvent): boolean => {
+const getPointerNDC = (event: MouseEvent): boolean => {
   if (!renderer) return false;
   const rect = renderer.domElement.getBoundingClientRect();
   pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -1012,6 +1035,19 @@ const onCanvasClick = (event: PointerEvent) => {
     hoverIndex = -1;
     edgeHoverObj = null;
     updateHighlight();
+  }
+};
+
+/** 双击图谱节点：实体模式下打开该实体来源文档的右侧预览（单机仍为聚焦视角） */
+const onCanvasDblClick = (event: MouseEvent) => {
+  if (!renderer || !camera || !getPointerNDC(event)) return;
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(meshes, false);
+  if (hits.length === 0) return;
+  const index = hits[0].object.userData.index as number;
+  const node = nodes.value[index];
+  if (node?.uploadFileId) {
+    openEntitySource(node);
   }
 };
 
@@ -1220,6 +1256,7 @@ const disposeScene = () => {
     renderer.domElement.removeEventListener('pointermove', onPointerMove);
     renderer.domElement.removeEventListener('pointerleave', onPointerLeave);
     renderer.domElement.removeEventListener('click', onCanvasClick);
+    renderer.domElement.removeEventListener('dblclick', onCanvasDblClick);
   }
   for (const e of edgeObjs) {
     scene?.remove(e.line);
@@ -1302,6 +1339,7 @@ const loadGraph = async (force = false) => {
         createdAt: '',
         entityType: e.entityType,
         fileName: e.fileName ?? null,
+        uploadFileId: e.uploadFileId ?? null,
       }));
       edges.value = entityData.value.relations.map((r) => ({
         source: r.source,
@@ -1642,6 +1680,25 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: var(--kb-text-secondary);
   flex-shrink: 0;
+}
+
+/* 实体节点"打开来源文档"按钮：默认隐藏、行悬停显示 */
+.node-list .node-preview-btn {
+  flex-shrink: 0;
+  padding: 2px;
+  color: var(--kb-text-secondary);
+  opacity: 0;
+  transition:
+    opacity 0.2s,
+    color 0.2s;
+}
+
+.node-list li:hover .node-preview-btn {
+  opacity: 1;
+}
+
+.node-list .node-preview-btn:hover {
+  color: var(--el-color-primary);
 }
 
 .side-empty {

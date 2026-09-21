@@ -14,6 +14,8 @@ export const useUiStore = defineStore('ui', {
     mainView: 'chat' as MainView,
     expandedMenu: 'ai' as SidebarMenuKey | null,
     isDark: typeof document !== 'undefined' && document.documentElement.classList.contains('dark'),
+    /** 打开预览前的视图：关闭预览时回到原处（如从知识图谱打开则回到图谱页） */
+    previewOrigin: 'chat' as MainView,
   }),
   actions: {
     setMainView(view: MainView) {

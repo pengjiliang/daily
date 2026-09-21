@@ -7,8 +7,10 @@ AI 知识库的后端 API 服务，基于 NestJS + TypeORM + PostgreSQL，负责
 - 用户认证：注册 / 登录 / 个人资料，JWT 鉴权
 - 文档管理：单文件/文件夹上传、列表、下载、删除、重命名；上传后自动异步调用 AI 服务进行向量化入库
 - 会话消息：创建 / 重命名 / 删除会话，发送消息时自动调用 AI 服务问答（SSE 流式返回），并携带最近 10 轮对话历史
+- 消息反馈：AI 回答支持点赞 / 点踩（`Message.feedback` 字段），再次点击同一项可取消；接口 `PATCH /chat/messages/:id/feedback`
 - 模型配置：GET/PUT 用户级 AI 设置（对话 / 向量模型、检索参数），向量模型变更时自动后台重建索引
-- 使用统计与知识图谱：`GET /stats` 返回统计面板数据（KPI、趋势、热门问题），`GET /stats/graph` 返回 3D 图谱的文档节点与相似度连线
+- 全量重建索引：`POST /settings/reindex` 手动触发（不改动任何模型配置；向量模型变更时仍自动触发）
+- 使用统计与知识图谱：`GET /stats` 返回统计面板数据（KPI、趋势、热门问题），`GET /stats/graph` 返回 3D 图谱的文档节点与相似度连线，`GET /stats/graph/entities` 返回实体级图谱的实体节点与关系连线（数据由 ai-service 索引后写入）
 - 静态资源：`/uploads` 托管头像与文档文件
 
 ## 技术栈
@@ -91,10 +93,13 @@ pnpm start:prod # 生产模式（需先 pnpm build）
 | `DELETE` | `/chat/conversations/:id` | 删除会话 |
 | `GET` | `/chat/conversations/:id/messages` | 消息列表 |
 | `POST` | `/chat/conversations/:id/messages` | 发送消息并获取 AI 回答（SSE 流式） |
+| `PATCH` | `/chat/messages/:id/feedback` | 设置消息反馈（`like` / `dislike`，传 `null` 取消） |
 | `GET` | `/settings` | 当前用户 AI 设置回显 |
 | `PUT` | `/settings` | 保存 AI 设置，向量模型变更时触发重建索引 |
+| `POST` | `/settings/reindex` | 手动触发全量重建索引（不改动模型配置） |
 | `GET` | `/stats` | 使用统计（KPI、近 14 天趋势、热门问题 Top10） |
 | `GET` | `/stats/graph` | 知识图谱数据（文档节点 + 相似度连线） |
+| `GET` | `/stats/graph/entities` | 实体级知识图谱数据（实体节点 + 关系连线） |
 
 ## 常用脚本
 

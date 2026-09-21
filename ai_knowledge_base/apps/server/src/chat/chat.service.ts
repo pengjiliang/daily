@@ -140,7 +140,14 @@ export class ChatService {
       onToken: (token: string) => void | Promise<void>;
     },
     clientSignal?: AbortSignal,
-  ): Promise<{ answer: string; sources: RetrievedChunk[]; message: Message | null; cached?: boolean }> {
+  ): Promise<{
+    answer: string;
+    sources: RetrievedChunk[];
+    message: Message | null;
+    cached?: boolean;
+    stats?: AskResult['stats'];
+    suggestions?: string[];
+  }> {
     const conversation = await this.findOwnedConversation(id, userId);
     await this.messagesRepository.save(
       this.messagesRepository.create({
@@ -164,6 +171,8 @@ export class ChatService {
     let sources: RetrievedChunk[] = [];
     let message: Message | null = null;
     let cached = false;
+    let stats: AskResult['stats'];
+    let suggestions: string[] = [];
     let clientAborted = false;
 
     try {
@@ -171,6 +180,8 @@ export class ChatService {
       answer = result.answer;
       sources = result.sources;
       cached = result.cached === true;
+      stats = result.stats;
+      suggestions = Array.isArray(result.suggestions) ? result.suggestions : [];
     } catch (error) {
       // 客户端主动断开：尽力保存已流式生成的部分回答，不再向上抛
       if (clientSignal?.aborted) {
@@ -195,9 +206,9 @@ export class ChatService {
     }
 
     if (clientAborted) {
-      return { answer, sources, message, cached };
+      return { answer, sources, message, cached, stats, suggestions };
     }
-    return { answer, sources, message, cached };
+    return { answer, sources, message, cached, stats, suggestions };
   }
 
   /**
@@ -257,6 +268,8 @@ export class ChatService {
     let answer = '';
     let sources: RetrievedChunk[] = [];
     let cached = false;
+    let stats: AskResult['stats'];
+    let suggestions: string[] = [];
     let buffer = '';
     const decoder = new TextDecoder();
 
@@ -290,6 +303,8 @@ export class ChatService {
             answer = typeof data.answer === 'string' && data.answer ? data.answer : answer;
             sources = Array.isArray(data.sources) ? data.sources : sources;
             cached = data.cached === true;
+            stats = data.stats;
+            suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
           } else if (frame.event === 'error') {
             const message =
               frame.data && typeof frame.data === 'object' && 'message' in frame.data
@@ -310,7 +325,7 @@ export class ChatService {
       clientSignal?.removeEventListener('abort', abortUpstream);
     }
 
-    return { answer, sources, cached };
+    return { answer, sources, cached, stats, suggestions };
   }
 
   /**
