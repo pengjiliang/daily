@@ -7,7 +7,7 @@
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { GraphEntity } from '../entities/graph-entity.entity.js';
 import { GraphRelation } from '../entities/graph-relation.entity.js';
 import { ModelProvider } from './openai-model.provider.js';
@@ -34,6 +34,7 @@ export class EntityExtractionService {
   private readonly logger = new Logger(EntityExtractionService.name);
 
   constructor(
+    private readonly dataSource: DataSource,
     @InjectRepository(GraphEntity)
     private readonly entityRepository: Repository<GraphEntity>,
     @InjectRepository(GraphRelation)
@@ -45,6 +46,12 @@ export class EntityExtractionService {
   async rebuildForDocument(request: { uploadFileId: number; userId: number; text: string }): Promise<void> {
     try {
       const triples = await this.extractTriples(request.text, request.userId);
+      // 写库前校验文档仍存在：抽取是后台任务（LLM 调用耗时数秒），期间用户可能已删除该文档。
+      // 若 upload_files 中已无此记录，放弃写入，避免实体抽取完成后再把孤儿实体写回。
+      if (!(await this.documentStillExists(request.uploadFileId))) {
+        this.logger.log(`Document ${request.uploadFileId} was deleted during extraction, skip entities`);
+        return;
+      }
       await this.entityRepository.delete({ uploadFileId: request.uploadFileId });
       await this.relationRepository.delete({ uploadFileId: request.uploadFileId });
       if (triples.length === 0) {
@@ -55,6 +62,21 @@ export class EntityExtractionService {
       this.logger.log(`Extracted ${triples.length} triples for upload file ${request.uploadFileId}`);
     } catch (error) {
       this.logger.warn(`Entity extraction failed for upload file ${request.uploadFileId}: ${String(error)}`);
+    }
+  }
+
+  /** 文档是否仍存在（查 server 与 ai-service 共用的 upload_files 表） */
+  private async documentStillExists(uploadFileId: number): Promise<boolean> {
+    try {
+      const rows = (await this.dataSource.query(
+        `SELECT 1 FROM upload_files WHERE id = $1 LIMIT 1`,
+        [uploadFileId],
+      )) as unknown[];
+      return rows.length > 0;
+    } catch (error) {
+      // 查询失败（如表不存在）时保守放行，不让实体抽取因此中断
+      this.logger.warn(`Failed to check upload_files existence for ${uploadFileId}: ${String(error)}`);
+      return true;
     }
   }
 

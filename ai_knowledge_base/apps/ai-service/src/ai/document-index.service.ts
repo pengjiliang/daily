@@ -9,7 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { DocumentChunk } from '../entities/document-chunk.entity.js';
 import { GraphEntity } from '../entities/graph-entity.entity.js';
 import { GraphRelation } from '../entities/graph-relation.entity.js';
@@ -51,6 +51,7 @@ export class DocumentIndexService {
   });
 
   constructor(
+    private readonly dataSource: DataSource,
     @InjectRepository(DocumentChunk)
     private readonly documentChunksRepository: Repository<DocumentChunk>,
     @InjectRepository(GraphEntity)
@@ -83,6 +84,14 @@ export class DocumentIndexService {
       const batch = chunks.slice(i, i + BATCH_SIZE);
       const batchEmbeddings = await embeddingsModel.embedDocuments(batch);
       embeddings.push(...batchEmbeddings);
+    }
+
+    // 写库前校验文档仍存在：索引是后台任务（OCR/embedding 耗时较长），期间用户可能已删除该文档。
+    // 若 upload_files 中已无此记录，说明文档已删除，放弃写回，避免残留孤儿分块/实体。
+    const stillExists = await this.documentStillExists(request.uploadFileId);
+    if (!stillExists) {
+      this.logger.log(`Document ${request.uploadFileId} was deleted during indexing, skip writing chunks`);
+      return { uploadFileId: request.uploadFileId, chunks: 0 };
     }
 
     await this.documentChunksRepository.delete({ uploadFileId: request.uploadFileId });
@@ -122,6 +131,21 @@ export class DocumentIndexService {
     await this.graphRelationRepository.delete({ uploadFileId });
     this.logger.log(`Deleted ${result.affected ?? 0} chunks for upload file ${uploadFileId}`);
     return { uploadFileId, deleted: result.affected ?? 0 };
+  }
+
+  /** 文档是否仍存在（查 server 与 ai-service 共用的 upload_files 表） */
+  private async documentStillExists(uploadFileId: number): Promise<boolean> {
+    try {
+      const rows = (await this.dataSource.query(
+        `SELECT 1 FROM upload_files WHERE id = $1 LIMIT 1`,
+        [uploadFileId],
+      )) as unknown[];
+      return rows.length > 0;
+    } catch (error) {
+      // 查询失败（如表不存在）时保守放行，不让索引主流程因此中断
+      this.logger.warn(`Failed to check upload_files existence for ${uploadFileId}: ${String(error)}`);
+      return true;
+    }
   }
 
   /** 按扩展名分派到对应解析器，统一去 BOM、换行归一化，并对空内容抛错 */

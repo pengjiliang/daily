@@ -153,6 +153,8 @@ export class UploadService {
   async deleteDocument(id: number, userId: number): Promise<void> {
     const uploadFile = await this.findOwnedDocument(id, userId);
     const filePath = this.resolveSafeDocumentPath(uploadFile.path);
+    // remove() 会清空实体的主键，先保存 id 供 requestChunkPurge 使用
+    const uploadFileId = uploadFile.id;
 
     try {
       await unlink(filePath);
@@ -164,7 +166,7 @@ export class UploadService {
     await this.uploadFilesRepository.remove(uploadFile);
 
     // 同步清理 ai-service 中该文件的分块：否则孤儿分块会继续被检索命中（同一文件名出现多条来源）
-    await this.requestChunkPurge(uploadFile.id);
+    await this.requestChunkPurge(uploadFileId);
   }
 
   /** 通知 ai-service 删除某上传文件的全部向量分块；失败仅告警，不影响文档删除本身 */
