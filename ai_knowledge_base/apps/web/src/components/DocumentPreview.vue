@@ -210,6 +210,14 @@ onBeforeUnmount(() => {
   color: var(--kb-text-regular);
 }
 
+/* 来源片段定位原文时的高亮标记 */
+.preview-html mark {
+  background: rgba(230, 162, 60, 0.28);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
 .preview-html ul,
 .preview-html ol {
   padding-left: 22px;

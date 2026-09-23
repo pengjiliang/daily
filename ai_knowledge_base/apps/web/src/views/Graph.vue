@@ -108,6 +108,40 @@
           <div class="side-title">
             {{ mode === 'doc' ? `文档节点（${nodes.length}）` : `实体节点（${nodes.length}）` }}
           </div>
+          <!-- 实体详情卡：点击实体节点后展示其类型/来源文档/相邻关系 -->
+          <div v-if="isEntityMode && detailEntity" class="entity-detail-card">
+            <div class="detail-head">
+              <span class="detail-name" :title="detailEntity.name">{{ detailEntity.name }}</span>
+              <span class="detail-type" :style="{ color: typeColorCss(detailEntity.entityType ?? '其他') }">
+                {{ detailEntity.entityType ?? '其他' }}
+              </span>
+              <el-button text size="small" class="detail-close" title="关闭详情" @click="closeEntityDetail">
+                <el-icon><Close /></el-icon>
+              </el-button>
+            </div>
+            <div v-if="detailEntity.fileName" class="detail-source" @click="openEntitySourceByDetail">
+              <el-icon><Document /></el-icon>
+              <span class="detail-source-name" :title="detailEntity.fileName">{{ detailEntity.fileName }}</span>
+              <span class="detail-source-tip">查看来源文档</span>
+            </div>
+            <div v-if="detailRelations.length" class="detail-relations">
+              <div class="detail-subtitle">相邻关系（{{ detailRelations.length }}）</div>
+              <div
+                v-for="(rel, ri) in detailRelations"
+                :key="ri"
+                class="detail-relation-row"
+                :title="rel.relation"
+                @click="focusEntityById(rel.neighborId)"
+              >
+                <span class="rel-self">{{ rel.selfName }}</span>
+                <span class="rel-arrow">→</span>
+                <span class="rel-relation">{{ rel.relation }}</span>
+                <span class="rel-arrow">→</span>
+                <span class="rel-neighbor">{{ rel.neighborName }}</span>
+              </div>
+            </div>
+            <div v-else class="detail-no-rel">暂无相邻关系</div>
+          </div>
           <ul v-if="nodes.length > 0" class="node-list">
             <li
               v-for="(node, index) in nodes"
@@ -140,7 +174,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
-import { Refresh, Mouse, Document } from '@element-plus/icons-vue';
+import { Refresh, Mouse, Document, Close } from '@element-plus/icons-vue';
 import { useChatStore } from '@/stores/chat';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -227,6 +261,56 @@ const visibleEdgeCount = computed(
 );
 
 const tooltip = ref({ visible: false, x: 0, y: 0, name: '', meta: '' });
+
+// ---------- 实体详情卡 ----------
+/** 当前选中的实体详情（实体模式下点击节点后填充） */
+const detailEntity = ref<RenderNode | null>(null);
+/** 选中实体的相邻关系列表（self → relation → neighbor） */
+const detailRelations = ref<
+  { selfName: string; relation: string; neighborName: string; neighborId: number }[]
+>([]);
+
+/** 打开实体详情卡：按节点索引计算其实体信息与相邻关系 */
+const openEntityDetail = (index: number) => {
+  const node = nodes.value[index];
+  if (!node) return;
+  detailEntity.value = node;
+  const id = node.id;
+  const name = node.name;
+  const rels: { selfName: string; relation: string; neighborName: string; neighborId: number }[] = [];
+  for (const rel of entityData.value.relations) {
+    if (rel.source === id) {
+      const neighbor = entityData.value.entities.find((e) => e.id === rel.target);
+      if (neighbor) rels.push({ selfName: name, relation: rel.relation, neighborName: neighbor.name, neighborId: neighbor.id });
+    } else if (rel.target === id) {
+      const neighbor = entityData.value.entities.find((e) => e.id === rel.source);
+      if (neighbor) rels.push({ selfName: name, relation: rel.relation, neighborName: neighbor.name, neighborId: neighbor.id });
+    }
+  }
+  detailRelations.value = rels;
+};
+
+/** 关闭实体详情卡 */
+const closeEntityDetail = () => {
+  detailEntity.value = null;
+  detailRelations.value = [];
+};
+
+/** 从详情卡点击来源文档：打开该实体的来源文档预览 */
+const openEntitySourceByDetail = () => {
+  const node = detailEntity.value;
+  if (!node?.uploadFileId) return;
+  openEntitySource(node);
+};
+
+/** 从详情卡点击相邻实体：聚焦到图谱中该实体节点（并刷新详情卡） */
+const focusEntityById = (entityId: number) => {
+  const idx = nodes.value.findIndex((n) => n.id === entityId);
+  if (idx >= 0) {
+    focusNode(idx);
+    openEntityDetail(idx);
+  }
+};
 
 // ---------- three.js 运行时 ----------
 let renderer: THREE.WebGLRenderer | null = null;
@@ -1029,12 +1113,17 @@ const onCanvasClick = (event: PointerEvent) => {
   raycaster.setFromCamera(pointer, camera);
   const hits = raycaster.intersectObjects(meshes, false);
   if (hits.length > 0) {
-    focusNode(hits[0].object.userData.index as number);
+    const index = hits[0].object.userData.index as number;
+    focusNode(index);
+    if (isEntityMode.value) {
+      openEntityDetail(index);
+    }
   } else {
     selectedIndex.value = -1;
     hoverIndex = -1;
     edgeHoverObj = null;
     updateHighlight();
+    closeEntityDetail();
   }
 };
 
@@ -1074,6 +1163,7 @@ const resetView = () => {
   hoverIndex = -1;
   edgeHoverObj = null;
   updateHighlight();
+  closeEntityDetail();
   if (!camera || !controls) return;
   introDone = true;
   introFactor.fill(1);
@@ -1376,10 +1466,25 @@ watch(autoRotate, (value) => {
 });
 
 watch(mode, () => {
+  closeEntityDetail();
+  // 记住当前图谱模式（doc/entity），预览等视图切换后重新挂载时恢复
+  try {
+    sessionStorage.setItem('graphMode', mode.value);
+  } catch {}
   loadGraph();
 });
 
 onMounted(() => {
+  // 恢复上次的图谱模式：从实体图谱打开预览关闭后，回到的仍是实体图谱
+  try {
+    const saved = sessionStorage.getItem('graphMode');
+    if (saved === 'doc' || saved === 'entity') {
+      if (saved !== mode.value) {
+        mode.value = saved;
+        return; // watch 会触发 loadGraph
+      }
+    }
+  } catch {}
   loadGraph();
 });
 
@@ -1615,6 +1720,151 @@ onBeforeUnmount(() => {
   font-weight: 600;
   border-bottom: 1px solid var(--kb-border-lightest);
   color: var(--kb-text-primary);
+}
+
+/* 实体详情卡：点击实体节点后在右侧面板顶部展示 */
+.entity-detail-card {
+  margin: 10px;
+  padding: 12px;
+  border: 1px solid var(--kb-border-light);
+  border-radius: 8px;
+  background: var(--kb-bg-page);
+  flex: 0 0 auto;
+  max-height: 45%;
+  overflow-y: auto;
+}
+
+.entity-detail-card::-webkit-scrollbar {
+  width: 6px;
+}
+
+.entity-detail-card::-webkit-scrollbar-thumb {
+  background: var(--kb-scrollbar);
+  border-radius: 3px;
+}
+
+.detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.detail-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--kb-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-type {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.detail-close {
+  flex-shrink: 0;
+}
+
+.detail-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  background: var(--kb-bg-card);
+  border: 1px solid var(--kb-border-lightest);
+  cursor: pointer;
+  color: var(--el-color-primary);
+  font-size: 12px;
+}
+
+.detail-source:hover {
+  background: var(--kb-bg-item-hover);
+}
+
+.detail-source-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-source-tip {
+  flex-shrink: 0;
+  color: var(--kb-text-secondary);
+}
+
+.detail-relations {
+  margin-top: 4px;
+}
+
+.detail-subtitle {
+  font-size: 12px;
+  color: var(--kb-text-secondary);
+  margin-bottom: 6px;
+}
+
+.detail-relation-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--kb-text-primary);
+  cursor: pointer;
+}
+
+.detail-relation-row:hover {
+  background: var(--kb-bg-item-hover);
+}
+
+.rel-self {
+  color: var(--el-color-primary);
+  font-weight: 500;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rel-arrow {
+  color: var(--kb-text-secondary);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.rel-relation {
+  color: var(--el-color-warning);
+  flex: 0 1 auto;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rel-neighbor {
+  color: var(--el-color-primary);
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.detail-no-rel {
+  font-size: 12px;
+  color: var(--kb-text-secondary);
+  padding: 4px 0;
 }
 
 .node-list {

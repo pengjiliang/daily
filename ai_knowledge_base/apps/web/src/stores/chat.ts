@@ -51,6 +51,8 @@ export const useChatStore = defineStore('chat', () => {
     kind: 'image' | 'pdf' | 'html' | 'unsupported';
     url: string | null;
     html: string | null;
+    /** 预览内需要高亮的关键词（来源片段定位原文时传入，渲染后对命中处加 mark） */
+    highlight?: string[];
   } | null>(null);
   const previewLoading = ref(false);
 
@@ -590,8 +592,9 @@ export const useChatStore = defineStore('chat', () => {
    * 预览文档：拉取 blob 后在右侧内容区渲染（不再打开新窗口）。
    * 图片/PDF 用 objectURL；docx（mammoth）、xlsx/xls/xlx/csv（SheetJS）、txt/md 转为 HTML；
    * 旧版 .doc 等无法解析的格式保留预览面板并提供下载按钮。
+   * @param highlight 可选：需要在渲染内容中高亮的关键词（来源片段定位原文时传入）
    */
-  const previewDocument = async (doc: UploadDocument) => {
+  const previewDocument = async (doc: UploadDocument, highlight?: string[]) => {
     const ext = getExtension(doc.originalName);
     let kind: 'image' | 'pdf' | 'html' | 'unsupported';
     if (IMAGE_EXTENSIONS.has(ext)) kind = 'image';
@@ -603,7 +606,7 @@ export const useChatStore = defineStore('chat', () => {
     clearPreviewUrl();
     // 左侧点击文件预览时，同步切换来源高亮
     highlightedDocumentId.value = doc.id;
-    previewState.value = { id: doc.id, originalName: doc.originalName, ext, kind, url: null, html: null };
+    previewState.value = { id: doc.id, originalName: doc.originalName, ext, kind, url: null, html: null, highlight };
     previewLoading.value = false;
     const uiStore = useUiStore();
     // 记录打开预览前的视图：关闭预览时回到原处（从知识图谱打开则回到图谱页）；
@@ -624,19 +627,19 @@ export const useChatStore = defineStore('chat', () => {
       } else if (ext === '.docx') {
         const mammoth = await import('mammoth');
         const result = await mammoth.convertToHtml({ arrayBuffer: await blob.arrayBuffer() });
-        previewState.value.html = result.value;
+        previewState.value.html = applyHighlight(result.value, highlight);
       } else if (ext === '.xlsx' || ext === '.xls' || ext === '.xlx') {
         const XLSX = await import('xlsx');
         const workbook = XLSX.read(await blob.arrayBuffer(), { type: 'array' });
-        previewState.value.html = sheetToHtml(XLSX, workbook);
+        previewState.value.html = applyHighlight(sheetToHtml(XLSX, workbook), highlight);
       } else if (ext === '.csv') {
         const XLSX = await import('xlsx');
         const workbook = XLSX.read(await blob.text(), { type: 'string' });
-        previewState.value.html = sheetToHtml(XLSX, workbook);
+        previewState.value.html = applyHighlight(sheetToHtml(XLSX, workbook), highlight);
       } else if (ext === '.md') {
-        previewState.value.html = renderMarkdown(await blob.text());
+        previewState.value.html = applyHighlight(renderMarkdown(await blob.text()), highlight);
       } else {
-        previewState.value.html = escapeHtml(await blob.text());
+        previewState.value.html = applyHighlight(escapeHtml(await blob.text()), highlight);
       }
     } catch (error) {
       console.error(error);
@@ -646,6 +649,51 @@ export const useChatStore = defineStore('chat', () => {
     } finally {
       previewLoading.value = false;
     }
+  };
+
+  /** 在已转义/渲染的 HTML 中对关键词加 <mark> 高亮（定位来源片段原文时使用） */
+  const applyHighlight = (html: string, keywords?: string[]): string => {
+    if (!keywords || keywords.length === 0) return html;
+    let result = html;
+    for (const keyword of keywords) {
+      const escaped = escapeHtml(keyword).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (!escaped) continue;
+      const re = new RegExp(escaped, 'gi');
+      if (re.test(result)) {
+        // 完整关键词有命中：直接高亮
+        result = result.replace(re, (match) => `<mark>${match}</mark>`);
+      } else if (keyword.length >= 4 && /[\u4e00-\u9fff]/.test(keyword)) {
+        // 完整词无命中（如提问"噜噜噜妹"原文只有"噜噜""噜妹"）：降级拆 2 字窗口子串尝试
+        const subs = new Set<string>();
+        for (let i = 0; i <= keyword.length - 2; i += 1) subs.add(keyword.slice(i, i + 2));
+        for (const sub of subs) {
+          const subRe = new RegExp(escapeHtml(sub).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+          if (subRe.test(result)) {
+            result = result.replace(subRe, (match) => `<mark>${match}</mark>`);
+          }
+        }
+      }
+    }
+    return result;
+  };
+
+  /**
+   * 来源片段定位原文：打开来源文档预览，并把关键词在预览中高亮。
+   * 关键词由调用方传入（与来源片段内的高亮一致：取最近一条用户提问的关键词）。
+   */
+  const openSourcePreview = async (source: any, keywords?: string[]) => {
+    const uploadFileId = source?.uploadFileId;
+    if (!uploadFileId) return;
+    let doc = documents.value.find((d) => d.id === uploadFileId);
+    if (!doc) {
+      await loadDocuments();
+      doc = documents.value.find((d) => d.id === uploadFileId);
+    }
+    if (!doc) {
+      ElMessage.warning('该文件已不在文档列表中（可能已被删除）');
+      return;
+    }
+    await previewDocument(doc, keywords);
   };
 
   /**
@@ -758,6 +806,7 @@ export const useChatStore = defineStore('chat', () => {
     // 预览/定位
     previewDocument,
     openDocumentById,
+    openSourcePreview,
     closePreview,
     releasePreview,
     clearHighlight,

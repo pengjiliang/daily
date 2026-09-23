@@ -139,6 +139,14 @@
                           >
                             <Download />
                           </el-icon>
+                          <el-icon
+                            v-if="source.uploadFileId"
+                            class="source-preview-icon"
+                            title="在预览中定位该片段原文"
+                            @click.stop="chatStore.openSourcePreview(source, extractKeywords(msg))"
+                          >
+                            <View />
+                          </el-icon>
                         </div>
                         <div class="source-content" v-html="highlightedSourceContent(source, msg)"></div>
                       </div>
@@ -245,6 +253,7 @@ import {
   Promotion,
   UserFilled,
   VideoPause,
+  View,
 } from '@element-plus/icons-vue';
 import { useUserStore } from '@/stores/user';
 import { useChatStore } from '@/stores/chat';
@@ -602,8 +611,22 @@ const highlightedSourceContent = (source: any, msg: any) => {
   let html = escapeHtml(text);
   for (const keyword of keywords) {
     const escaped = escapeRegExp(escapeHtml(keyword));
-    if (escaped) {
-      html = html.replace(new RegExp(escaped, 'gi'), (match) => `<mark>${match}</mark>`);
+    if (!escaped) continue;
+    const re = new RegExp(escaped, 'gi');
+    if (re.test(html)) {
+      html = html.replace(re, (match) => `<mark>${match}</mark>`);
+    } else if (keyword.length >= 4 && /[\u4e00-\u9fff]/.test(keyword)) {
+      // 完整词无命中（如提问"噜噜噜妹"原文只有"噜噜""噜妹"）：降级拆 2 字窗口子串尝试
+      const subs = new Set<string>();
+      for (let i = 0; i <= keyword.length - 2; i += 1) subs.add(keyword.slice(i, i + 2));
+      for (const sub of subs) {
+        const subEscaped = escapeRegExp(escapeHtml(sub));
+        if (!subEscaped) continue;
+        const subRe = new RegExp(subEscaped, 'gi');
+        if (subRe.test(html)) {
+          html = html.replace(subRe, (match) => `<mark>${match}</mark>`);
+        }
+      }
     }
   }
   return html;
@@ -944,6 +967,16 @@ const highlightCitation = (msg: any, cite: number) => {
 
 .source-file .download-icon:hover {
   color: var(--el-color-primary);
+}
+
+.source-file .source-preview-icon {
+  cursor: pointer;
+  color: var(--kb-text-secondary);
+  flex-shrink: 0;
+}
+
+.source-file .source-preview-icon:hover {
+  color: var(--el-color-warning);
 }
 
 /* 外部资料链接样式 */
