@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="560" viewBox="0 0 900 560">
+  <defs>
+    <linearGradient id="h" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0ea5e9"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="900" height="560" fill="url(#h)"/>
+  <circle cx="760" cy="80" r="170" fill="#ffffff" opacity="0.10"/>
+  <circle cx="120" cy="500" r="200" fill="#ffffff" opacity="0.08"/>
+  <circle cx="470" cy="300" r="150" fill="#ffffff" opacity="0.05"/>
+  <path d="M430 120 h40 v90 h90 v40 h-90 v90 h-40 v-90 h-90 v-40 h90 Z" fill="#ffffff" opacity="0.92"/>
+  <text x="760" y="180" font-size="90" text-anchor="middle">🩺</text>
+  <text x="120" y="120" font-size="80" text-anchor="middle">💉</text>
+  <text x="790" y="460" font-size="80" text-anchor="middle">🌡️</text>
+  <text x="120" y="420" font-size="80" text-anchor="middle">🩹</text>
+  <text x="450" y="70" font-size="60" text-anchor="middle" fill="#ffffff" opacity="0.5">YANGLIANG TRADE</text>
+</svg>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360" viewBox="0 0 480 360">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f472b6"/>
+      <stop offset="100%" stop-color="#ec4899"/>
+    </linearGradient>
+  </defs>
+  <rect width="480" height="360" fill="url(#g)"/>
+  <circle cx="420" cy="30" r="96" fill="#ffffff" opacity="0.14"/>
+  <circle cx="30" cy="330" r="120" fill="#ffffff" opacity="0.09"/>
+  <path d="M0 300 L480 252 L480 360 L0 360 Z" fill="#000000" opacity="0.08"/>
+  <text x="240" y="215" font-size="150" text-anchor="middle">🩹</text>
+  <text x="22" y="50" font-family="Arial, sans-serif" font-size="18" fill="#ffffff" opacity="0.9" font-weight="bold" letter-spacing="3">WOUND CARE</text>
+</svg>
