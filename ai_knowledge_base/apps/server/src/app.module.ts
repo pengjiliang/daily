@@ -1,7 +1,7 @@
 /**
  * server 根模块。
  * 组装配置中心、PostgreSQL 数据源（开发环境自动 synchronize 建表）、
- * 用户/鉴权/上传/聊天四个业务模块，以及健康检查控制器。
+ * 用户/鉴权/上传/聊天/共享四个业务模块，以及健康检查控制器。
  */
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -15,6 +15,7 @@ import { StatsModule } from './stats/stats.module.js';
 import { UsersModule } from './users/users.module.js';
 import { UploadModule } from './upload/upload.module.js';
 import { ChatModule } from './chat/chat.module.js';
+import { ShareModule } from './share/share.module.js';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { ChatModule } from './chat/chat.module.js';
     ChatModule,
     SettingsModule,
     StatsModule,
+    ShareModule,
   ],
   controllers: [AppController],
 })

@@ -19,8 +19,10 @@ import {
 import type { Request, Response } from 'express';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 import { ChatService } from './chat.service.js';
+import type { RetrieveDebugView } from '@ai-knowledge-base/shared';
 import { Conversation } from './conversation.entity.js';
 import { CreateMessageDto } from './dto/create-message.dto.js';
+import { RetrieveDebugDto } from './dto/retrieve-debug.dto.js';
 import { Message } from './message.entity.js';
 
 /** 带登录用户信息的请求类型（request.user 由 JWT 守卫注入） */
@@ -60,6 +62,15 @@ export class ChatController {
       throw new BadRequestException('会话标题不能为空');
     }
     return this.chatService.renameConversation(id, request.user.userId, body.title);
+  }
+
+  /** POST /chat/retrieve/debug：单问题检索调试（只检索、不生成回答，返回完整检索链路） */
+  @Post('retrieve/debug')
+  async retrieveDebug(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: RetrieveDebugDto,
+  ): Promise<RetrieveDebugView> {
+    return this.chatService.retrieveDebug(request.user.userId, dto.question);
   }
 
   /** GET /chat/conversations/:id/messages：查询某会话全部消息（按时间正序） */
@@ -122,6 +133,7 @@ export class ChatController {
           onToken: (token) => sendEvent('token', token),
         },
         abortController.signal,
+        dto.graphEnabled,
       );
       if (!response.writableEnded) {
         sendEvent('done', result);

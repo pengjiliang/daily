@@ -4,7 +4,7 @@
  */
 import request from './request';
 import { useUserStore } from '../stores/user';
-import type { AnswerStats, RetrievedChunk } from '@ai-knowledge-base/shared';
+import type { AnswerStats, RetrieveDebugView, RetrievedChunk } from '@ai-knowledge-base/shared';
 
 const API_BASE = 'http://localhost:3000';
 
@@ -29,7 +29,7 @@ export interface Message {
   /** 仅前端使用：AI 思考中占位 */
   loading?: boolean;
   /** 仅前端使用：本次回答的性能指标/追问建议/缓存标记（临时展示，非服务端持久化字段） */
-  meta?: { stats?: AnswerStats; suggestions?: string[]; cached?: boolean };
+  meta?: { stats?: AnswerStats; suggestions?: string[]; cached?: boolean; graphHitCount?: number };
 }
 
 // 跨端共享类型：定义见 packages/shared（来源片段契约），前端保留旧名避免改动页面代码
@@ -45,6 +45,8 @@ export interface StreamDoneResult {
   stats?: AnswerStats;
   /** 相关追问建议 */
   suggestions?: string[];
+  /** 图谱问答命中实体关系三元组条数（未开启或未命中时为 0） */
+  graphHitCount?: number;
 }
 
 export interface StreamHandlers {
@@ -74,6 +76,11 @@ export const chatApi = {
     return request.get<Message[]>(`/chat/conversations/${id}/messages`);
   },
 
+  /** 单问题检索调试（只检索、不生成回答）：返回完整检索链路 */
+  retrieveDebug(question: string) {
+    return request.post<RetrieveDebugView>('/chat/retrieve/debug', { question });
+  },
+
   /** 设置消息反馈（点赞/点踩/取消）：再次点击同一项即取消 */
   setMessageFeedback(messageId: number, feedback: 'like' | 'dislike' | null) {
     return request.patch<Message>(`/chat/messages/${messageId}/feedback`, { feedback });
@@ -87,6 +94,7 @@ export const chatApi = {
     id: number,
     content: string,
     handlers: StreamHandlers = {},
+    graphEnabled?: boolean,
     signal?: AbortSignal,
   ): Promise<StreamDoneResult> {
     const userStore = useUserStore();
@@ -96,7 +104,7 @@ export const chatApi = {
         'Content-Type': 'application/json',
         ...(userStore.token ? { Authorization: `Bearer ${userStore.token}` } : {}),
       },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, graphEnabled }),
       signal,
     });
 
@@ -176,6 +184,7 @@ export const chatApi = {
             cached: result.cached === true,
             stats: result.stats,
             suggestions: Array.isArray(result.suggestions) ? result.suggestions : [],
+            graphHitCount: result.graphHitCount ?? 0,
           };
         } else if (event === 'error') {
           const message =

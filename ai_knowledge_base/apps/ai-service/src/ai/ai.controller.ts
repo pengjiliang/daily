@@ -8,6 +8,7 @@
 import { Body, Controller, Delete, Param, ParseIntPipe, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AskService, type AskResult } from './ask.service.js';
+import type { RetrieveDebugView } from '@ai-knowledge-base/shared';
 import { DocumentIndexService, type IndexDocumentResult } from './document-index.service.js';
 import { AskDto, IndexDocumentDto } from './dto/ai.dto.js';
 
@@ -34,6 +35,12 @@ export class AIController {
   @Post('ask')
   async ask(@Body() dto: AskDto): Promise<AskResult> {
     return this.askService.ask(dto);
+  }
+
+  /** 检索调试：只跑检索、不生成回答，返回完整检索链路（供 RAG 调试/评估面板使用） */
+  @Post('retrieve/debug')
+  async retrieveDebug(@Body() dto: AskDto): Promise<RetrieveDebugView> {
+    return this.askService.debugRetrieve(dto.question, dto.userId);
   }
 
   /**

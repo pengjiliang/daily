@@ -72,6 +72,7 @@
                   <!-- 回答元信息：性能指标 / 缓存命中标记 -->
                   <div v-if="msg.role === 'assistant' && msg.meta" class="answer-meta">
                     <span v-if="msg.meta.cached" class="meta-cached">来自缓存</span>
+                    <span v-if="msg.meta.graphHitCount" class="meta-graph">图谱命中 {{ msg.meta.graphHitCount }} 条关系</span>
                     <span v-if="msg.meta.stats" class="meta-stats"
                       >检索 {{ (msg.meta.stats.retrieveMs / 1000).toFixed(1) }}s · 生成
                       {{ (msg.meta.stats.answerMs / 1000).toFixed(1) }}s · 总
@@ -222,6 +223,15 @@
           class="question-input"
         />
         <div class="input-actions">
+          <!-- 图谱问答增强开关：从知识库实体图谱注入实体关系 -->
+          <el-switch
+            v-model="graphEnabled"
+            size="small"
+            active-text="图谱增强"
+            inline-prompt
+            class="graph-switch"
+            title="开启后从知识库实体图谱注入实体关系，提升实体/关系类问题的回答质量"
+          />
           <!-- 当前会话正在生成时显示"停止生成"，否则显示发送按钮 -->
           <el-button
             v-if="isCurrentStreaming"
@@ -272,6 +282,8 @@ const fullAvatarUrl = computed(() => {
 
 // ---- 输入与流式状态（组件私有） ----
 const question = ref('');
+/** 图谱问答增强开关：开启后从知识库实体图谱注入实体关系（默认开启） */
+const graphEnabled = ref(true);
 const activeSourceCollapse = ref(['kb', 'ext']);
 /** el-scrollbar 实例（wrapRef 为内部滚动容器 DOM） */
 const messageScrollRef = ref<{ wrapRef?: HTMLElement } | null>(null);
@@ -390,6 +402,7 @@ const sendQuestion = async () => {
           if (isCurrentView()) nextTick(() => scrollToBottom());
         },
       },
+      graphEnabled.value,
       controller.signal,
     );
 
@@ -404,11 +417,12 @@ const sendQuestion = async () => {
       await chatStore.loadMessages();
       // 把本次回答的性能指标 / 追问建议 / 缓存标记挂到刚生成的那条回答上（临时展示，不持久化）
       const last = chatStore.messages[chatStore.messages.length - 1];
-      if (last?.role === 'assistant' && (result.stats || result.suggestions || result.cached)) {
+      if (last?.role === 'assistant' && (result.stats || result.suggestions || result.cached || result.graphHitCount)) {
         last.meta = {
           stats: result.stats,
           suggestions: result.suggestions,
           cached: result.cached,
+          graphHitCount: result.graphHitCount,
         };
       }
     }
@@ -1204,6 +1218,22 @@ const highlightCitation = (msg: any, cite: number) => {
 }
 .stop-btn :deep(.el-icon) {
   font-size: 24px;
+}
+
+/* 图谱问答增强开关 */
+.graph-switch {
+  margin-right: 10px;
+}
+.graph-switch :deep(.el-switch__label) {
+  font-size: 12px;
+  color: var(--kb-text-secondary);
+}
+
+/* 回答元信息中的图谱命中提示 */
+.meta-graph {
+  font-size: 12px;
+  color: var(--kb-text-secondary);
+  margin-left: 8px;
 }
 
 .loading-placeholder {

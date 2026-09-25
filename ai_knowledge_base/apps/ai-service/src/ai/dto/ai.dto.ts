@@ -4,7 +4,7 @@
  * AskDto：问答请求体（一次性 / SSE 流式共用）；
  * HistoryMessage 为跨端共享类型，定义在 packages/shared。
  */
-import { IsInt, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import type { HistoryMessage } from '@ai-knowledge-base/shared';
 
 // 跨端共享类型：定义见 packages/shared，此处仅转发
@@ -51,4 +51,9 @@ export class AskDto {
 
   @IsOptional()
   history?: HistoryMessage[];
+
+  /** 是否启用图谱问答增强：检索后额外从实体图谱取相关关系注入回答上下文（默认开启） */
+  @IsOptional()
+  @IsBoolean()
+  graphEnabled?: boolean;
 }

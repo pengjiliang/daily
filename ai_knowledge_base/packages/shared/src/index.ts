@@ -36,6 +36,8 @@ export interface AskResult {
   stats?: AnswerStats;
   /** 相关追问建议（2~3 条，生成失败或缓存命中时为空数组） */
   suggestions?: string[];
+  /** 图谱问答命中实体关系三元组条数（未开启图谱增强或未命中时为 0） */
+  graphHitCount?: number;
 }
 
 /** 回答性能指标：问答各阶段耗时（毫秒） */
@@ -164,4 +166,40 @@ export interface EntityGraphRelation {
 export interface EntityGraphData {
   entities: EntityGraphNode[];
   relations: EntityGraphRelation[];
+}
+
+/** 检索调试：单路召回的片段条目（向量路为 cosine 相似度，关键词路为 trigram 相似度，0~1） */
+export interface RetrieveLegItem {
+  chunkId: number;
+  uploadFileId: number;
+  /** 片段内容预览 */
+  content: string;
+  /** 相似度/分数 */
+  score: number;
+}
+
+/** 检索调试：关键词字面路（每路对应一个查询词） */
+export interface RetrieveKeywordLeg {
+  term: string;
+  items: RetrieveLegItem[];
+}
+
+/**
+ * 单问题检索调试结果：只跑检索、不生成回答，展示完整检索链路（供 RAG 调试/评估面板）。
+ * 链路：查询改写 → 向量语义路 + 关键词字面路多路召回 → RRF 融合 → LLM 重排保留。
+ */
+export interface RetrieveDebugView {
+  question: string;
+  /** 多轮记忆增强后的查询（无历史时为原问题） */
+  contextualized: string;
+  /** 短查询改写后的查询 */
+  rewritten: string;
+  /** 向量语义路召回（cosine 相似度降序） */
+  vectorLeg: RetrieveLegItem[];
+  /** 关键词字面路召回（trigram 相似度降序，每路一个查询词） */
+  keywordLegs: RetrieveKeywordLeg[];
+  /** RRF 融合结果（按融合分降序，含 rrf 融合分） */
+  fused: (RetrieveLegItem & { rrf: number })[];
+  /** LLM 重排后最终保留（用于回答，similarity 为校准后的真实相似度） */
+  kept: (RetrieveLegItem & { similarity: number })[];
 }

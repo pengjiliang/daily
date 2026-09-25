@@ -13,7 +13,7 @@ import { Repository } from 'typeorm';
 import { DocumentChunk } from '../entities/document-chunk.entity.js';
 import { SemanticCache } from '../entities/semantic-cache.entity.js';
 import { createRagGraph, type GenerateResult, type RagState, type RetrievedChunk } from './langgraph/rag.graph.js';
-import type { AskResult } from '@ai-knowledge-base/shared';
+import type { AskResult, RetrieveDebugView, RetrieveLegItem, RetrieveKeywordLeg } from '@ai-knowledge-base/shared';
 import { ModelProvider, type ChatMessage } from './openai-model.provider.js';
 import { UserSettingsService } from '../settings/user-settings.service.js';
 import type { HistoryMessage } from './dto/ai.dto.js';
@@ -57,12 +57,21 @@ export const CACHE_HIT_THRESHOLD = 0.95;
 /** 每用户缓存条数上限：超出时删除最旧缓存 */
 export const CACHE_LIMIT = 200;
 
+/** 图谱问答（GraphRAG）：问题 + 已检索片段参与实体匹配的文本长度上限 */
+export const GRAPH_MATCH_TEXT_LIMIT = 6000;
+/** 图谱问答：最多候选实体数 */
+export const GRAPH_ENTITY_LIMIT = 30;
+/** 图谱问答：最多注入回答的关系三元组条数 */
+export const GRAPH_TRIPLE_LIMIT = 20;
+
 export interface AskRequest {
   question: string;
   /** 当前登录用户 id：检索按用户隔离（只查询该用户上传的文档分块） */
   userId: number;
   conversationId?: string;
   history?: HistoryMessage[];
+  /** 是否启用图谱问答增强：检索后额外从实体图谱取相关关系注入回答上下文（默认开启） */
+  graphEnabled?: boolean;
 }
 
 // 跨端共享类型：定义见 packages/shared
@@ -90,6 +99,16 @@ interface FusionCandidate {
 interface FusionLeg {
   name: string;
   items: { rank: number; chunk: FusionCandidate }[];
+}
+
+/** 检索链路调试信息：debugRetrieve 通过 retrieve 的 trace 参数收集各阶段结果，供 RAG 调试面板展示 */
+export interface RetrieveTrace {
+  contextualized: string;
+  rewritten: string;
+  vectorLeg: RetrieveLegItem[];
+  keywordLegs: RetrieveKeywordLeg[];
+  fused: (RetrieveLegItem & { rrf: number })[];
+  kept: (RetrieveLegItem & { similarity: number })[];
 }
 
 interface ExternalKnowledgeItem {
@@ -180,8 +199,18 @@ export class AskService {
     const retrieveMs = Date.now() - retrieveStart;
     await callbacks.onSources(kbSources);
 
+    // ②·5 图谱问答增强（GraphRAG）：从实体图谱召回与问题相关的实体关系三元组并注入回答上下文，
+    //     纯 SQL 召回（不额外调 LLM），失败/无命中静默降级不影响回答
+    let graphContext = '';
+    let graphHitCount = 0;
+    if (request.graphEnabled !== false) {
+      const graph = await this.retrieveGraphContext(request.question, request.userId, kbSources);
+      graphContext = graph.text;
+      graphHitCount = graph.count;
+    }
+
     const externalLimit = kbSources.length > 0 ? EXTERNAL_WITH_KB : EXTERNAL_WITHOUT_KB;
-    const messages = this.buildMessages(request.question, request.history, kbSources);
+    const messages = this.buildMessages(request.question, request.history, kbSources, graphContext);
 
     // ③ 答案流式输出；④ 外部资料一次性生成（并行进行，不拖慢首字），并统计生成耗时
     const answerStart = Date.now();
@@ -204,6 +233,7 @@ export class AskService {
       sources,
       stats: { retrieveMs, answerMs, totalMs: Date.now() - startedAt },
       suggestions,
+      graphHitCount,
     };
   }
 
@@ -461,6 +491,7 @@ export class AskService {
     question: string,
     history: HistoryMessage[] | undefined,
     kbSources: RetrievedChunk[],
+    graphContext = '',
   ): {
     answerMessages: ChatMessage[];
     externalMessages: ChatMessage[];
@@ -508,9 +539,16 @@ export class AskService {
           '[{"title":"...","content":"...","score":0.9}]',
         ].join('\n');
 
-    const contextText = hasKb
-      ? `知识库片段（仅供了解已包含内容，禁止作为外部资料复述）：\n\n${kbSection}\n\n问题：${question}`
-      : `问题：${question}`;
+    const graphSection = graphContext
+      ? `[图谱关系]（来自知识库实体图谱，请优先据此回答实体/关系层面的问题）：\n${graphContext}`
+      : '';
+    const contextText = [
+      hasKb ? `知识库片段（仅供了解已包含内容，禁止作为外部资料复述）：\n\n${kbSection}` : '',
+      graphSection,
+      `问题：${question}`,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
 
     return {
       answerMessages: [
@@ -642,7 +680,12 @@ export class AskService {
    * 最终相关性由 LLM 重排把关；分数阈值与融合分数不可比，故融合后也不再做相对阈值过滤。
    * 检索参数（topK/keywordTopK/minScore/rerankTopN）取该用户在设置页保存的值。
    */
-  private async retrieve(question: string, userId: number, history?: HistoryMessage[]): Promise<RetrievedChunk[]> {
+  private async retrieve(
+    question: string,
+    userId: number,
+    history?: HistoryMessage[],
+    trace?: RetrieveTrace,
+  ): Promise<RetrievedChunk[]> {
     const settings = await this.userSettings.getEffectiveSettings(userId);
 
     // ① 多轮记忆增强（方案）：结合最近对话历史把当前问题改写为独立可检索查询，
@@ -650,6 +693,10 @@ export class AskService {
     const contextualized = await this.contextualizeQuery(question, history, userId);
     // ② 查询改写（方案 A）：短碎片 → 完整表达（基于上下文化后的查询）
     const rewritten = await this.rewriteQuery(contextualized, userId);
+    if (trace) {
+      trace.contextualized = contextualized;
+      trace.rewritten = rewritten;
+    }
 
     // ② 向量语义路
     // LEFT JOIN upload_files：过滤已删除文档遗留的“孤儿分块”，并按 uploaderId 隔离用户——
@@ -663,23 +710,42 @@ export class AskService {
          FROM document_chunks c
          LEFT JOIN upload_files f ON f.id = c."uploadFileId"
         WHERE f.id IS NOT NULL
-          AND f."uploaderId" = $2
+          AND (f."uploaderId" = $2
+               OR f.id IN (SELECT "uploadFileId" FROM share_records WHERE "shareeId" = $2))
         ORDER BY c.embedding::vector <=> $1::vector
         LIMIT ${settings.topK}`,
       [`[${vectorEmbedding.join(',')}]`, userId],
     );
 
     // ③ 关键词字面路（原始查询 + 改写查询各一路，Set 去重；每路按 trigram 相似度排序召回）
+    const vectorFiltered = vectorRows.filter((row) => 1 - Number(row.distance) > settings.minScore);
+    if (trace) {
+      trace.vectorLeg = vectorFiltered.map((row) => ({
+        chunkId: row.id,
+        uploadFileId: row.uploadFileId,
+        content: row.content,
+        score: 1 - Number(row.distance),
+      }));
+    }
     const legs: FusionLeg[] = [
       {
         name: 'vector',
-        items: vectorRows
-          .filter((row) => 1 - Number(row.distance) > settings.minScore)
-          .map((row, rank) => ({ rank, chunk: this.toFusionCandidate(row, 1 - Number(row.distance)) })),
+        items: vectorFiltered.map((row, rank) => ({ rank, chunk: this.toFusionCandidate(row, 1 - Number(row.distance)) })),
       },
     ];
     for (const term of new Set([question, contextualized, rewritten].filter((t) => t.trim()))) {
       const rows = await this.keywordSearch(term, userId, settings.keywordTopK);
+      if (trace) {
+        trace.keywordLegs.push({
+          term,
+          items: rows.map((row) => ({
+            chunkId: row.id,
+            uploadFileId: row.uploadFileId,
+            content: row.content,
+            score: Math.max(Number(row.distance), MIN_SCORE),
+          })),
+        });
+      }
       legs.push({
         name: `keyword:${term}`,
         items: rows.map((row, rank) => ({
@@ -694,6 +760,15 @@ export class AskService {
     // ④ RRF 融合（只比较排名、不比较绝对分数，天然适配“cosine 分 + trigram 分”两种不可比空间），
     //    再按文件保留最优片段，避免同一文档多条候选占满重排名额
     const fused = this.reciprocalRankFusion(legs);
+    if (trace) {
+      trace.fused = fused.map((chunk) => ({
+        chunkId: chunk.chunkId,
+        uploadFileId: chunk.uploadFileId,
+        content: chunk.content,
+        score: chunk.score,
+        rrf: chunk.rrf,
+      }));
+    }
     const fileChunkMap = new Map<number, FusionCandidate>();
     fused.forEach((chunk) => {
       const existing = fileChunkMap.get(chunk.uploadFileId);
@@ -714,7 +789,43 @@ export class AskService {
       }));
 
     // ⑤ LLM 重排：最终相关性过滤（关键词路可能命中无关文档，由重排剔除），并校准展示分数
-    return this.rerank(question, candidates, userId);
+    const kept = await this.rerank(question, candidates, userId);
+    if (trace) {
+      trace.kept = kept.map((chunk) => ({
+        chunkId: chunk.chunkId ?? 0,
+        uploadFileId: chunk.uploadFileId ?? 0,
+        content: chunk.content,
+        score: chunk.score,
+        similarity: chunk.similarity,
+      }));
+    }
+    return kept;
+  }
+
+  /**
+   * 检索调试（只检索、不生成回答）：返回完整检索链路（改写查询 → 多路召回 → RRF 融合 → 重排保留），
+   * 供 RAG 调试/评估面板展示，帮助定位"为什么检索不到/召回不准"。
+   * 注意：链路中的 LLM 重排仍会调用该用户配置的聊天模型（与真实问答保持一致，用于相关性过滤）。
+   */
+  async debugRetrieve(question: string, userId: number): Promise<RetrieveDebugView> {
+    const trace: RetrieveTrace = {
+      contextualized: question,
+      rewritten: question,
+      vectorLeg: [],
+      keywordLegs: [],
+      fused: [],
+      kept: [],
+    };
+    await this.retrieve(question, userId, undefined, trace);
+    return {
+      question,
+      contextualized: trace.contextualized,
+      rewritten: trace.rewritten,
+      vectorLeg: trace.vectorLeg,
+      keywordLegs: trace.keywordLegs,
+      fused: trace.fused,
+      kept: trace.kept,
+    };
   }
 
   /** 关键词（字面）检索：pg_trgm 子串匹配 + trigram 相似度排序；term 与 userId 参数化传入（防注入），LIMIT 由设置决定。
@@ -728,11 +839,125 @@ export class AskService {
                    FROM document_chunks c
                    LEFT JOIN upload_files f ON f.id = c."uploadFileId"
                   WHERE f.id IS NOT NULL
-                    AND f."uploaderId" = $2
+                    AND (f."uploaderId" = $2
+                         OR f.id IN (SELECT "uploadFileId" FROM share_records WHERE "shareeId" = $2))
                     AND c.content ILIKE '%' || $1 || '%'
                   ORDER BY distance DESC
                   LIMIT ${keywordTopK}`;
     return this.documentChunksRepository.query(sql, [term, userId]);
+  }
+
+  /**
+   * 图谱问答增强（GraphRAG）：从实体图谱召回与本次问答相关的「实体—关系—实体」三元组，
+   * 拼成纯文本注入回答上下文，让模型在实体/关系层面作答时更有依据。
+   * - 候选实体：按名称与问题的 pg_trgm 相似度取前 N 个（含共享给我的文档，隔离口径与检索 SQL 一致）；
+   * - 相关关系：候选实体间的关系，按三元组文本与「问题+检索片段」的 bigram 重叠率打分过滤；
+   * - 纯 SQL 召回 + 字符串匹配，不额外调 LLM；任何异常静默降级，不影响回答主流程。
+   */
+  private async retrieveGraphContext(
+    question: string,
+    userId: number,
+    kbSources: RetrievedChunk[],
+  ): Promise<{ text: string; count: number }> {
+    try {
+      // ① 匹配文本（haystack）：问题 + 已检索片段，据此判断实体/关系是否与本次问答相关
+      const pieces = [question, ...kbSources.map((chunk) => chunk.content || '')].filter((s) => s.trim());
+      const haystack = pieces.join('\n').slice(0, GRAPH_MATCH_TEXT_LIMIT);
+
+      // ② 候选实体：名称与问题最接近的前 N 个（含共享给我的文档）
+      const entities: { id: number; name: string; entityType: string }[] =
+        await this.documentChunksRepository.query(
+          `SELECT e.id, e.name, e."entityType"
+             FROM graph_entities e
+             LEFT JOIN upload_files f ON f.id = e."uploadFileId"
+             LEFT JOIN share_records s ON s."uploadFileId" = e."uploadFileId"
+            WHERE f.id IS NOT NULL
+              AND (e."userId" = $1 OR s."shareeId" = $1)
+            ORDER BY similarity(e.name, $2) DESC
+            LIMIT ${GRAPH_ENTITY_LIMIT}`,
+          [userId, question],
+        );
+
+      if (entities.length === 0) {
+        return { text: '', count: 0 };
+      }
+
+      // ③ 候选实体间的关系三元组（带两端实体名称/类型）
+      const entityIds = entities.map((entity) => entity.id);
+      const relations: {
+        relation: string;
+        sourceName: string;
+        sourceType: string;
+        targetName: string;
+        targetType: string;
+      }[] = await this.documentChunksRepository.query(
+        `SELECT r.relation,
+                se.name AS "sourceName", se."entityType" AS "sourceType",
+                te.name AS "targetName", te."entityType" AS "targetType"
+           FROM graph_relations r
+           JOIN graph_entities se ON se.id = r."sourceEntityId"
+           JOIN graph_entities te ON te.id = r."targetEntityId"
+          WHERE r."sourceEntityId" = ANY($1) OR r."targetEntityId" = ANY($1)`,
+        [entityIds],
+      );
+
+      // ④ 按三元组文本与 haystack 的 bigram 重叠打分，去重后取最相关的注入
+      const scored = relations.map((rel) => {
+        const text = `${rel.sourceName}${rel.relation}${rel.targetName}`;
+        return {
+          ...rel,
+          key: `${rel.sourceName}|${rel.relation}|${rel.targetName}`,
+          score: this.bigramOverlap(text, haystack),
+        };
+      });
+      const byKey = new Map<string, (typeof scored)[number]>();
+      for (const item of scored) {
+        const prev = byKey.get(item.key);
+        if (item.score > 0 && (!prev || item.score > prev.score)) {
+          byKey.set(item.key, item);
+        }
+      }
+      const triples = Array.from(byKey.values())
+        .sort((a, b) => b.score - a.score)
+        .slice(0, GRAPH_TRIPLE_LIMIT);
+
+      if (triples.length === 0) {
+        return { text: '', count: 0 };
+      }
+      const text = triples
+        .map(
+          (rel) =>
+            `- ${rel.sourceName}（${rel.sourceType}）— ${rel.relation} — ${rel.targetName}（${rel.targetType}）`,
+        )
+        .join('\n');
+      return { text, count: triples.length };
+    } catch (error) {
+      this.logger.warn(`GraphRAG context retrieval failed: ${String(error)}`);
+      return { text: '', count: 0 };
+    }
+  }
+
+  /** 字符 bigram 重叠率（0~1）：query 中的 bigram 有多少出现在 text 里；单字串退化为单字匹配 */
+  private bigramOverlap(query: string, text: string): number {
+    const grams = (value: string): string[] => {
+      const chars = Array.from(value.replace(/\s+/g, ''));
+      if (chars.length <= 1) {
+        return chars;
+      }
+      return chars.slice(0, -1).map((_, index) => chars[index] + chars[index + 1]);
+    };
+    const qGrams = grams(query);
+    if (qGrams.length === 0) {
+      return 0;
+    }
+    const tSet = new Set(grams(text));
+    let hit = 0;
+    for (const gram of qGrams) {
+      if (tSet.has(gram)) {
+        hit += 1;
+      }
+    }
+    return hit / qGrams.length;
   }
 
   /** 把一行 SQL 结果统一转成融合候选结构（rrf 初始为 0，融合时累加） */

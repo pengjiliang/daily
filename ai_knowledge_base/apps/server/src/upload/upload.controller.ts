@@ -58,6 +58,22 @@ export class UploadController {
     return this.uploadService.saveDocument(request.user.userId, file, body.folderName);
   }
 
+  /** POST /upload/document/text：粘贴文本导入（多源导入·文本源），title 可选、content 必填，落库为 .txt 并异步建索引 */
+  @Post('document/text')
+  async uploadText(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: { title?: string; content: string },
+  ) {
+    const content = body.content ?? '';
+    if (!content.trim()) {
+      throw new BadRequestException('文本内容不能为空');
+    }
+    if (content.length > 200000) {
+      throw new BadRequestException('文本内容过长（最多 20 万字符）');
+    }
+    return this.uploadService.saveTextDocument(request.user.userId, body.title, content);
+  }
+
   /** GET /upload/documents：当前用户上传的文档列表（按上传时间倒序） */
   @Get('documents')
   async listDocuments(@Req() request: AuthenticatedRequest) {

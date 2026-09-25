@@ -16,6 +16,10 @@ export interface UploadDocument {
   indexed: boolean;
   /** 所属文件夹相对路径（如 `2026/文档`）；单文件上传为 null/undefined */
   folderName?: string | null;
+  /** 共享来源：null=自己上传；非空=他人共享给我的文档（值为共享者用户名） */
+  sharedByUsername?: string | null;
+  /** 共享权限（仅共享给我的文档有值） */
+  sharedPermission?: 'read' | 'edit' | null;
 }
 
 /** @deprecated Use UploadDocument */
@@ -39,6 +43,11 @@ export const uploadApi = {
       formData.append('folderName', folderName);
     }
     return request.post<UploadDocument>('/upload/document', formData);
+  },
+
+  /** 粘贴文本导入（多源导入·文本源）：title 可选、content 必填，服务端落为 .txt 并异步建索引 */
+  importTextDocument(title: string, content: string) {
+    return request.post<UploadDocument>('/upload/document/text', { title, content });
   },
 
   listDocuments() {

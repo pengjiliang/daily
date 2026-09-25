@@ -11,14 +11,17 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { createReadStream, existsSync } from 'node:fs';
-import { unlink } from 'node:fs/promises';
+import { createReadStream, existsSync, mkdirSync } from 'node:fs';
+import { unlink, writeFile } from 'node:fs/promises';
 import type { ReadStream } from 'node:fs';
-import { resolve, sep } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { resolve, sep, join } from 'node:path';
 import { Repository } from 'typeorm';
 import { UsersService } from '../users/users.service.js';
+import { ShareService } from '../share/share.service.js';
+import type { SharePermission } from '../share/share.entity.js';
 import { UploadFile } from './upload-file.entity.js';
-import { UPLOAD_ROOT } from './upload.storage.js';
+import { DOCUMENTS_DIRECTORY, UPLOAD_ROOT } from './upload.storage.js';
 import { Buffer } from 'node:buffer';
 
 /**
@@ -61,6 +64,7 @@ export class UploadService {
     private readonly uploadFilesRepository: Repository<UploadFile>,
     private readonly usersService: UsersService,
     private readonly configService: ConfigService,
+    private readonly shareService: ShareService,
   ) {}
 
   /** 保存头像：把静态访问 URL 更新到用户资料，返回 URL 与脱敏后的用户信息 */
@@ -98,12 +102,55 @@ export class UploadService {
     return uploadFile;
   }
 
-  /** 当前用户上传的文档列表（按上传时间倒序） */
-  async listDocuments(userId: number): Promise<UploadFile[]> {
-    return this.uploadFilesRepository.find({
+  /**
+   * 粘贴文本导入（多源导入·文本源）：把文本写入 uploads/documents 下的 .txt 文件并落库，
+   * 随后异步触发 ai-service 建索引（与文件上传共用同一索引链路）。
+   */
+  async saveTextDocument(
+    userId: number,
+    title: string | undefined,
+    content: string,
+  ): Promise<UploadFile> {
+    const originalName = (title?.trim() || '粘贴文本').slice(0, 255);
+    const filename = `${randomUUID()}.txt`;
+    const absolutePath = join(DOCUMENTS_DIRECTORY, filename);
+    mkdirSync(DOCUMENTS_DIRECTORY, { recursive: true });
+    await writeFile(absolutePath, content, 'utf8');
+
+    const uploadFile = await this.uploadFilesRepository.save(
+      this.uploadFilesRepository.create({
+        filename,
+        originalName,
+        folderName: null,
+        mimeType: 'text/plain',
+        path: `documents/${filename}`,
+        size: Buffer.byteLength(content, 'utf8'),
+        uploaderId: userId,
+      }),
+    );
+
+    // 异步后台索引，不阻塞响应
+    setImmediate(() => {
+      this.requestDocumentIndexing(uploadFile, absolutePath);
+    });
+    return uploadFile;
+  }
+
+  /**
+   * 当前用户可见的文档列表（按上传时间倒序）：自己上传的 + 共享给我的。
+   * 自己上传的 sharedByUsername/sharedPermission 为 null；共享来的带来源用户名与权限，
+   * 前端据此区分「我的文档 / 共享给我的」并控制可执行操作。
+   */
+  async listDocuments(userId: number): Promise<DocumentListItem[]> {
+    const own = await this.uploadFilesRepository.find({
       where: { uploaderId: userId },
       order: { createdAt: 'DESC' },
     });
+    const shared = await this.shareService.listSharedUploadFiles(userId);
+    return [
+      ...own.map((file) => ({ ...file, sharedByUsername: null, sharedPermission: null })),
+      ...shared,
+    ];
   }
 
   /** 取下载所需的文件流与元信息：校验归属、防路径穿越、文件缺失抛 404 */
@@ -116,7 +163,7 @@ export class UploadService {
     originalName: string;
     size: number;
   }> {
-    const uploadFile = await this.findOwnedDocument(id, userId);
+    const uploadFile = await this.findAccessibleDocument(id, userId);
     const filePath = this.resolveSafeDocumentPath(uploadFile.path);
 
     if (!existsSync(filePath)) {
@@ -137,7 +184,13 @@ export class UploadService {
    * 因此重命名不影响磁盘与检索，只影响列表/下载展示。
    */
   async renameDocument(id: number, userId: number, originalName: string): Promise<UploadFile> {
-    const uploadFile = await this.findOwnedDocument(id, userId);
+    const uploadFile = await this.uploadFilesRepository.findOneBy({ id });
+    if (!uploadFile) {
+      throw new NotFoundException('Document not found');
+    }
+    if (uploadFile.uploaderId !== userId && !(await this.shareService.hasEditAccess(id, userId))) {
+      throw new ForbiddenException('You can only rename documents you own or have edit permission on');
+    }
     const name = originalName.trim();
     if (!name) {
       throw new BadRequestException('文件名不能为空');
@@ -165,6 +218,9 @@ export class UploadService {
     }
     await this.uploadFilesRepository.remove(uploadFile);
 
+    // 清理该文档的全部共享记录（文档已删除，共享随之失效）
+    await this.shareService.removeSharesForDocument(uploadFileId);
+
     // 同步清理 ai-service 中该文件的分块：否则孤儿分块会继续被检索命中（同一文件名出现多条来源）
     await this.requestChunkPurge(uploadFileId);
   }
@@ -189,6 +245,21 @@ export class UploadService {
     } catch (error) {
       this.logger.warn(`AI chunk purge for document ${uploadFileId} could not be delivered: ${String(error)}`);
     }
+  }
+
+  /**
+   * 按 id 取文档并校验可读：所有者或共享给我的均可（用于预览/下载）。
+   * 不存在 404；既非所有者也无共享则 403。
+   */
+  private async findAccessibleDocument(id: number, userId: number): Promise<UploadFile> {
+    const uploadFile = await this.uploadFilesRepository.findOneBy({ id });
+    if (!uploadFile) {
+      throw new NotFoundException('Document not found');
+    }
+    if (uploadFile.uploaderId !== userId && !(await this.shareService.hasReadAccess(id, userId))) {
+      throw new ForbiddenException('You can only access your own or shared documents');
+    }
+    return uploadFile;
   }
 
   /** 按 id 取文档并校验归属：不存在 404，属于他人 403 */
@@ -256,3 +327,9 @@ export class UploadService {
     await this.requestDocumentIndexing(uploadFile, filePath);
   }
 }
+
+/** 文档列表返回项：自己上传（shared 字段为 null）或共享给我的（带来源用户名与权限） */
+export type DocumentListItem = UploadFile & {
+  sharedByUsername: string | null;
+  sharedPermission: SharePermission | null;
+};

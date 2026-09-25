@@ -2,7 +2,7 @@
   左侧面板（左）：三级嵌套菜单。
   一级：AI 助手 / 数据中心 / 系统设置，均可展开收起（互斥）。
   AI 助手 → 二级「会话列表 / 文档管理」，点击展开三级功能按钮与列表区（互斥收起，再点收起）；
-  数据中心 → 二级「使用统计 / 知识图谱」，系统设置 → 二级「模型配置」，点击切换右侧主区内容。
+  数据中心 → 二级「使用统计 / 知识图谱 / 检索调试」，系统设置 → 二级「模型配置」，点击切换右侧主区内容。
   文档管理：上传文档/上传文件夹、文件夹列表（内联展开）、文件列表（均支持一键删除与行级预览/重命名/删除）；
   会话列表：新建对话、一键删除全部、每行主题描述 + 重命名/删除。
   共享状态来自 useChatStore / useUiStore；删除/重命名弹窗由 Home 统一渲染。
@@ -150,6 +150,10 @@
                       >
                         上传文件夹
                       </el-button>
+                      <!-- 粘贴文本导入（多源导入·文本源） -->
+                      <el-button type="primary" plain size="small" :icon="Memo" @click="chatStore.openPasteDialog">
+                        粘贴文本
+                      </el-button>
                       <input
                         ref="folderInput"
                         type="file"
@@ -235,33 +239,19 @@
                             <el-tooltip :content="displayFolderFileName(group.name, doc)" placement="top-start">
                               <span class="document-name">{{ displayFolderFileName(group.name, doc) }}</span>
                             </el-tooltip>
+                            <span v-if="doc.sharedByUsername" class="shared-tag">来自 {{ doc.sharedByUsername }}</span>
                             <div class="doc-actions">
                               <el-tooltip content="预览" placement="top">
-                                <el-button
-                                  :icon="View"
-                                  text
-                                  size="small"
-                                  style="color: #909399"
-                                  @click.stop="chatStore.previewDocument(doc)"
-                                />
+                                <el-button :icon="View" text size="small" style="color: #909399" @click.stop="chatStore.previewDocument(doc)" />
                               </el-tooltip>
-                              <el-tooltip content="重命名" placement="top">
-                                <el-button
-                                  :icon="EditPen"
-                                  text
-                                  size="small"
-                                  style="color: #909399"
-                                  @click="chatStore.openRenameDocumentDialog(doc)"
-                                />
+                              <el-tooltip v-if="!doc.sharedByUsername" content="共享" placement="top">
+                                <el-button :icon="Share" text size="small" style="color: #909399" @click.stop="chatStore.openShareDialog(doc)" />
                               </el-tooltip>
-                              <el-tooltip content="删除" placement="top">
-                                <el-button
-                                  :icon="Delete"
-                                  text
-                                  size="small"
-                                  style="color: #909399"
-                                  @click="chatStore.confirmDeleteDocument(doc)"
-                                />
+                              <el-tooltip v-if="!doc.sharedByUsername || doc.sharedPermission === 'edit'" content="重命名" placement="top">
+                                <el-button :icon="EditPen" text size="small" style="color: #909399" @click="chatStore.openRenameDocumentDialog(doc)" />
+                              </el-tooltip>
+                              <el-tooltip v-if="!doc.sharedByUsername" content="删除" placement="top">
+                                <el-button :icon="Delete" text size="small" style="color: #909399" @click="chatStore.confirmDeleteDocument(doc)" />
                               </el-tooltip>
                             </div>
                           </div>
@@ -304,33 +294,19 @@
                         <el-tooltip :content="doc.originalName" placement="top-start">
                           <span class="document-name">{{ doc.originalName }}</span>
                         </el-tooltip>
+                        <span v-if="doc.sharedByUsername" class="shared-tag">来自 {{ doc.sharedByUsername }}</span>
                         <div class="doc-actions">
                           <el-tooltip content="预览" placement="top">
-                            <el-button
-                              :icon="View"
-                              text
-                              size="small"
-                              style="color: #909399"
-                              @click.stop="chatStore.previewDocument(doc)"
-                            />
+                            <el-button :icon="View" text size="small" style="color: #909399" @click.stop="chatStore.previewDocument(doc)" />
                           </el-tooltip>
-                          <el-tooltip content="重命名" placement="top">
-                            <el-button
-                              :icon="EditPen"
-                              text
-                              size="small"
-                              style="color: #909399"
-                              @click="chatStore.openRenameDocumentDialog(doc)"
-                            />
+                          <el-tooltip v-if="!doc.sharedByUsername" content="共享" placement="top">
+                            <el-button :icon="Share" text size="small" style="color: #909399" @click.stop="chatStore.openShareDialog(doc)" />
                           </el-tooltip>
-                          <el-tooltip content="删除" placement="top">
-                            <el-button
-                              :icon="Delete"
-                              text
-                              size="small"
-                              style="color: #909399"
-                              @click="chatStore.confirmDeleteDocument(doc)"
-                            />
+                          <el-tooltip v-if="!doc.sharedByUsername || doc.sharedPermission === 'edit'" content="重命名" placement="top">
+                            <el-button :icon="EditPen" text size="small" style="color: #909399" @click="chatStore.openRenameDocumentDialog(doc)" />
+                          </el-tooltip>
+                          <el-tooltip v-if="!doc.sharedByUsername" content="删除" placement="top">
+                            <el-button :icon="Delete" text size="small" style="color: #909399" @click="chatStore.confirmDeleteDocument(doc)" />
                           </el-tooltip>
                         </div>
                       </div>
@@ -362,6 +338,10 @@
             <div class="sub-menu plain" :class="{ active: isSubActive('graph') }" @click="openView('graph', 'data')">
               <el-icon class="sub-icon"><Share /></el-icon>
               <span class="sub-label">知识图谱</span>
+            </div>
+            <div class="sub-menu plain" :class="{ active: isSubActive('debug') }" @click="openView('debug', 'data')">
+              <el-icon class="sub-icon"><Search /></el-icon>
+              <span class="sub-label">检索调试</span>
             </div>
           </div>
         </el-collapse-transition>
@@ -403,6 +383,7 @@ import {
   Delete,
   EditPen,
   FolderOpened,
+  Memo,
   MoreFilled,
   Operation,
   Plus,
@@ -437,12 +418,12 @@ const openView = (view: MainView, menu: SidebarMenuKey) => {
 const isTopActive = (key: SidebarMenuKey) => {
   if (uiStore.expandedMenu !== key) return false;
   if (key === 'ai') return chatStore.activeTab === '';
-  if (key === 'data') return uiStore.mainView !== 'stats' && uiStore.mainView !== 'graph';
+  if (key === 'data') return uiStore.mainView !== 'stats' && uiStore.mainView !== 'graph' && uiStore.mainView !== 'debug';
   return uiStore.mainView !== 'settings';
 };
 
 /** 二级菜单高亮：AI 组仅在 tab 展开且无三级选中时点亮；数据中心/系统设置为最深层，按 mainView 点亮 */
-const isSubActive = (key: 'conversations' | 'documents' | 'stats' | 'graph' | 'settings') => {
+const isSubActive = (key: 'conversations' | 'documents' | 'stats' | 'graph' | 'debug' | 'settings') => {
   if (key === 'conversations') {
     return chatStore.activeTab === 'conversations' && !chatStore.currentConversation?.id;
   }
@@ -451,6 +432,7 @@ const isSubActive = (key: 'conversations' | 'documents' | 'stats' | 'graph' | 's
   }
   if (key === 'stats') return uiStore.mainView === 'stats';
   if (key === 'graph') return uiStore.mainView === 'graph';
+  if (key === 'debug') return uiStore.mainView === 'debug';
   return uiStore.mainView === 'settings';
 };
 
@@ -904,6 +886,21 @@ const confirmDeleteFolder = (name: string) => {
 
 .document-item:hover .doc-actions {
   opacity: 1;
+}
+
+/* 共享给我的文档：来源标签 */
+.shared-tag {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--el-color-primary);
+  background-color: var(--kb-sub-active);
+  border-radius: 6px;
+  padding: 0 6px;
+  line-height: 18px;
+  max-width: 90px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* 文件/文件夹分区小标题（标题 + 右侧"一键删除"按钮） */

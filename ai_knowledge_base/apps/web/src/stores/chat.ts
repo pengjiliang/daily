@@ -9,8 +9,10 @@ import { ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { chatApi } from '@/api/chat';
 import { uploadApi } from '@/api/upload';
+import { shareApi } from '@/api/share';
 import type { Conversation, Message } from '@/api/chat';
 import type { UploadDocument } from '@/api/upload';
+import type { ShareRecordView, SharePermission } from '@/api/share';
 import type { WorkBook } from 'xlsx';
 import { useUiStore } from '@/stores/ui';
 
@@ -38,6 +40,20 @@ export const useChatStore = defineStore('chat', () => {
   const renameDialogTitle = ref('');
   const renameDialogValue = ref('');
   const renameConfirmCallback = ref<(() => void) | null>(null);
+
+  // 共享弹窗（文档管理：把文档分享给其他用户）
+  const shareDialogVisible = ref(false);
+  const shareDialogDoc = ref<UploadDocument | null>(null);
+  const shareDialogSharees = ref<ShareRecordView[]>([]);
+  const shareDialogUsername = ref('');
+  const shareDialogPermission = ref<SharePermission>('read');
+  const sharing = ref(false);
+
+  // 粘贴文本导入（多源导入·文本源）
+  const pasteDialogVisible = ref(false);
+  const pasteTitle = ref('');
+  const pasteContent = ref('');
+  const importingText = ref(false);
 
   // 文件夹上传
   const uploadingFolder = ref(false);
@@ -401,6 +417,64 @@ export const useChatStore = defineStore('chat', () => {
       }
     });
   };
+  // ---- 文档共享 ----
+
+  /** 刷新当前弹窗对应文档的已共享列表（我发出的共享中过滤出该文档的记录） */
+  const refreshShareList = async () => {
+    if (!shareDialogDoc.value) return;
+    try {
+      const outgoing = await shareApi.listOutgoing();
+      shareDialogSharees.value = outgoing.filter((r) => r.uploadFileId === shareDialogDoc.value!.id);
+    } catch (error) {
+      console.error(error);
+      ElMessage.error('获取共享列表失败');
+    }
+  };
+
+  /** 打开文档共享弹窗（仅自己的文档可共享；预加载已共享列表） */
+  const openShareDialog = async (doc: UploadDocument) => {
+    shareDialogDoc.value = doc;
+    shareDialogUsername.value = '';
+    shareDialogPermission.value = 'read';
+    shareDialogVisible.value = true;
+    shareDialogSharees.value = [];
+    await refreshShareList();
+  };
+
+  /** 创建/更新共享：按用户名把文档共享给另一个用户（读/写权限） */
+  const addShare = async () => {
+    const doc = shareDialogDoc.value;
+    const username = shareDialogUsername.value.trim();
+    if (!doc || !username) {
+      ElMessage.warning('请输入要共享的用户名');
+      return;
+    }
+    try {
+      sharing.value = true;
+      await shareApi.createShare(doc.id, username, shareDialogPermission.value);
+      ElMessage.success('共享成功');
+      shareDialogUsername.value = '';
+      await refreshShareList();
+    } catch (error) {
+      console.error(error);
+      ElMessage.error('共享失败');
+    } finally {
+      sharing.value = false;
+    }
+  };
+
+  /** 取消共享（仅所有者可操作），成功后刷新列表 */
+  const removeShare = async (record: ShareRecordView) => {
+    try {
+      await shareApi.removeShare(record.id);
+      ElMessage.success('已取消共享');
+      shareDialogSharees.value = shareDialogSharees.value.filter((r) => r.id !== record.id);
+    } catch (error) {
+      console.error(error);
+      ElMessage.error('取消失败');
+    }
+  };
+
 
   // ---- 上传 ----
 
@@ -438,6 +512,39 @@ export const useChatStore = defineStore('chat', () => {
     } catch (error) {
       console.error(error);
       ElMessage.error('上传失败');
+    }
+  };
+
+  /** 打开粘贴文本导入弹窗（多源导入·文本源） */
+  const openPasteDialog = () => {
+    pasteTitle.value = '';
+    pasteContent.value = '';
+    pasteDialogVisible.value = true;
+  };
+
+  /** 提交粘贴文本：落为 .txt 文档并异步建索引，成功后刷新列表 */
+  const importText = async () => {
+    const title = pasteTitle.value.trim();
+    const content = pasteContent.value.trim();
+    if (!content) {
+      ElMessage.error('文本内容不能为空');
+      return;
+    }
+    if (content.length > 200000) {
+      ElMessage.error('文本内容过长（最多 20 万字符）');
+      return;
+    }
+    importingText.value = true;
+    try {
+      await uploadApi.importTextDocument(title, content);
+      ElMessage.success('导入成功，正在索引文档');
+      pasteDialogVisible.value = false;
+      loadDocuments();
+    } catch (error) {
+      console.error(error);
+      ElMessage.error('导入失败');
+    } finally {
+      importingText.value = false;
     }
   };
 
@@ -773,6 +880,18 @@ export const useChatStore = defineStore('chat', () => {
     renameDialogTitle,
     renameDialogValue,
     uploadingFolder,
+    // 共享
+    shareDialogVisible,
+    shareDialogDoc,
+    shareDialogSharees,
+    shareDialogUsername,
+    shareDialogPermission,
+    sharing,
+    // 粘贴文本导入
+    pasteDialogVisible,
+    pasteTitle,
+    pasteContent,
+    importingText,
     // 文档预览
     previewState,
     previewLoading,
@@ -797,9 +916,15 @@ export const useChatStore = defineStore('chat', () => {
     openRenameDocumentDialog,
     openRenameConversationDialog,
     confirmRename,
+    // 共享
+    openShareDialog,
+    addShare,
+    removeShare,
     // 上传
     beforeUpload,
     handleUpload,
+    openPasteDialog,
+    importText,
     pickFolderWithPicker,
     uploadFolderFiles,
     handleFolderChange,

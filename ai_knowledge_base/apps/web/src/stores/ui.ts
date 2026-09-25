@@ -6,7 +6,7 @@
  */
 import { defineStore } from 'pinia';
 
-export type MainView = 'chat' | 'preview' | 'stats' | 'graph' | 'settings';
+export type MainView = 'chat' | 'preview' | 'stats' | 'graph' | 'settings' | 'debug';
 export type SidebarMenuKey = 'ai' | 'data' | 'system';
 
 export const useUiStore = defineStore('ui', {

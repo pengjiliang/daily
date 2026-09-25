@@ -16,7 +16,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Conversation } from './conversation.entity.js';
 import { Message } from './message.entity.js';
-import type { AskResult, RetrievedChunk } from '@ai-knowledge-base/shared';
+import type { AskResult, RetrieveDebugView, RetrievedChunk } from '@ai-knowledge-base/shared';
 
 // 跨端共享类型：定义见 packages/shared
 export type AskAnswer = AskResult;
@@ -140,6 +140,7 @@ export class ChatService {
       onToken: (token: string) => void | Promise<void>;
     },
     clientSignal?: AbortSignal,
+    graphEnabled?: boolean,
   ): Promise<{
     answer: string;
     sources: RetrievedChunk[];
@@ -147,6 +148,7 @@ export class ChatService {
     cached?: boolean;
     stats?: AskResult['stats'];
     suggestions?: string[];
+    graphHitCount?: number;
   }> {
     const conversation = await this.findOwnedConversation(id, userId);
     await this.messagesRepository.save(
@@ -174,14 +176,16 @@ export class ChatService {
     let stats: AskResult['stats'];
     let suggestions: string[] = [];
     let clientAborted = false;
+    let graphHitCount = 0;
 
     try {
-      const result = await this.askStream(content, conversation.id, userId, history, callbacks, clientSignal);
+      const result = await this.askStream(content, conversation.id, userId, history, callbacks, clientSignal, graphEnabled);
       answer = result.answer;
       sources = result.sources;
       cached = result.cached === true;
       stats = result.stats;
       suggestions = Array.isArray(result.suggestions) ? result.suggestions : [];
+      graphHitCount = result.graphHitCount ?? 0;
     } catch (error) {
       // 客户端主动断开：尽力保存已流式生成的部分回答，不再向上抛
       if (clientSignal?.aborted) {
@@ -206,9 +210,9 @@ export class ChatService {
     }
 
     if (clientAborted) {
-      return { answer, sources, message, cached, stats, suggestions };
+      return { answer, sources, message, cached, stats, suggestions, graphHitCount };
     }
-    return { answer, sources, message, cached, stats, suggestions };
+    return { answer, sources, message, cached, stats, suggestions, graphHitCount };
   }
 
   /**
@@ -225,6 +229,7 @@ export class ChatService {
       onToken: (token: string) => void | Promise<void>;
     },
     clientSignal?: AbortSignal,
+    graphEnabled?: boolean,
   ): Promise<AskAnswer & { cached?: boolean }> {
     const aiServiceUrl = this.configService.get<string>('aiService.url', 'http://localhost:3001');
 
@@ -250,6 +255,8 @@ export class ChatService {
           conversationId: String(conversationId),
           // 检索按用户隔离：ai-service 只查询该用户上传的文档分块
           userId,
+          // 图谱问答增强：是否从实体图谱注入关系（undefined 由 ai-service 默认开启）
+          graphEnabled,
           history: history.map((msg) => ({
             role: msg.role,
             content: msg.content,
@@ -402,5 +409,19 @@ export class ChatService {
 
     const body = (await response.json()) as Partial<AskAnswer>;
     return { answer: body.answer ?? '', sources: body.sources ?? [] };
+  }
+
+  /** 检索调试（只检索、不生成回答）：转发给 ai-service 检索调试接口，返回完整检索链路 */
+  async retrieveDebug(userId: number, question: string): Promise<RetrieveDebugView> {
+    const aiServiceUrl = this.configService.get<string>('aiService.url', 'http://localhost:3001');
+    const response = await fetch(`${aiServiceUrl}/ai/retrieve/debug`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ question, userId }),
+    });
+    if (!response.ok) {
+      throw new BadGatewayException(`AI service responded with ${response.status}`);
+    }
+    return (await response.json()) as RetrieveDebugView;
   }
 }
