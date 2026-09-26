@@ -15,6 +15,9 @@ export class Lead {
   phone: string
 
   @Column({ default: '' })
+  email: string
+
+  @Column({ default: '' })
   website: string
 
   @Column({ default: '' })
@@ -38,3 +41,4 @@ export class Lead {
   @CreateDateColumn()
   createdAt: Date
 }
+
