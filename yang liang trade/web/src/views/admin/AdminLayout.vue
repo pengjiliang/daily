@@ -36,13 +36,13 @@ function logout() {
 
 <style scoped>
 .layout { min-height: 100vh; }
-.aside { background: #0f172a; color: #cbd5e1; display: flex; flex-direction: column; }
+.aside { background: #304156; color: #c0c4cc; display: flex; flex-direction: column; }
 .logo { display: flex; align-items: center; gap: 10px; color: #fff; font-weight: 700; padding: 20px 16px; font-size: 16px; }
-.menu { border-right: none; background: transparent; --el-menu-text-color: #cbd5e1; --el-menu-hover-bg-color: rgba(255,255,255,.06); --el-menu-active-color: #38bdf8; --el-menu-bg-color: transparent; flex: 1; }
+.menu { border-right: none; background: transparent; --el-menu-text-color: #c0c4cc; --el-menu-hover-bg-color: rgba(255,255,255,.06); --el-menu-active-color: #409eff; --el-menu-bg-color: transparent; flex: 1; }
 .menu :deep(.el-menu-item) { border-radius: 10px; margin: 4px 10px; }
-.menu :deep(.el-menu-item.is-active) { background: rgba(56,189,248,.15); }
+.menu :deep(.el-menu-item.is-active) { background: rgba(64,158,255,.15); }
 .aside-foot { padding: 16px; display: flex; flex-direction: column; align-items: stretch; }
-.aside-foot .el-button { justify-content: flex-start; color: #cbd5e1; }
+.aside-foot .el-button { justify-content: flex-start; color: #c0c4cc; }
 .main { background: var(--yl-bg); padding: 28px; }
 </style>
 

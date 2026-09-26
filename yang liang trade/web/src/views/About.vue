@@ -1,41 +1,41 @@
 <template>
   <div class="page-section">
     <div class="container">
-      <h2 class="section-title">关于我们</h2>
-      <p class="section-sub">扬良贸易有限公司 — 值得信赖的医疗器械贸易伙伴</p>
+      <h2 class="section-title">{{ t('about_title') }}</h2>
+      <p class="section-sub">{{ t('about_sub') }}</p>
 
-      <div class="banner"><img src="/images/hero-medical.svg" alt="扬良贸易" /></div>
+      <div class="banner"><img src="/images/hero-medical.svg" alt="Yangliang Trade" /></div>
 
       <div class="text-block">
-        <h3>公司简介</h3>
-        <p>扬良贸易有限公司专注于医疗器械与医用产品的进出口贸易，主营防护用品、监测设备、耗材器械、护理康复与消毒净化等品类。公司建立严格的质量管控体系，产品通过 CE、FDA、ISO 等国际认证，远销亚洲、东南亚、南亚、中亚、北非等地区。</p>
+        <h3>{{ t('about_intro_title') }}</h3>
+        <p>{{ t('about_intro_p') }}</p>
       </div>
 
       <div class="grid3">
         <div class="item">
-          <el-icon :size="30" color="#2563eb"><OfficeBuilding /></el-icon>
-          <h4>我们的使命</h4>
-          <p>以可靠的品质与高效的服务，让全球医疗机构与家庭获得安全、高性价比的医用产品。</p>
+          <el-icon :size="30" color="#409eff"><OfficeBuilding /></el-icon>
+          <h4>{{ t('about_m1') }}</h4>
+          <p>{{ t('about_m1d') }}</p>
         </div>
         <div class="item">
-          <el-icon :size="30" color="#2563eb"><Medal /></el-icon>
-          <h4>品质保证</h4>
-          <p>从原料、生产到出厂，全流程质量管控；产品认证齐全，支持第三方检测。</p>
+          <el-icon :size="30" color="#409eff"><Medal /></el-icon>
+          <h4>{{ t('about_m2') }}</h4>
+          <p>{{ t('about_m2d') }}</p>
         </div>
         <div class="item">
-          <el-icon :size="30" color="#2563eb"><Connection /></el-icon>
-          <h4>全球服务</h4>
-          <p>专业外贸团队提供报价、打样、OEM 定制、物流清关等一站式贸易服务。</p>
+          <el-icon :size="30" color="#409eff"><Connection /></el-icon>
+          <h4>{{ t('about_m3') }}</h4>
+          <p>{{ t('about_m3d') }}</p>
         </div>
       </div>
 
       <div class="values">
-        <h3>核心优势</h3>
+        <h3>{{ t('about_values') }}</h3>
         <div class="value-list">
-          <div v-for="v in VALUES" :key="v.t" class="value">
+          <div v-for="v in VALUES" :key="v.n" class="value">
             <div class="v-num">{{ v.n }}</div>
-            <div class="v-title">{{ v.t }}</div>
-            <div class="v-desc">{{ v.d }}</div>
+            <div class="v-title">{{ t(v.t) }}</div>
+            <div class="v-desc">{{ t(v.d) }}</div>
           </div>
         </div>
       </div>
@@ -45,11 +45,12 @@
 
 <script setup>
 import { OfficeBuilding, Medal, Connection } from '@element-plus/icons-vue'
+import { t } from '@/i18n'
 const VALUES = [
-  { n: '01', t: '全品类供应', d: '核心品类齐全，规格覆盖广' },
-  { n: '02', t: '认证保障', d: 'CE / FDA / ISO 认证体系' },
-  { n: '03', t: '柔性定制', d: 'OEM / ODM 按需定制' },
-  { n: '04', t: '高效交付', d: '稳定供应链与快速发货' }
+  { n: '01', t: 'about_v1', d: 'about_v1d' },
+  { n: '02', t: 'about_v2', d: 'about_v2d' },
+  { n: '03', t: 'about_v3', d: 'about_v3d' },
+  { n: '04', t: 'about_v4', d: 'about_v4d' }
 ]
 </script>
 
@@ -64,7 +65,7 @@ const VALUES = [
 .item p { color: var(--yl-text-light); font-size: 14px; line-height: 1.8; margin: 0; }
 .value-list { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
 .value { background: #fff; border-radius: var(--yl-radius); padding: 26px 22px; border: 1px solid #eef2f7; }
-.v-num { font-size: 34px; font-weight: 800; color: rgba(37,99,235,.2); }
+.v-num { font-size: 34px; font-weight: 800; color: rgba(64,158,255,.18); }
 .v-title { font-weight: 700; margin: 8px 0 6px; }
 .v-desc { font-size: 13px; color: var(--yl-text-light); }
 @media (max-width: 900px) { .grid3 { grid-template-columns: 1fr; } .value-list { grid-template-columns: repeat(2, 1fr); } }

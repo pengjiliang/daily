@@ -4,8 +4,8 @@
       <div v-if="open" class="chat-panel">
         <div class="chat-head">
           <div>
-            <div class="chat-title">扬良 AI 智能客服</div>
-            <div class="chat-sub">基于公司产品资料的智能助手</div>
+            <div class="chat-title">{{ t('chat_title') }}</div>
+            <div class="chat-sub">{{ t('chat_sub') }}</div>
           </div>
           <el-button text circle style="color:#fff" @click="open = false"><el-icon><Close /></el-icon></el-button>
         </div>
@@ -13,11 +13,11 @@
           <div v-for="(m, i) in messages" :key="i" class="msg" :class="m.role">
             <div class="bubble">{{ m.text }}</div>
           </div>
-          <div v-if="streaming" class="msg assistant"><div class="bubble">{{ streamText || '正在思考…' }}</div></div>
+          <div v-if="streaming" class="msg assistant"><div class="bubble">{{ streamText || t('chat_thinking') }}</div></div>
         </div>
         <div class="chat-input">
-          <el-input v-model="input" placeholder="输入您的问题，如：有哪些防护用品？" @keyup.enter="send" />
-          <el-button type="primary" :disabled="!input.trim() || streaming" @click="send">发送</el-button>
+          <el-input v-model="input" :placeholder="t('chat_placeholder')" @keyup.enter="send" />
+          <el-button type="primary" :disabled="!input.trim() || streaming" @click="send">{{ t('chat_send') }}</el-button>
         </div>
       </div>
     </transition>
@@ -32,6 +32,7 @@
 import { ref, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ChatDotRound, Close } from '@element-plus/icons-vue'
+import { t } from '@/i18n'
 
 const open = ref(false)
 const input = ref('')
@@ -39,7 +40,7 @@ const streaming = ref(false)
 const streamText = ref('')
 const listRef = ref(null)
 const messages = ref([
-  { role: 'assistant', text: '您好，我是扬良贸易 AI 智能客服，可以为您介绍产品、索取报价或解答常见问题。请问有什么可以帮您？' }
+  { role: 'assistant', text: t('chat_hello') }
 ])
 
 watch(open, async () => { if (open.value) await scrollBottom() })
@@ -106,7 +107,7 @@ async function send() {
 
 <style scoped>
 .chat-root { position: fixed; right: 24px; bottom: 24px; z-index: 200; }
-.chat-fab { width: 54px; height: 54px; font-size: 24px; box-shadow: 0 8px 24px rgba(37,99,235,.35); }
+.chat-fab { width: 54px; height: 54px; font-size: 24px; box-shadow: 0 8px 24px rgba(64,158,255,.35); }
 .chat-panel { position: absolute; right: 0; bottom: 66px; width: 340px; height: 480px; background: #fff; border-radius: 16px; box-shadow: 0 16px 48px rgba(15,23,42,.18); display: flex; flex-direction: column; overflow: hidden; }
 .chat-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: linear-gradient(90deg, var(--yl-primary-light), var(--yl-cyan)); color: #fff; }
 .chat-title { font-weight: 700; }
@@ -115,7 +116,7 @@ async function send() {
 .msg { margin-bottom: 12px; display: flex; }
 .msg.user { justify-content: flex-end; }
 .bubble { max-width: 82%; padding: 10px 12px; border-radius: 12px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
-.msg.assistant .bubble { background: #fff; border: 1px solid #e5eaf1; border-top-left-radius: 4px; }
+.msg.assistant .bubble { background: #fff; border: 1px solid #e4e7ed; border-top-left-radius: 4px; }
 .msg.user .bubble { background: var(--yl-primary); color: #fff; border-top-right-radius: 4px; }
-.chat-input { display: flex; gap: 8px; padding: 12px; border-top: 1px solid #eef2f7; background: #fff; }
+.chat-input { display: flex; gap: 8px; padding: 12px; border-top: 1px solid #e4e7ed; background: #fff; }
 </style>

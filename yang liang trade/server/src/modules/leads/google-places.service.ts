@@ -6,13 +6,14 @@ export interface ScrapeOptions {
   regions: string[]   // se / sa / ca / na
   types: string[]
   limit?: number
-  mode?: 'demo' | 'google' | 'osm'
+  mode?: 'demo' | 'google' | 'osm' | 'ypk'
 }
 
 export interface LeadData {
   name: string
   type: string
   phone: string
+  email: string
   website: string
   region: string
   city: string
@@ -75,7 +76,7 @@ export class GooglePlacesService {
     const keyword = opts.keyword.trim()
     const types = opts.types?.filter(Boolean) || []
     const regions = opts.regions || ['se']
-    const limit = Math.min(opts.limit || 10, 50)
+    const limit = Math.min(opts.limit || 100, 100)
 
     const mode = opts.mode || (process.env.GOOGLE_PLACES_API_KEY ? 'google' : 'demo')
     if (mode === 'demo') {
@@ -85,6 +86,10 @@ export class GooglePlacesService {
     if (mode === 'osm') {
       this.logger.log('使用 OpenStreetMap Overpass 免费数据源（无需 API Key）')
       return { mode: 'osm', leads: await this.osmLeads(keyword, regions, types, limit) }
+    }
+    if (mode === 'ypk') {
+      this.logger.log('使用 BusinessList.pk 巴基斯坦黄页（真实·无需 Key）')
+      return { mode: 'ypk', leads: await this.ypkLeads(types, limit) }
     }
     const key = process.env.GOOGLE_PLACES_API_KEY
     if (!key) {
@@ -116,6 +121,7 @@ export class GooglePlacesService {
           name: d.name || place.name,
           type: types[0] || '',
           phone,
+          email: '',
           website: d.website || '',
           region: REGION_LABELS[regions.find((r) => REGION_CENTERS[r]?.includes(center)) || ''] || '',
           city: center.city,
@@ -170,25 +176,29 @@ export class GooglePlacesService {
       'Prime Medico', 'BlueCross Medical', 'CarePoint Equipment', 'Lotus Pharma', 'Delta Medical Store'
     ]
     const type = types[0] || '医疗器械经销商'
+    const totalCities = regions.reduce((n, r) => n + (cities[r]?.length || 0), 0)
+    const perCity = Math.max(1, Math.ceil(limit / Math.max(totalCities, 1)))
     const out: LeadData[] = []
     let i = 0
     for (const r of regions) {
       for (const city of cities[r] || []) {
-        if (out.length >= limit) break
-        const name = `${samples[i % samples.length]} ${type}`
-        const phone = `+${['66', '62', '91', '7', '20'][i % 5]}9${String(100000000 + i * 1373579 % 900000000).slice(0, 8)}`
-        out.push({
-          name, type,
-          phone,
-          website: `https://${samples[i % samples.length].toLowerCase().replace(/[^a-z]/g, '')}.com`,
-          region: REGION_LABELS[r] || r,
-          city,
-          hasWhatsApp: i % 3 !== 2,
-          address: `${city} · 演示地址`,
-          mapsUrl: '',
-          source: 'demo'
-        })
-        i++
+        for (let k = 0; k < perCity && out.length < limit; k++) {
+          const name = `${samples[i % samples.length]} ${type}`
+          const phone = `+${['66', '62', '91', '7', '20'][i % 5]}9${String(100000000 + i * 1373579 % 900000000).slice(0, 8)}`
+          out.push({
+            name, type,
+            phone,
+            email: `contact@${samples[i % samples.length].toLowerCase().replace(/[^a-z]/g, '')}.com`,
+            website: `https://${samples[i % samples.length].toLowerCase().replace(/[^a-z]/g, '')}.com`,
+            region: REGION_LABELS[r] || r,
+            city,
+            hasWhatsApp: i % 3 !== 2,
+            address: `${city} · 演示地址`,
+            mapsUrl: '',
+            source: 'demo'
+          })
+          i++
+        }
       }
       if (out.length >= limit) break
     }
@@ -226,6 +236,7 @@ export class GooglePlacesService {
           name: tags.name,
           type: types[0] || '',
           phone,
+          email: tags.email || tags['contact:email'] || tags['operator:email'] || '',
           website: tags.website || tags['contact:website'] || tags.url || '',
           region: REGION_LABELS[regions.find((r) => REGION_CENTERS[r]?.includes(center)) || ''] || '',
           city: center.city,
@@ -288,7 +299,103 @@ export class GooglePlacesService {
     throw new Error(`Overpass 所有节点均不可用（服务过载或网络不通）: ${lastErr}`)
   }
 
+  // BusinessList.pk 巴基斯坦黄页（真实数据，无需 Key/无需信用卡），按行业分类目录浏览抓取（该站无关键词搜索）
+  private async ypkLeads(types: string[], limit: number): Promise<LeadData[]> {
+    const slugMap: Record<string, string> = {
+      '药店': 'pharmacies',
+      '诊所': 'doctors-and-clinics',
+      '医院': 'doctors-and-clinics',
+      '医疗器械经销商': 'medical-equipment',
+      '医疗耗材商店': 'medical-equipment'
+    }
+    const slugs = [...new Set(types.map((t) => slugMap[t]).filter(Boolean))]
+    if (!slugs.length) slugs.push('medical-equipment')
+    const leads: LeadData[] = []
+    let failCount = 0
+    for (const slug of slugs) {
+      if (leads.length >= limit) break
+      try {
+        await this.ypkCategoryLeads(slug, types[0] || '', limit - leads.length, leads)
+      } catch (e) {
+        failCount++
+        this.logger.warn(`[YPK] 分类 ${slug} 抓取失败，已跳过: ${(e as Error).message}`)
+      }
+    }
+    if (leads.length === 0 && failCount > 0) {
+      throw new Error(`BusinessList.pk 抓取失败（${failCount} 个分类均不可用），请检查 Clash 代理是否开启后重试`)
+    }
+    return leads.slice(0, limit)
+  }
+
+  private async ypkCategoryLeads(slug: string, type: string, need: number, out: LeadData[]): Promise<void> {
+    const gf = this.getFetch()
+    for (let page = 1; page <= 100; page++) {
+      if (out.length >= need) break
+      const url = page === 1
+        ? `https://www.businesslist.pk/category/${slug}`
+        : `https://www.businesslist.pk/category/${slug}/${page}`
+      let html: string
+      try {
+        html = await this.ypkFetch(gf, url)
+      } catch (e) {
+        // 单页失败（过载/超时/翻页到末尾）停止翻页，保留已抓数据
+        this.logger.warn(`[YPK] ${slug} 第 ${page} 页获取失败，停止翻页: ${(e as Error).message}`)
+        break
+      }
+      const items = this.ypkParseList(html)
+      if (!items.length) break
+      for (const it of items) {
+        if (out.length >= need) break
+        out.push({
+          name: it.name,
+          type,
+          phone: it.phone,
+          email: '',
+          website: `https://www.businesslist.pk${it.href}`,
+          region: '南亚',
+          city: it.city,
+          hasWhatsApp: this.hasWhatsApp(it.phone),
+          address: it.address,
+          mapsUrl: '',
+          source: 'ypk'
+        })
+      }
+    }
+  }
+
+  private async ypkFetch(gf: typeof fetch, url: string): Promise<string> {
+    let res: Response
+    try {
+      res = await gf(url)
+    } catch (e) {
+      throw new Error(`BusinessList.pk 无法连接（请开启 Clash 代理）: ${(e as Error).message}`)
+    }
+    if (!res.ok) throw new Error(`BusinessList.pk 请求失败: ${res.status}`)
+    return res.text()
+  }
+
+  // 解析分类列表页公司块（列表页即含电话文本，无需逐个进详情页）
+  private ypkParseList(html: string): { name: string; href: string; phone: string; city: string; address: string }[] {
+    const out: { name: string; href: string; phone: string; city: string; address: string }[] = []
+    for (const b of html.split('<div class="company')) {
+      const a = b.match(/<h3[^>]*>\s*(?:\d+\s*\|\s*)?<a href="([^"]+)">([^<]+)<\/a><\/h3>/)
+      if (!a) continue
+      const phoneM = b.match(/aria-label="Phone number"[\s\S]*?<b>([^<]+)<\/b>/)
+      const addrM = b.match(/<div class="address">([\s\S]*?)<\/div>/)
+      out.push({
+        name: a[2].trim(),
+        href: a[1],
+        phone: (phoneM ? phoneM[1] : '').trim(),
+        city: addrM && addrM[1].match(/<b>([^<]+)<\/b>/) ? addrM[1].match(/<b>([^<]+)<\/b>/)[1].trim() : '',
+        address: addrM ? addrM[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : ''
+      })
+    }
+    return out
+  }
+
   private escRegex(s: string): string {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   }
 }
+
+

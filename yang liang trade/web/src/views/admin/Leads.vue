@@ -8,8 +8,8 @@
     </div>
 
     <el-alert type="warning" :closable="false" show-icon style="margin-bottom: 16px">
-      当前为<b>低成本零风险模式</b>：抓取支持三种数据源——<b>演示数据</b>（默认，无需配置）、<b>OpenStreetMap Overpass</b>
-      （免费真实、无需 Key）、<b>Google Places API</b>（真实，需根目录 <code>.env</code> 配置
+      当前为<b>低成本零风险模式</b>：抓取支持四种数据源——<b>演示数据</b>（默认，无需配置）、<b>OpenStreetMap Overpass</b>
+      （免费真实、无需 Key）、<b>BusinessList.pk 黄页</b>（巴基斯坦真实商家·无需 Key·关键词忽略按行业分类抓取）、<b>Google Places API</b>（真实，需根目录 <code>.env</code> 配置
       <code>GOOGLE_PLACES_API_KEY</code> + Clash 代理）。「联系 / 打开发送」直接唤起电脑上已安装的
       <b>WhatsApp / Messenger 桌面 App</b>；群发采用“生成消息 + 复制”半自动方式，避免网页自动化封号风险。后续可平滑升级为官方 Meta API 全自动群发。
     </el-alert>
@@ -52,12 +52,19 @@
           <el-button v-if="leads.length" link type="danger" @click="clearLeads">清空</el-button>
         </div>
       </template>
-      <el-table :data="leads" @selection-change="(rows) => (selection = rows)" style="width: 100%">
+      <el-table :data="pagedLeads" @selection-change="(rows) => (selection = rows)" style="width: 100%">
         <el-table-column type="selection" width="46" />
-        <el-table-column prop="name" label="店铺名称" min-width="160" />
+        <el-table-column type="index" label="#" width="60" :index="rowIndex" />
+        <el-table-column prop="name" label="店铺名称" min-width="150" />
         <el-table-column prop="type" label="类型" width="100" />
         <el-table-column prop="phone" label="电话" width="125" />
-        <el-table-column prop="website" label="网站" min-width="130" show-overflow-tooltip />
+        <el-table-column label="邮箱" min-width="190">
+          <template #default="{ row }">
+            <a v-if="row.email" :href="mailtoLink(row.email, row.name)" class="email-link">{{ row.email }}</a>
+            <el-tag v-else type="info" size="small">无</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="website" label="网站" min-width="120" show-overflow-tooltip />
         <el-table-column prop="region" label="区域" width="76" />
         <el-table-column prop="city" label="城市" width="90" />
         <el-table-column label="WhatsApp" width="86">
@@ -82,6 +89,10 @@
           </template>
         </el-table-column>
       </el-table>
+      <el-pagination v-if="leads.length" style="margin-top: 14px; justify-content: flex-end"
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="leads.length" v-model:current-page="page" v-model:page-size="pageSize"
+        :page-sizes="[10, 20, 50, 100]" />
       <el-empty v-if="!leads.length" description="尚未抓取线索，请先配置上方任务" />
     </el-card>
 
@@ -94,7 +105,11 @@
             <el-radio-group v-model="sendChannel">
               <el-radio-button value="whatsapp">WhatsApp</el-radio-button>
               <el-radio-button value="facebook">Facebook Messenger</el-radio-button>
+              <el-radio-button value="email">Email 邮件</el-radio-button>
             </el-radio-group>
+          </el-form-item>
+          <el-form-item v-if="sendChannel === 'email'" label="邮件主题（{name} 将替换为店铺名称）">
+            <el-input v-model="emailSubject" />
           </el-form-item>
           <el-form-item label="消息模板（{name} 将替换为店铺名称）">
             <el-input v-model="template" type="textarea" :rows="4" />
@@ -128,8 +143,13 @@
     <!-- 消息预览抽屉 -->
     <el-drawer v-model="drawer" :title="`待发送消息（${previewList.length} 条）`" size="480px">
       <div class="pv-tip">
-        零风险模式：<b>「打开发送」直接唤起桌面 App</b>。WhatsApp 会自动带出消息；Facebook 会打开 Messenger App，
-        请在其中搜索联系人后粘贴消息发送（Google 抓到的线索无对方 FB 用户 ID，无法自动定位个人）。升级官方 API 后可全自动。
+        <template v-if="sendChannel === 'email'">
+          零风险模式：<b>「打开发送」将唤起系统默认邮箱客户端</b>，自动带出收件人、主题与开发信正文，逐条点击发送即可。
+        </template>
+        <template v-else>
+          零风险模式：<b>「打开发送」直接唤起桌面 App</b>。WhatsApp 会自动带出消息；Facebook 会打开 Messenger App，
+          请在其中搜索联系人后粘贴消息发送（Google 抓到的线索无对方 FB 用户 ID，无法自动定位个人）。升级官方 API 后可全自动。
+        </template>
       </div>
       <div v-for="(m, i) in previewList" :key="i" class="pv-item">
         <div class="pv-name">{{ m.name }}</div>
@@ -148,7 +168,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Promotion } from '@element-plus/icons-vue'
 
@@ -160,12 +180,16 @@ const TYPES = ['药店', '诊所', '医院', '医疗器械经销商', '医疗耗
 const MODES = [
   { key: 'demo', label: '演示数据（默认）' },
   { key: 'osm', label: 'OpenStreetMap Overpass（免费真实·无需 Key）' },
-  { key: 'google', label: 'Google Places API（真实·需 Key+代理）' }
+  { key: 'google', label: 'Google Places API（真实·需 Key+代理）' },
+  { key: 'ypk', label: 'BusinessList.pk 黄页（巴基斯坦·真实·无需 Key）' }
 ]
 
 const cfg = ref({ keyword: 'medical equipment', regions: ['se'], types: ['医疗器械经销商'], mode: 'demo' })
 const template = ref('您好 {name}，我们是扬良贸易有限公司，专注医疗器械与医用产品出口，产品认证齐全、支持 OEM。如您有采购需求，欢迎回复或来电咨询，期待合作！')
 const sendChannel = ref('whatsapp')
+const emailSubject = ref('Development Inquiry from Yangliang Trade Co., Ltd. - Medical Supplies')
+const page = ref(1)
+const pageSize = ref(10)
 
 const fetching = ref(false)
 const leads = ref([])
@@ -174,9 +198,9 @@ const campaigns = ref([])
 const drawer = ref(false)
 const previewList = ref([])
 
-const MODE_LABEL = { demo: '演示数据', osm: 'OpenStreetMap 真实数据', google: 'Google Places 真实数据' }
-function srcTag(s) { return s === 'google' ? 'primary' : s === 'osm' ? 'success' : 'warning' }
-function srcLabel(s) { return s === 'google' ? 'Google' : s === 'osm' ? 'OSM' : '演示' }
+const MODE_LABEL = { demo: '演示数据', osm: 'OpenStreetMap 真实数据', google: 'Google Places 真实数据', ypk: 'BusinessList.pk 黄页真实数据' }
+function srcTag(s) { return s === 'google' ? 'primary' : s === 'osm' ? 'success' : s === 'ypk' ? 'danger' : 'warning' }
+function srcLabel(s) { return s === 'google' ? 'Google' : s === 'osm' ? 'OSM' : s === 'ypk' ? '黄页' : '演示' }
 
 function headers() {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('yl_admin_token') || ''}` }
@@ -201,6 +225,17 @@ function fmtTime(t) {
   return t ? new Date(t).toLocaleString('zh-CN', { hour12: false }) : ''
 }
 
+// 当前页数据（分页）
+const pagedLeads = computed(() => leads.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
+// 序号（跨分页连续）
+function rowIndex(i) { return (page.value - 1) * pageSize.value + i + 1 }
+// 唤起系统邮箱客户端发送开发信（mailto 协议），主题+正文自动预填
+function mailtoLink(email, name) {
+  const subject = encodeURIComponent(emailSubject.value.replaceAll('{name}', name))
+  const body = encodeURIComponent(template.value.replaceAll('{name}', name))
+  return `mailto:${email}?subject=${subject}&body=${body}`
+}
+
 // 唤起 WhatsApp 桌面 App 的链接（whatsapp:// 协议），消息自动预填
 function waAppLink(phone, text) {
   return `whatsapp://send?phone=${(phone || '').replace(/[^0-9]/g, '')}&text=${encodeURIComponent(text)}`
@@ -220,6 +255,7 @@ async function fetchLeads() {
   try {
     const res = await api('/scrape', { method: 'POST', body: JSON.stringify(cfg.value) })
     leads.value = res.leads
+    page.value = 1
     ElMessage.success(`抓取完成，共 ${res.count} 条线索（${MODE_LABEL[res.mode] || res.mode}）`)
   } catch (e) { ElMessage.error(e.message) }
   finally { fetching.value = false }
@@ -238,17 +274,19 @@ async function removeLead(row) {
 }
 
 function preview() {
-  const rows = selection.value.slice(0, 10)
+  const rows = (sendChannel.value === 'email' ? selection.value.filter((r) => r.email) : selection.value).slice(0, 10)
   previewList.value = rows.map((r) => {
     const text = template.value.replaceAll('{name}', r.name)
     let link = ''
     if (sendChannel.value === 'whatsapp') {
       link = waAppLink(r.phone, text)
+    } else if (sendChannel.value === 'email') {
+      link = mailtoLink(r.email, r.name)
     } else {
       // 唤起 Messenger 桌面 App（fb-messenger:// 协议）；无对方 FB 用户 ID，需在 App 内搜索联系人
       link = 'fb-messenger://'
     }
-    return { name: r.name, phone: r.phone, text, link }
+    return { name: r.name, phone: r.phone || r.email, text, link }
   })
   drawer.value = true
 }
@@ -292,4 +330,7 @@ async function markSent() {
 .cta-wa:hover { background: #1eb857; }
 .cta-fb { background: #1877f2; }
 .cta-fb:hover { background: #0f67d6; }
+.email-link { color: var(--yl-primary); text-decoration: none; }
+.email-link:hover { text-decoration: underline; }
 </style>
+

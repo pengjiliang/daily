@@ -1,8 +1,8 @@
 <template>
   <div class="page-section">
     <div class="container">
-      <h2 class="section-title">联系我们</h2>
-      <p class="section-sub">期待与您合作，随时欢迎咨询与洽谈</p>
+      <h2 class="section-title">{{ t('contact_title') }}</h2>
+      <p class="section-sub">{{ t('contact_sub') }}</p>
 
       <div class="grid">
         <!-- WhatsApp 主入口 -->
@@ -12,51 +12,51 @@
               <el-icon :size="40"><PhoneFilled /></el-icon>
             </div>
             <div>
-              <h3>WhatsApp 即时咨询</h3>
-              <p>点击按钮直接发起对话，快速获取报价与样品</p>
+              <h3>{{ t('contact_wa_title') }}</h3>
+              <p>{{ t('contact_wa_p') }}</p>
             </div>
           </div>
           <a class="wa-btn" :href="waLink" target="_blank" rel="noopener">
-            <el-icon><ChatDotRound /></el-icon> 通过 WhatsApp 联系我
+            <el-icon><ChatDotRound /></el-icon> {{ t('contact_wa_btn') }}
           </a>
-          <div class="wa-note">号码：{{ waNumber }}（点击直达对话）</div>
+          <div class="wa-note">{{ t('contact_wa_note', { n: waNumber }) }}</div>
         </div>
 
         <!-- 联系方式 -->
         <div class="info-card">
           <div class="info-row">
-            <el-icon><Location /></el-icon><span>地址：中国 · 湖南 · 长沙 · 宁乡</span>
+            <el-icon><Location /></el-icon><span>{{ t('contact_addr') }}</span>
           </div>
           <div class="info-row">
-            <el-icon><Phone /></el-icon><span>电话：+86 138 7499 0232</span>
+            <el-icon><Phone /></el-icon><span>{{ t('contact_phone') }}</span>
           </div>
           <div class="info-row">
-            <el-icon><Message /></el-icon><span>邮箱：sales@yangliang-trade.com</span>
+            <el-icon><Message /></el-icon><span>{{ t('contact_email') }}</span>
           </div>
           <div class="info-row">
-            <el-icon><Clock /></el-icon><span>工作时间：周一至周六 9:00 - 18:00</span>
+            <el-icon><Clock /></el-icon><span>{{ t('contact_hours') }}</span>
           </div>
         </div>
       </div>
 
       <!-- 留言 -->
       <div class="form-card">
-        <h3>在线留言</h3>
+        <h3>{{ t('contact_form_title') }}</h3>
         <el-form :model="form" label-position="top" class="form">
           <div class="form-grid">
-            <el-form-item label="姓名 / 公司"><el-input v-model="form.name" placeholder="请输入" /></el-form-item>
-            <el-form-item label="WhatsApp / 电话"
-              ><el-input v-model="form.phone" placeholder="便于我们与您联系"
+            <el-form-item :label="t('contact_name')"><el-input v-model="form.name" :placeholder="t('contact_name_ph')" /></el-form-item>
+            <el-form-item :label="t('contact_phone_label')"
+              ><el-input v-model="form.phone" :placeholder="t('contact_phone_ph')"
             /></el-form-item>
           </div>
-          <el-form-item label="留言内容"
+          <el-form-item :label="t('contact_msg_label')"
             ><el-input
               v-model="form.message"
               type="textarea"
               :rows="4"
-              placeholder="请输入您的需求，如产品、数量、目标市场等"
+              :placeholder="t('contact_msg_ph')"
           /></el-form-item>
-          <el-button type="primary" size="large" round @click="submit">提交留言</el-button>
+          <el-button type="primary" size="large" round @click="submit">{{ t('contact_submit') }}</el-button>
         </el-form>
       </div>
     </div>
@@ -64,25 +64,26 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { ChatDotRound, PhoneFilled, Location, Phone, Message, Clock } from '@element-plus/icons-vue';
+import { t } from '@/i18n';
 
 // 老板/公司 WhatsApp 号码（后续可从后端 contact_info 接口读取配置）
 const waNumber = '8613874990232';
 const route = useRoute();
-const form = reactive({ name: '', phone: '', message: route.query.subject ? `咨询产品：${route.query.subject}` : '' });
+const form = reactive({ name: '', phone: '', message: route.query.subject ? t('contact_subject', { s: route.query.subject }) : '' });
 
 const waLink = computed(() => {
-  const text = encodeURIComponent(`您好，我是${form.name || '客户'}。${form.message || '我想咨询贵公司产品。'}`);
+  const text = encodeURIComponent(t('contact_wa_hello', { c: form.name || t('contact_customer'), m: form.message || t('contact_wa_default') }));
   return `https://wa.me/${waNumber}?text=${text}`;
 });
 
 function submit() {
-  if (!form.message) return ElMessage.warning('请填写留言内容');
+  if (!form.message) return ElMessage.warning(t('contact_msg_required'));
   // 当前为演示；后续提交到后端 /api/contact/messages
-  ElMessage.success('留言已提交，我们将尽快与您联系！');
+  ElMessage.success(t('contact_success'));
   form.name = '';
   form.phone = '';
   form.message = '';
@@ -104,7 +105,7 @@ function submit() {
   border: 1px solid #eef2f7;
 }
 .whatsapp-card {
-  background: linear-gradient(135deg, #0ea5e9, #2563eb);
+  background: linear-gradient(135deg, #409eff, #337ecc);
   color: #fff;
   padding: 32px;
 }

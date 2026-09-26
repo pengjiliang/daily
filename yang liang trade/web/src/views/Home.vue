@@ -1,43 +1,54 @@
 <template>
   <div>
     <!-- Hero -->
+    <!-- Hero 轮播 -->
     <section class="hero">
-      <div class="container hero-inner">
-        <div class="hero-text">
-          <h1>专业医疗器械<br /><span class="gradient-text">进出口贸易服务商</span></h1>
-          <p>
-            扬良贸易有限公司专注医疗器械与医用产品，覆盖防护用品、监测设备、耗材器械、护理康复与消毒净化，为全球客户提供高品质产品与一站式贸易服务。
-          </p>
-          <div class="hero-btns">
-            <el-button type="primary" size="large" round @click="$router.push('/products')">浏览产品</el-button>
-            <el-button size="large" round @click="$router.push('/contact')">联系我们</el-button>
-          </div>
-          <div class="hero-stats">
-            <div class="stat">
-              <div class="num">5000+</div>
-              <div class="label">合作客户</div>
-            </div>
-            <div class="stat">
-              <div class="num">300+</div>
-              <div class="label">出口国家</div>
-            </div>
-            <div class="stat">
-              <div class="num">100+</div>
-              <div class="label">产品品类</div>
+      <el-carousel class="hero-carousel" height="600px" :interval="6000" arrow="hover">
+        <el-carousel-item v-for="(s, i) in heroSlides" :key="s.bg">
+          <div class="hero-slide" :style="heroSlideStyle(s.bg)">
+            <div class="container hero-inner">
+              <div class="hero-text">
+                <span class="kicker light">{{ s.kicker }}</span>
+                <h1>{{ s.title1 }}<template v-if="s.title2"><br /><span class="hero-accent">{{ s.title2 }}</span></template></h1>
+                <p class="hero-p">{{ s.desc }}</p>
+                <div class="hero-btns">
+                  <el-button type="accent" size="large" round @click="router.push('/products')">
+                    <el-icon><TakeawayBox /></el-icon>{{ t('home_browse') }}
+                  </el-button>
+                  <el-button size="large" round class="hero-ghost" @click="router.push('/contact')">{{ t('home_contact_btn') }}</el-button>
+                </div>
+                <div v-if="i === 0" class="hero-trust">
+                  <span class="ht-item"><el-icon><CircleCheckFilled /></el-icon>{{ t('home_hero_badge1') }}</span>
+                  <span class="ht-item"><el-icon><CircleCheckFilled /></el-icon>{{ t('home_hero_badge2') }}</span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="hero-visual">
-          <img src="/images/hero-medical.svg" alt="医疗产品" />
+        </el-carousel-item>
+      </el-carousel>
+    </section>
+
+    <!-- 信任条带 -->
+    <section class="trust-strip">
+      <div class="container trust-grid">
+        <div v-for="f in trustFeatures" :key="f.k" class="trust-item">
+          <span class="trust-icon"><el-icon :size="24"><component :is="f.icon" /></el-icon></span>
+          <div>
+            <div class="trust-t">{{ t(f.t) }}</div>
+            <div class="trust-d">{{ t(f.d) }}</div>
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- 分类 -->
+    <!-- 产品分类 -->
     <section class="page-section">
       <div class="container">
-        <h2 class="section-title">产品分类</h2>
-        <p class="section-sub">覆盖医疗器械与医用产品核心品类，支持 OEM 定制与批量出口</p>
+        <div class="section-head">
+          <span class="kicker">{{ t('home_cat_kicker') }}</span>
+          <h2 class="section-title">{{ t('home_cat_title') }}</h2>
+          <p class="section-sub">{{ t('cat_sub_all') }}</p>
+        </div>
         <div class="cat-grid">
           <div
             v-for="c in catList"
@@ -45,9 +56,10 @@
             class="cat-card card-hover"
             @click="$router.push({ path: '/products', query: { cat: c.key } })"
           >
-            <el-icon :size="34" color="#2563eb"><component :is="c.icon" /></el-icon>
-            <div class="cat-name">{{ c.label }}</div>
+            <span class="cat-icon"><el-icon :size="30"><component :is="c.icon" /></el-icon></span>
+            <div class="cat-name">{{ c.name }}</div>
             <div class="cat-desc">{{ c.desc }}</div>
+            <div class="cat-foot"><span>{{ c.count }} {{ t('products_count') }}</span><span class="cat-more">{{ t('products_view_all') }} →</span></div>
           </div>
         </div>
       </div>
@@ -56,15 +68,26 @@
     <!-- 精选产品 -->
     <section class="page-section featured">
       <div class="container">
-        <div class="head-row">
-          <div>
-            <h2 class="section-title">精选产品</h2>
-            <p class="section-sub">品质保证 · 认证齐全 · 服务全球</p>
-          </div>
-          <el-button text type="primary" @click="$router.push('/products')">查看全部 →</el-button>
+        <div class="section-head">
+          <span class="kicker">{{ t('home_featured_kicker') }}</span>
+          <h2 class="section-title">{{ t('home_featured_title') }}</h2>
+          <p class="section-sub">{{ t('home_featured_sub') }}</p>
         </div>
         <div class="product-grid">
           <ProductCard v-for="p in featured" :key="p.id" :product="p" />
+        </div>
+        <div class="view-all">
+          <el-button type="accent" round @click="$router.push('/products')">{{ t('home_view_all') }} →</el-button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 数据统计条带 -->
+    <section class="stats-band">
+      <div class="container stats-grid">
+        <div v-for="st in stats" :key="st.label" class="stat">
+          <div class="stat-num">{{ st.num }}</div>
+          <div class="stat-label">{{ t(st.label) }}</div>
         </div>
       </div>
     </section>
@@ -73,21 +96,19 @@
     <section class="page-section about-sec">
       <div class="container about-inner">
         <div class="about-visual">
-          <img src="/images/product-syringe.svg" alt="扬良贸易" />
-          <img class="about-sub" src="/images/product-bp-monitor.svg" alt="扬良贸易" />
+          <div class="about-img-wrap"><img src="/images/about-company.jpg" alt="Yangliang Trade" loading="lazy" /></div>
         </div>
         <div class="about-text">
-          <h2 class="section-title">关于扬良贸易</h2>
-          <p>
-            扬良贸易有限公司深耕医疗器械与医用产品领域，建立了严格的质量管控体系与稳定的全球供应链，产品远销亚洲、非洲等地区。
-          </p>
+          <span class="kicker">{{ t('home_about_badge') }}</span>
+          <h2 class="section-title">{{ t('home_about_title') }}</h2>
+          <p>{{ t('home_about_p') }}</p>
           <ul class="about-list">
-            <li>◆ 医疗器械全品类供应，规格齐全</li>
-            <li>◆ CE / FDA / ISO 认证体系保障</li>
-            <li>◆ 支持样品、OEM / ODM 定制</li>
-            <li>◆ 专业团队提供贸易与物流支持</li>
+            <li><el-icon><CircleCheckFilled /></el-icon>{{ t('home_about_l1') }}</li>
+            <li><el-icon><CircleCheckFilled /></el-icon>{{ t('home_about_l2') }}</li>
+            <li><el-icon><CircleCheckFilled /></el-icon>{{ t('home_about_l3') }}</li>
+            <li><el-icon><CircleCheckFilled /></el-icon>{{ t('home_about_l4') }}</li>
           </ul>
-          <el-button type="primary" round @click="$router.push('/about')">了解更多</el-button>
+          <el-button type="primary" round @click="$router.push('/about')">{{ t('home_learn_more') }} →</el-button>
         </div>
       </div>
     </section>
@@ -95,9 +116,11 @@
     <!-- CTA -->
     <section class="cta">
       <div class="container cta-inner">
-        <h2>需要医疗器械采购方案？</h2>
-        <p>立即联系我们的销售团队，获取产品目录与报价</p>
-        <el-button size="large" round type="warning" @click="$router.push('/contact')">WhatsApp 联系我们</el-button>
+        <h2>{{ t('home_cta_title') }}</h2>
+        <p>{{ t('home_cta_sub') }}</p>
+        <el-button size="large" round type="accent" @click="$router.push('/contact')">
+          <el-icon><ChatDotRound /></el-icon>{{ t('home_cta_btn') }}
+        </el-button>
       </div>
     </section>
   </div>
@@ -105,179 +128,123 @@
 
 <script setup>
 import { computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import ProductCard from '@/components/ProductCard.vue';
 import { products, loadProducts } from '@/api/products';
 import { categories } from '@/data/products';
-import { FirstAidKit, Monitor, Operation, Aim, MagicStick } from '@element-plus/icons-vue';
+import { t } from '@/i18n';
+import {
+  FirstAidKit, Monitor, Operation, Aim, MagicStick,
+  TakeawayBox, CircleCheckFilled, Medal, Ship, Van, Tools, Service, ChatDotRound
+} from '@element-plus/icons-vue';
 
-const iconMap = {
-  ppe: FirstAidKit,
-  monitoring: Monitor,
-  consumables: Operation,
-  rehab: Aim,
-  disinfection: MagicStick,
-};
+const iconMap = { ppe: FirstAidKit, monitoring: Monitor, consumables: Operation, rehab: Aim, disinfection: MagicStick };
+const trustFeatures = [
+  { k: 'logistics', icon: Ship, t: 'home_trust_1t', d: 'home_trust_1d' },
+  { k: 'cert', icon: Medal, t: 'home_trust_2t', d: 'home_trust_2d' },
+  { k: 'oem', icon: Tools, t: 'home_trust_3t', d: 'home_trust_3d' },
+  { k: 'support', icon: Service, t: 'home_trust_4t', d: 'home_trust_4d' }
+];
+const stats = [
+  { num: '5000+', label: 'home_stat_label_clients' },
+  { num: '30+', label: 'home_stat_label_countries' },
+  { num: '200+', label: 'home_stat_label_products' },
+  { num: '15+', label: 'home_stat_label_years' }
+];
+
 const catList = computed(() =>
-  categories.filter((c) => c.key !== 'all').map((c) => ({ ...c, icon: iconMap[c.key], desc: CAT_DESC[c.key] })),
+  categories.filter((c) => c.key !== 'all').map((c) => ({
+    ...c,
+    icon: iconMap[c.key],
+    name: t('catL_' + c.key),
+    desc: t('cat_' + c.key),
+    count: products.value.filter((p) => p.category === c.key).length
+  }))
 );
 const featured = computed(() => products.value.slice(0, 6));
+const router = useRouter();
+const heroSlides = computed(() => [
+  { bg: "/images/hero-medical-people.jpg", kicker: t("home_kicker"), title1: t("home_h1_1"), title2: t("home_h1_2"), desc: t("home_p") },
+  { bg: "/images/hero-slide-1.jpg", kicker: t("home_s2_kicker"), title1: t("home_s2_title"), title2: "", desc: t("home_s2_desc") },
+  { bg: "/images/hero-slide-2.jpg", kicker: t("home_s3_kicker"), title1: t("home_s3_title"), title2: "", desc: t("home_s3_desc") },
+  { bg: "/images/hero-slide-3.jpg", kicker: t("home_s4_kicker"), title1: t("home_s4_title"), title2: "", desc: t("home_s4_desc") }
+]);
+const heroSlideStyle = (bg) => ({ backgroundImage: "linear-gradient(105deg, rgba(31,102,168,.88) 0%, rgba(64,158,255,.50) 48%, rgba(121,187,255,.12) 100%), url(" + bg + ")" });
 
 onMounted(() => loadProducts());
-
-const CAT_DESC = {
-  ppe: '口罩、手套等防护耗材',
-  monitoring: '血压计、体温计等监测设备',
-  consumables: '注射器、输液器等一次性耗材',
-  rehab: '敷料、轮椅等护理康复产品',
-  disinfection: '医用消毒与净化设备',
-};
 </script>
 
 <style scoped>
-.hero {
-  background: linear-gradient(120deg, #eef6ff 0%, #f4fbff 55%, #e9f7ff 100%);
-  padding: 72px 0;
-}
-.hero-inner {
-  display: grid;
-  grid-template-columns: 1.1fr 1fr;
-  gap: 48px;
-  align-items: center;
-}
-.hero h1 {
-  font-size: 44px;
-  line-height: 1.25;
-  margin: 0 0 20px;
-}
-.hero p {
-  font-size: 16px;
-  color: var(--yl-text-light);
-  line-height: 1.9;
-  margin: 0 0 28px;
-}
-.hero-btns {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 40px;
-}
-.hero-stats {
-  display: flex;
-  gap: 44px;
-}
-.stat .num {
-  font-size: 28px;
-  font-weight: 800;
-  color: var(--yl-primary);
-}
-.stat .label {
-  color: var(--yl-text-light);
-  font-size: 14px;
-  margin-top: 4px;
-}
-.hero-visual img {
-  width: 100%;
-  border-radius: 20px;
-  box-shadow: 0 24px 60px rgba(14, 165, 233, 0.25);
-}
+/* Hero 轮播 */
+.hero { position: relative; color: #fff; overflow: hidden; }
+.hero-carousel .el-carousel__container { height: 600px; }
+.hero-carousel .el-carousel__arrow { width: 44px; height: 44px; background: rgba(0,0,0,.18); font-size: 16px; }
+.hero-carousel .el-carousel__arrow:hover { background: rgba(64,158,255,.85); }
+.hero-carousel .el-carousel__indicator .el-carousel__button { background: rgba(255,255,255,.55); height: 4px; border-radius: 2px; width: 22px; }
+.hero-carousel .el-carousel__indicator.is-active .el-carousel__button { background: #fff; width: 34px; }
+.hero-slide { height: 100%; display: flex; align-items: center; background-size: cover; background-position: center; }
+.hero-inner { position: relative; display: grid; grid-template-columns: 1fr; gap: 56px; align-items: center; }
+.hero-text { max-width: 680px; }
+.kicker.light { background: rgba(255,255,255,.18); color: #fff; }
+.hero h1 { font-size: 46px; line-height: 1.25; margin: 0 0 20px; font-weight: 800; }
+.hero-accent { color: #d9ecff; }
+.hero-p { font-size: 16px; color: #e6f0ff; line-height: 1.9; margin: 0 0 30px; max-width: 560px; }
+.hero-btns { display: flex; gap: 14px; margin-bottom: 30px; flex-wrap: wrap; }
+.hero-ghost { --el-button-bg-color: rgba(255,255,255,.16); --el-button-border-color: #fff; --el-button-text-color: #fff; --el-button-hover-bg-color: rgba(255,255,255,.28); --el-button-hover-border-color: #fff; --el-button-hover-text-color: #fff; }
+.hero-trust { display: flex; gap: 22px; flex-wrap: wrap; }
+.ht-item { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: #e6f0ff; }
+.ht-item .el-icon { color: #4ade80; }
 
-.cat-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 20px;
-}
-.cat-card {
-  background: #fff;
-  border: 1px solid #eef2f7;
-  border-radius: var(--yl-radius);
-  padding: 28px 20px;
-  text-align: center;
-  cursor: pointer;
-}
-.cat-name {
-  font-weight: 700;
-  margin: 14px 0 6px;
-  font-size: 16px;
-}
-.cat-desc {
-  font-size: 13px;
-  color: var(--yl-text-light);
-}
+/* 信任条带 */
+.trust-strip { background: #fff; border-bottom: 1px solid #eef2f7; }
+.trust-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; padding: 36px 24px; }
+.trust-item { display: flex; gap: 14px; align-items: flex-start; }
+.trust-icon { width: 48px; height: 48px; flex: none; border-radius: 10px; background: rgba(64,158,255,.08); color: var(--yl-primary); display: flex; align-items: center; justify-content: center; }
+.trust-t { font-size: 16px; font-weight: 700; color: var(--yl-primary-dark); margin-bottom: 4px; }
+.trust-d { font-size: 13px; color: var(--yl-text-light); line-height: 1.6; }
 
-.featured {
-  background: #fff;
-}
-.head-row {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-}
-.product-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
-}
+/* 分类 */
+.cat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; }
+.cat-card { background: #fff; border: 1px solid #eef2f7; border-radius: var(--yl-radius); padding: 28px 20px; text-align: center; cursor: pointer; display: flex; flex-direction: column; }
+.cat-icon { width: 64px; height: 64px; margin: 0 auto 14px; border-radius: 50%; background: linear-gradient(135deg, rgba(64,158,255,.10), rgba(121,187,255,.18)); color: var(--yl-primary); display: flex; align-items: center; justify-content: center; }
+.cat-name { font-weight: 700; margin: 0 0 6px; font-size: 16px; color: var(--yl-primary-dark); }
+.cat-desc { font-size: 13px; color: var(--yl-text-light); flex: 1; }
+.cat-foot { margin-top: 16px; padding-top: 14px; border-top: 1px dashed #e8edf5; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--yl-text-light); }
+.cat-more { color: var(--yl-accent); font-weight: 600; }
 
-.about-sec {
-  background: var(--yl-bg);
-}
-.about-inner {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 48px;
-  align-items: center;
-}
-.about-visual {
-  position: relative;
-}
-.about-visual img {
-  width: 78%;
-  border-radius: 18px;
-  box-shadow: 0 20px 48px rgba(37, 99, 235, 0.18);
-}
-.about-visual .about-sub {
-  position: absolute;
-  width: 46%;
-  right: 0;
-  bottom: -28px;
-  border: 6px solid #fff;
-}
-.about-text p {
-  color: var(--yl-text-light);
-  line-height: 1.9;
-}
-.about-list {
-  list-style: none;
-  padding: 0;
-  margin: 0 0 24px;
-  color: var(--yl-text);
-  line-height: 2.1;
-}
+/* 精选 */
+.featured { background: #fff; }
+.product-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.view-all { text-align: center; margin-top: 40px; }
 
-.cta {
-  background: linear-gradient(90deg, var(--yl-primary), var(--yl-cyan));
-  padding: 64px 0;
-  color: #fff;
-  text-align: center;
-}
-.cta h2 {
-  margin: 0 0 8px;
-  font-size: 30px;
-}
-.cta p {
-  opacity: 0.9;
-  margin: 0 0 24px;
-}
+/* 数据条带 */
+.stats-band { background: linear-gradient(135deg, #337ecc, #409eff); color: #fff; padding: 56px 0; }
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; text-align: center; }
+.stat-num { font-size: 40px; font-weight: 800; color: #fff; }
+.stat-label { font-size: 14px; color: #e6f0ff; margin-top: 6px; }
+
+/* 关于 */
+.about-sec { background: var(--yl-bg); }
+.about-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+.about-visual { position: relative; }
+.about-img-wrap { border-radius: 18px; overflow: hidden; box-shadow: var(--yl-shadow-lg); }
+.about-img-wrap img { width: 100%; height: 400px; object-fit: cover; display: block; border-radius: 0; }
+.about-text p { color: var(--yl-text-light); line-height: 1.9; }
+.about-list { list-style: none; padding: 0; margin: 0 0 26px; }
+.about-list li { display: flex; align-items: center; gap: 10px; color: var(--yl-text); line-height: 2.2; }
+.about-list .el-icon { color: var(--yl-primary); }
+
+/* CTA */
+.cta { background: linear-gradient(135deg, #409eff, #337ecc); padding: 60px 0; color: #fff; text-align: center; position: relative; overflow: hidden; }
+.cta h2 { margin: 0 0 10px; font-size: 30px; }
+.cta p { opacity: .92; margin: 0 0 26px; }
+.cta .el-button--accent { --el-button-bg-color: #fff; --el-button-border-color: #fff; --el-button-text-color: #409eff; --el-button-hover-bg-color: #ecf5ff; --el-button-hover-border-color: #fff; --el-button-hover-text-color: #409eff; }
 
 @media (max-width: 900px) {
-  .hero-inner,
-  .about-inner {
-    grid-template-columns: 1fr;
-  }
-  .cat-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .product-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  .hero-carousel .el-carousel__container { height: 520px; }
+  .hero-inner, .about-inner { grid-template-columns: 1fr; }
+  .cat-grid { grid-template-columns: repeat(2, 1fr); }
+  .product-grid { grid-template-columns: repeat(2, 1fr); }
+  .trust-grid, .stats-grid { grid-template-columns: repeat(2, 1fr); }
 }
 </style>

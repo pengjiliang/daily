@@ -77,8 +77,8 @@ async function doRegister() {
 </script>
 
 <style scoped>
-.login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(120deg, #eef6ff, #e9f7ff); padding: 24px; }
-.card { width: 400px; background: #fff; border-radius: 18px; padding: 40px 36px; box-shadow: 0 20px 60px rgba(37,99,235,.15); text-align: center; }
+.login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(120deg, #f0f6ff, #f5f7fa); padding: 24px; }
+.card { width: 400px; background: #fff; border-radius: 10px; padding: 40px 36px; box-shadow: 0 12px 40px rgba(0,0,0,.08); text-align: center; }
 .logo { width: 60px; height: 60px; margin: 0 auto 12px; border-radius: 16px; background: linear-gradient(135deg, var(--yl-primary-light), var(--yl-cyan)); color: #fff; display: flex; align-items: center; justify-content: center; }
 h2 { margin: 0 0 4px; font-size: 22px; }
 .sub { color: var(--yl-text-light); font-size: 13px; margin: 0 0 20px; }
