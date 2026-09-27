@@ -46,3 +46,11 @@ img { max-width: 100%; }
 /* Element Plus 主题微调 */
 .el-button--primary { --el-button-bg-color: var(--yl-primary); --el-button-border-color: var(--yl-primary); --el-button-hover-bg-color: var(--yl-primary-light); --el-button-hover-border-color: var(--yl-primary-light); }
 .el-button--accent { --el-button-bg-color: var(--yl-accent); --el-button-border-color: var(--yl-accent); --el-button-hover-bg-color: var(--yl-accent-dark); --el-button-hover-border-color: var(--yl-accent-dark); --el-button-text-color: #fff; }
+
+/* 表格：表头不换行，内容超出省略号省略（hover 显示全部由 main.js 全局事件委托实现） */
+.el-table .el-table__cell .cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: keep-all;
+}

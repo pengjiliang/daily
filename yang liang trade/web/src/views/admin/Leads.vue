@@ -38,7 +38,7 @@
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="fetching" @click="fetchLeads">
-            <el-icon><Search /></el-icon>&nbsp;开始抓取
+            <el-icon><Search /></el-icon>&nbsp;{{ fetching ? '抓取中...' : '开始抓取' }}
           </el-button>
         </el-form-item>
       </el-form>
@@ -48,11 +48,11 @@
     <el-card shadow="never" class="block">
       <template #header>
         <div class="table-head">
-          <span><b>② 抓取结果</b>（共 {{ leads.length }} 条，已选 {{ selection.length }} 条）</span>
+          <span><b>② 抓取结果</b>（共 {{ total }} 条，已选 {{ selection.length }} 条）</span>
           <el-button v-if="leads.length" link type="danger" @click="clearLeads">清空</el-button>
         </div>
       </template>
-      <el-table :data="pagedLeads" @selection-change="(rows) => (selection = rows)" style="width: 100%">
+      <el-table :data="leads" @selection-change="(rows) => (selection = rows)" style="width: 100%" border>
         <el-table-column type="selection" width="46" />
         <el-table-column type="index" label="#" width="60" :index="rowIndex" />
         <el-table-column prop="name" label="店铺名称" min-width="150" />
@@ -77,23 +77,23 @@
             <el-tag :type="srcTag(row.source)" size="small">{{ srcLabel(row.source) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="联系" width="176" fixed="right">
+        <el-table-column label="联系" width="176" fixed="right" :resizable="false">
           <template #default="{ row }">
             <a v-if="row.phone" :href="waAppLink(row.phone, shortMsg(row.name))" class="cta cta-wa">WhatsApp</a>
             <a :href="'fb-messenger://'" class="cta cta-fb" @click="copyShort(row.name)">Messenger</a>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="66" fixed="right">
+        <el-table-column label="操作" width="66" fixed="right" :resizable="false">
           <template #default="{ row }">
             <el-button link type="danger" @click="removeLead(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
-      <el-pagination v-if="leads.length" style="margin-top: 14px; justify-content: flex-end"
+      <el-pagination v-if="total" style="margin-top: 14px; justify-content: flex-end"
         layout="total, sizes, prev, pager, next, jumper"
-        :total="leads.length" v-model:current-page="page" v-model:page-size="pageSize"
-        :page-sizes="[10, 20, 50, 100]" />
-      <el-empty v-if="!leads.length" description="尚未抓取线索，请先配置上方任务" />
+        :total="total" v-model:current-page="page" v-model:page-size="pageSize"
+        :page-sizes="[10, 30, 50, 100, 200, 500]" @current-change="loadLeads" @size-change="changePageSize" />
+      <el-empty v-if="!total" description="尚未抓取线索，请先配置上方任务" />
     </el-card>
 
     <!-- 群发 -->
@@ -126,7 +126,7 @@
     <!-- 发送记录 -->
     <el-card shadow="never" class="block">
       <template #header><b>④ 发送记录</b></template>
-      <el-table :data="campaigns" style="width: 100%">
+      <el-table :data="campaigns" style="width: 100%" border>
         <el-table-column label="时间" width="170">
           <template #default="{ row }">{{ fmtTime(row.createdAt) }}</template>
         </el-table-column>
@@ -168,7 +168,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Promotion } from '@element-plus/icons-vue'
 
@@ -190,6 +190,7 @@ const sendChannel = ref('whatsapp')
 const emailSubject = ref('Development Inquiry from Yangliang Trade Co., Ltd. - Medical Supplies')
 const page = ref(1)
 const pageSize = ref(10)
+const total = ref(0)
 
 const fetching = ref(false)
 const leads = ref([])
@@ -213,20 +214,37 @@ async function api(path, options = {}) {
   return data
 }
 
-async function load() {
+async function loadLeads() {
   try {
-    leads.value = await api('')
-    campaigns.value = await api('/campaigns')
+    const res = await api(`?page=${page.value}&pageSize=${pageSize.value}`)
+    leads.value = res.items || []
+    total.value = Number(res.total) || 0
+    if (!leads.value.length && total.value > 0 && page.value > 1) {
+      page.value = Math.max(1, Math.ceil(total.value / pageSize.value))
+      return loadLeads()
+    }
   } catch (e) { ElMessage.error(e.message) }
 }
+
+async function loadCampaigns() {
+  try { campaigns.value = await api('/campaigns') }
+  catch (e) { ElMessage.error(e.message) }
+}
+
+async function load() {
+  await Promise.all([loadLeads(), loadCampaigns()])
+}
 onMounted(load)
+
+function changePageSize() {
+  page.value = 1
+  loadLeads()
+}
 
 function fmtTime(t) {
   return t ? new Date(t).toLocaleString('zh-CN', { hour12: false }) : ''
 }
 
-// 当前页数据（分页）
-const pagedLeads = computed(() => leads.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 // 序号（跨分页连续）
 function rowIndex(i) { return (page.value - 1) * pageSize.value + i + 1 }
 // 唤起系统邮箱客户端发送开发信（mailto 协议），主题+正文自动预填
@@ -249,21 +267,31 @@ async function copyShort(name) {
   await copyText(shortMsg(name))
 }
 
+async function waitForScrape(id) {
+  while (true) {
+    const job = await api(`/scrape/${id}`)
+    if (job.status === 'success') return job
+    if (job.status === 'failed') throw new Error(job.error || '抓取失败，请稍后重试')
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+  }
+}
+
 async function fetchLeads() {
   if (!cfg.value.regions.length) return ElMessage.warning('请选择目标区域')
   fetching.value = true
   try {
-    const res = await api('/scrape', { method: 'POST', body: JSON.stringify(cfg.value) })
-    leads.value = res.leads
+    const queued = await api('/scrape', { method: 'POST', body: JSON.stringify(cfg.value) })
+    const job = await waitForScrape(queued.id)
     page.value = 1
-    ElMessage.success(`抓取完成，共 ${res.count} 条线索（${MODE_LABEL[res.mode] || res.mode}）`)
+    await loadLeads()
+    ElMessage.success(`抓取完成，新增 ${job.inserted || 0} 条，去重跳过 ${job.skipped || 0} 条（${MODE_LABEL[job.mode] || job.mode || ''}）`)
   } catch (e) { ElMessage.error(e.message) }
   finally { fetching.value = false }
 }
 
 async function clearLeads() {
   await ElMessageBox.confirm('确定清空全部线索？', '提示', { type: 'warning' })
-  try { await api('', { method: 'DELETE' }); leads.value = []; ElMessage.success('已清空') }
+  try { await api('', { method: 'DELETE' }); leads.value = []; total.value = 0; page.value = 1; ElMessage.success('已清空') }
   catch (e) { ElMessage.error(e.message) }
 }
 

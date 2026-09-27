@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common'
+import { Injectable, UnauthorizedException, ConflictException, ForbiddenException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
@@ -24,8 +24,13 @@ export class AuthService {
     return timingSafeEqual(Buffer.from(hash, 'hex'), calc)
   }
 
+  async setupStatus() {
+    return { canRegister: (await this.users.count()) === 0 }
+  }
+
   async register(username: string, password: string) {
     if (!username || !password) throw new UnauthorizedException('用户名和密码不能为空')
+    if ((await this.users.count()) > 0) throw new ForbiddenException('管理员已存在，请直接登录')
     const exists = await this.users.findOne({ where: { username } })
     if (exists) throw new ConflictException('该账号已存在，请直接登录')
     const user = await this.users.save({

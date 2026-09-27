@@ -18,6 +18,9 @@ async function bootstrap() {
     await new Promise((r) => setTimeout(r, 2000))
   }
 
+  const refreshMs = Math.max(10000, Number(process.env.AI_KNOWLEDGE_REFRESH_MS) || 60000)
+  setInterval(() => void loadKnowledge(), refreshMs).unref()
+
   const app = await NestFactory.create(AppModule)
   app.enableCors()
   const port = Number(process.env.AI_PORT) || 3003

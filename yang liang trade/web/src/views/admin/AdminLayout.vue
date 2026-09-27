@@ -9,7 +9,11 @@
         <el-menu-item index="/admin/dashboard"><el-icon><DataBoard /></el-icon>仪表盘</el-menu-item>
         <el-menu-item index="/admin/ai-config"><el-icon><MagicStick /></el-icon>AI 模型配置</el-menu-item>
         <el-menu-item index="/admin/products"><el-icon><Goods /></el-icon>产品管理</el-menu-item>
+        <el-menu-item index="/admin/messages"><el-icon><Message /></el-icon>用户留言</el-menu-item>
         <el-menu-item index="/admin/leads"><el-icon><Position /></el-icon>线索抓取与群发</el-menu-item>
+        <el-menu-item index="/admin/mail"><el-icon><Promotion /></el-icon>邮箱营销</el-menu-item>
+        <el-menu-item index="/admin/trends"><el-icon><TrendCharts /></el-icon>热卖趋势分析</el-menu-item>
+        <el-menu-item index="/admin/customs"><el-icon><Ship /></el-icon>海关数据</el-menu-item>
       </el-menu>
       <div class="aside-foot">
         <el-button text @click="goSite"><el-icon><Back /></el-icon>返回网站</el-button>
@@ -24,7 +28,7 @@
 
 <script setup>
 import { useRouter } from 'vue-router'
-import { FirstAidKit, DataBoard, MagicStick, Goods, Position, Back, SwitchButton } from '@element-plus/icons-vue'
+import { FirstAidKit, DataBoard, MagicStick, Goods, Message, Position, Promotion, TrendCharts, Back, SwitchButton, Ship } from '@element-plus/icons-vue'
 
 const router = useRouter()
 function goSite() { router.push('/') }

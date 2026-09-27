@@ -5,3 +5,7 @@ dist/
 server/data/
 web/scripts/
 !web/scripts/generate-images.mjs
+
+# 图片处理中间产物（保留供后续恢复，不入库）
+.tmp_*.json
+server/.tmp_product_images/

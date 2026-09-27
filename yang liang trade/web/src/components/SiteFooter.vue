@@ -9,9 +9,9 @@
         </div>
         <p class="muted">{{ t('footer_slogan') }}</p>
         <div class="footer-social">
-          <a class="fs-item" href="https://wa.me/8613874990232" target="_blank" rel="noopener" title="WhatsApp"><el-icon><ChatDotRound /></el-icon></a>
-          <a class="fs-item" href="mailto:sales@yangliang-trade.com" title="Email"><el-icon><Message /></el-icon></a>
-          <a class="fs-item" href="#" title="Facebook"><el-icon><Share /></el-icon></a>
+          <a class="fs-item" :href="site.whatsappUrl" target="_blank" rel="noopener" title="WhatsApp"><el-icon><ChatDotRound /></el-icon></a>
+          <a class="fs-item" :href="`mailto:${site.email}`" title="Email"><el-icon><Message /></el-icon></a>
+          <a class="fs-item" :href="site.social.facebook" target="_blank" rel="noopener" title="Facebook"><el-icon><Share /></el-icon></a>
         </div>
       </div>
 
@@ -53,7 +53,8 @@
 import { computed } from 'vue'
 import { FirstAidKit, ChatDotRound, Message, Share, Phone, Location, Clock } from '@element-plus/icons-vue'
 import { t, setLang, isEn } from '@/i18n'
-import { categories } from '@/data/products'
+import { categories } from '@/data/categories'
+import { site } from '@/config/site'
 
 const footerCats = computed(() => categories.filter((c) => c.key !== 'all'))
 </script>

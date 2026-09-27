@@ -5,5 +5,7 @@ packages:
 
 allowBuilds:
   '@nestjs/core': true
-  es5-ext: set this to true or false
+  es5-ext: true
   esbuild: true
+  sharp: true
+

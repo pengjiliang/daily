@@ -12,6 +12,7 @@ interface ImportItemDto {
   spec: string
   desc: string
   features: string[]
+  subCategory?: string
 }
 
 @Controller('alibaba')
@@ -24,18 +25,22 @@ export class AlibabaController {
 
   // 抓取店铺产品页，返回预览（不入库）
   @Post('preview')
-  async preview(@Body() body: { url?: string; limit?: number }) {
+  async preview(@Body() body: { url?: string; limit?: number; category?: string }) {
     if (!body.url || !/^https?:\/\//.test(body.url)) {
       throw new BadRequestException('请输入合法的 Alibaba 店铺产品页 URL')
     }
     const limit = Math.min(Number(body.limit) || 100, 500)
     const items = await this.alibaba.scrapeProducts(body.url, limit)
-    return { count: items.length, items }
+    const items2 = items.map((it) => ({
+      ...it,
+      subCategory: this.alibaba.inferSubCategory(body.category || '', it.name || it.nameEn)
+    }))
+    return { count: items2.length, items: items2 }
   }
 
   // 批量导入选中的产品到产品库
   @Post('import')
-  async importItems(@Body() body: { items?: ImportItemDto[]; category?: string; categoryLabel?: string }) {
+  async importItems(@Body() body: { items?: ImportItemDto[]; category?: string; categoryLabel?: string; subCategory?: string }) {
     if (!body.category || !body.categoryLabel) {
       throw new BadRequestException('请选择导入分类')
     }
@@ -46,6 +51,7 @@ export class AlibabaController {
         nameEn: it.nameEn || '',
         category: body.category as string,
         categoryLabel: body.categoryLabel as string,
+        subCategory: (it.subCategory || body.subCategory || this.alibaba.inferSubCategory(body.category as string, it.name || it.nameEn) || '').trim(),
         spec: it.spec || '',
         desc: it.desc || '',
         features: it.features || [],

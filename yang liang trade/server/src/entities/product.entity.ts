@@ -17,6 +17,9 @@ export class Product {
   @Column()
   categoryLabel: string
 
+  @Column({ default: '' })
+  subCategory: string
+
   @Column()
   spec: string
 

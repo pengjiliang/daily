@@ -84,6 +84,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Lock, Setting, Place, ArrowDown, Search, Phone, Clock, ChatDotRound } from '@element-plus/icons-vue'
 import { lang, setLang, t } from '@/i18n'
+import { site } from '@/config/site'
 
 const router = useRouter()
 const route = useRoute()
@@ -92,11 +93,10 @@ const keyword = ref('')
 
 const langLabel = computed(() => (lang.value === 'en' ? 'English' : '简体中文'))
 
-// 社交联系链接（WhatsApp 使用公司号码，IG/FB 为占位，后续可改真实主页）
-const waNumber = '8613874990232'
-const waLink = `https://wa.me/${waNumber}`
-const igLink = 'https://www.instagram.com/yangliangtrade'
-const fbLink = 'https://www.facebook.com/yangliangtrade'
+// 社交联系链接统一维护在 @/config/site
+const waLink = site.whatsappUrl
+const igLink = site.social.instagram
+const fbLink = site.social.facebook
 
 onMounted(() => {
   isAdmin.value = !!localStorage.getItem('yl_admin_token')

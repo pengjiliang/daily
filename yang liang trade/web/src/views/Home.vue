@@ -73,8 +73,19 @@
           <h2 class="section-title">{{ t('home_featured_title') }}</h2>
           <p class="section-sub">{{ t('home_featured_sub') }}</p>
         </div>
-        <div class="product-grid">
-          <ProductCard v-for="p in featured" :key="p.id" :product="p" />
+        <div class="featured-carousel" @mouseenter="stopCarousel" @mouseleave="startCarousel">
+          <div class="carousel-track" :style="{ transform: `translateX(-${current * 100}%)` }">
+            <div class="carousel-page" v-for="(group, gi) in featuredGroups" :key="gi">
+              <div class="product-grid">
+                <ProductCard v-for="p in group" :key="p.id" :product="p" />
+              </div>
+            </div>
+          </div>
+          <button v-if="featuredGroups.length > 1" class="car-btn prev" type="button" aria-label="上一页" @click="prevPage">‹</button>
+          <button v-if="featuredGroups.length > 1" class="car-btn next" type="button" aria-label="下一页" @click="nextPage">›</button>
+          <div v-if="featuredGroups.length > 1" class="car-dots">
+            <span v-for="(g, gi) in featuredGroups" :key="gi" :class="{ active: gi === current }" @click="current = gi" />
+          </div>
         </div>
         <div class="view-all">
           <el-button type="accent" round @click="$router.push('/products')">{{ t('home_view_all') }} →</el-button>
@@ -127,11 +138,11 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import ProductCard from '@/components/ProductCard.vue';
 import { products, loadProducts } from '@/api/products';
-import { categories } from '@/data/products';
+import { categories } from '@/data/categories';
 import { t } from '@/i18n';
 import {
   FirstAidKit, Monitor, Operation, Aim, MagicStick,
@@ -161,17 +172,46 @@ const catList = computed(() =>
     count: products.value.filter((p) => p.category === c.key).length
   }))
 );
-const featured = computed(() => products.value.slice(0, 6));
+const featured = ref([]);
+async function loadFeatured() {
+  try {
+    const res = await fetch('/api/products/featured?limit=9');
+    if (res.ok) featured.value = await res.json();
+  } catch { /* 加载失败时保持为空 */ }
+}
 const router = useRouter();
 const heroSlides = computed(() => [
-  { bg: "/images/hero-medical-people.jpg", kicker: t("home_kicker"), title1: t("home_h1_1"), title2: t("home_h1_2"), desc: t("home_p") },
-  { bg: "/images/hero-slide-1.jpg", kicker: t("home_s2_kicker"), title1: t("home_s2_title"), title2: "", desc: t("home_s2_desc") },
+  { bg: "/images/hero-slide-1.jpg", kicker: t("home_kicker"), title1: t("home_h1_1"), title2: t("home_h1_2"), desc: t("home_p") },
+  { bg: "/images/hero-medical-people.jpg", kicker: t("home_s2_kicker"), title1: t("home_s2_title"), title2: "", desc: t("home_s2_desc") },
   { bg: "/images/hero-slide-2.jpg", kicker: t("home_s3_kicker"), title1: t("home_s3_title"), title2: "", desc: t("home_s3_desc") },
   { bg: "/images/hero-slide-3.jpg", kicker: t("home_s4_kicker"), title1: t("home_s4_title"), title2: "", desc: t("home_s4_desc") }
 ]);
 const heroSlideStyle = (bg) => ({ backgroundImage: "linear-gradient(105deg, rgba(31,102,168,.88) 0%, rgba(64,158,255,.50) 48%, rgba(121,187,255,.12) 100%), url(" + bg + ")" });
 
-onMounted(() => loadProducts());
+const featuredGroups = computed(() => {
+  const out = [];
+  for (let i = 0; i < featured.value.length; i += 3) out.push(featured.value.slice(i, i + 3));
+  return out;
+});
+const current = ref(0);
+let carTimer = null;
+function nextPage() {
+  if (featuredGroups.value.length < 2) return;
+  current.value = (current.value + 1) % featuredGroups.value.length;
+}
+function prevPage() {
+  if (featuredGroups.value.length < 2) return;
+  current.value = (current.value - 1 + featuredGroups.value.length) % featuredGroups.value.length;
+}
+function startCarousel() {
+  stopCarousel();
+  if (featuredGroups.value.length < 2) return;
+  carTimer = setInterval(nextPage, 4000);
+}
+function stopCarousel() {
+  if (carTimer) { clearInterval(carTimer); carTimer = null; }
+}
+onMounted(() => { loadProducts(); loadFeatured(); });
 </script>
 
 <style scoped>
@@ -215,6 +255,17 @@ onMounted(() => loadProducts());
 /* 精选 */
 .featured { background: #fff; }
 .product-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.featured-carousel { position: relative; overflow: hidden; }
+.carousel-track { display: flex; transition: transform .5s ease; }
+.carousel-page { flex: 0 0 100%; }
+.car-btn { position: absolute; top: 40%; transform: translateY(-50%); z-index: 2; width: 42px; height: 42px; border-radius: 50%; border: 1px solid #e4e7ed; background: #fff; color: var(--yl-primary); font-size: 24px; line-height: 1; cursor: pointer; box-shadow: 0 2px 10px rgba(31,45,61,.10); transition: all .25s; }
+.car-btn:hover { background: var(--yl-primary); color: #fff; }
+.car-btn.prev { left: 4px; }
+.car-btn.next { right: 4px; }
+.car-dots { display: flex; justify-content: center; gap: 8px; margin-top: 22px; }
+.car-dots span { width: 8px; height: 8px; border-radius: 4px; background: #c6d4e3; cursor: pointer; transition: all .3s; }
+.car-dots span.active { width: 24px; background: var(--yl-primary); }
+
 .view-all { text-align: center; margin-top: 40px; }
 
 /* 数据条带 */

@@ -13,7 +13,7 @@
     </el-alert>
 
     <el-card shadow="never">
-      <el-table :data="list" v-loading="loading">
+      <el-table :data="list" v-loading="loading" border>
         <el-table-column prop="name" label="名称" min-width="150" />
         <el-table-column prop="type" label="类型" width="130" />
         <el-table-column prop="model" label="模型" min-width="160" />
@@ -21,7 +21,7 @@
         <el-table-column label="默认" width="90">
           <template #default="{ row }"><el-tag v-if="row.isDefault" type="success" size="small">使用中</el-tag></template>
         </el-table-column>
-        <el-table-column label="操作" width="230" fixed="right">
+        <el-table-column label="操作" width="230" fixed="right" :resizable="false">
           <template #default="{ row }">
             <el-button link type="primary" @click="openForm(row)">编辑</el-button>
             <el-button v-if="!row.isDefault" link type="warning" @click="setDefault(row)">设为默认</el-button>

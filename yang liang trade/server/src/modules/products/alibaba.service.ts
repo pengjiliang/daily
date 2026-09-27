@@ -10,6 +10,7 @@ export interface AlibabaPreviewItem {
   price: string
   moq: string
   certs: string[]
+  subCategory?: string
 }
 
 const UA =
@@ -111,4 +112,70 @@ export class AlibabaService {
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     return r.text()
   }
+
+  // 按产品名称自动识别细类（限当前大类内匹配，避免跨类误判）
+  inferSubCategory(category: string, name: string): string {
+    const rules = SUB_CATEGORY_RULES[category]
+    if (!rules) return ''
+    const text = (name || '').toLowerCase()
+    for (const r of rules) {
+      if (r.keywords.some((k) => text.includes(k.toLowerCase()))) return r.label
+    }
+    return ''
+  }
+}
+
+// 各产品大类下的细类关键词规则（命中第一个即作为细类）
+const SUB_CATEGORY_RULES: Record<string, { keywords: string[]; label: string }[]> = {
+  ppe: [
+    { keywords: ['口罩', 'mask', 'n95', 'kn95', 'ffp2', 'ffp3', 'face cover'], label: '口罩' },
+    { keywords: ['手套', 'glove'], label: '手套' },
+    { keywords: ['防护服', '隔离衣', 'protective suit', 'coverall', 'gown', 'isolation'], label: '防护服' },
+    { keywords: ['护目镜', '眼罩', 'goggle', 'eye shield'], label: '护目镜' },
+    { keywords: ['面罩', 'face shield', 'faceshield'], label: '面罩' },
+    { keywords: ['鞋套', '帽', 'cap', 'boot cover', 'shoe cover'], label: '鞋套帽' }
+  ],
+  monitoring: [
+    { keywords: ['血压计', 'sphygmomanometer', 'blood pressure', 'bp monitor', 'bp meter'], label: '血压计' },
+    { keywords: ['血糖仪', 'glucose', 'blood sugar', 'diabetes', 'glyc'], label: '血糖仪' },
+    { keywords: ['体温计', 'thermometer', 'temperature'], label: '体温计' },
+    { keywords: ['血氧仪', 'oximeter', 'oxygen saturation', 'spo2'], label: '血氧仪' },
+    { keywords: ['听诊器', 'stethoscope'], label: '听诊器' },
+    { keywords: ['监护仪', 'patient monitor', 'vital sign', 'multi-param', 'multiparam'], label: '监护仪' },
+    { keywords: ['胎心', 'fetal', 'doppler'], label: '胎心仪' },
+    { keywords: ['心电图', 'ecg', 'ekg', 'cardio', 'heart rate'], label: '心电图机' },
+    { keywords: ['超声', 'ultrasound'], label: '超声设备' }
+  ],
+  consumables: [
+    { keywords: ['注射器', 'syringe'], label: '注射器' },
+    { keywords: ['输液器', 'infusion', 'iv set', 'iv drip', 'iv cannula'], label: '输液器' },
+    { keywords: ['导管', 'catheter'], label: '导管' },
+    { keywords: ['纱布', 'gauze', 'dressing'], label: '纱布敷料' },
+    { keywords: ['绷带', 'bandage'], label: '绷带' },
+    { keywords: ['棉签', 'swab', 'cotton'], label: '棉签' },
+    { keywords: ['缝合', 'suture'], label: '缝合针线' },
+    { keywords: ['采血', 'vacutainer', 'blood collection', 'blood tube'], label: '采血管' },
+    { keywords: ['引流', 'drainage', 'drain'], label: '引流袋' },
+    { keywords: ['针', 'needle'], label: '注射穿刺针' }
+  ],
+  rehab: [
+    { keywords: ['轮椅', 'wheelchair'], label: '轮椅' },
+    { keywords: ['助行', 'walker', 'rollator'], label: '助行器' },
+    { keywords: ['拐杖', 'crutch', 'cane'], label: '拐杖' },
+    { keywords: ['护理床', 'hospital bed', 'patient bed', 'medical bed'], label: '护理床' },
+    { keywords: ['雾化', 'nebulizer', 'nebulisation', 'nebulization'], label: '雾化器' },
+    { keywords: ['制氧', 'oxygen concentrator', 'oxygen generator'], label: '制氧机' },
+    { keywords: ['按摩', 'massage', 'massager', '筋膜', 'fascia', 'percussion', 'therapy gun'], label: '按摩理疗' },
+    { keywords: ['牵引', 'traction'], label: '牵引器' },
+    { keywords: ['康复', 'rehab', 'physiotherap', 'exercise'], label: '康复训练' },
+    { keywords: ['便盆', 'bedpan', '尿壶', 'urinal', 'commode'], label: '护理用品' }
+  ],
+  disinfection: [
+    { keywords: ['消毒', 'disinfect'], label: '消毒液' },
+    { keywords: ['紫外', 'uv', 'ultraviolet'], label: '紫外线消毒' },
+    { keywords: ['灭菌', 'steriliz', 'sterilis', 'autoclave'], label: '灭菌器' },
+    { keywords: ['净化', 'purifier', 'air purif', 'hepa'], label: '空气净化' },
+    { keywords: ['臭氧', 'ozone'], label: '臭氧消毒' },
+    { keywords: ['洗手液', 'hand sanitiz', 'sanitizer', 'hand wash'], label: '洗手消毒' }
+  ]
 }

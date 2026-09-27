@@ -16,7 +16,11 @@ const routes = [
       { path: 'dashboard', name: 'admin-dashboard', component: () => import('@/views/admin/Dashboard.vue') },
       { path: 'ai-config', name: 'admin-ai-config', component: () => import('@/views/admin/AiConfig.vue') },
       { path: 'products', name: 'admin-products', component: () => import('@/views/admin/ProductsAdmin.vue') },
-      { path: 'leads', name: 'admin-leads', component: () => import('@/views/admin/Leads.vue') }
+      { path: 'messages', name: 'admin-messages', component: () => import('@/views/admin/Messages.vue') },
+      { path: 'leads', name: 'admin-leads', component: () => import('@/views/admin/Leads.vue') },
+      { path: 'mail', name: 'admin-mail', component: () => import('@/views/admin/Mail.vue') },
+      { path: 'trends', name: 'admin-trends', component: () => import('@/views/admin/Trends.vue') },
+      { path: 'customs', name: 'admin-customs', component: () => import('@/views/admin/Customs.vue') }
     ]
   },
   { path: '/:pathMatch(.*)*', redirect: '/' }

@@ -58,7 +58,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { CircleCheck } from '@element-plus/icons-vue'
 import ProductCard from '@/components/ProductCard.vue'
 import { products, getProduct, loadProducts } from '@/api/products'
-import { categories } from '@/data/products'
 import { t } from '@/i18n'
 
 const route = useRoute()

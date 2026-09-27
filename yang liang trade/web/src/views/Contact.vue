@@ -56,7 +56,7 @@
               :rows="4"
               :placeholder="t('contact_msg_ph')"
           /></el-form-item>
-          <el-button type="primary" size="large" round @click="submit">{{ t('contact_submit') }}</el-button>
+          <el-button type="primary" size="large" round :loading="submitting" @click="submit">{{ t('contact_submit') }}</el-button>
         </el-form>
       </div>
     </div>
@@ -64,29 +64,43 @@
 </template>
 
 <script setup>
-import { computed, reactive } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { ChatDotRound, PhoneFilled, Location, Phone, Message, Clock } from '@element-plus/icons-vue';
 import { t } from '@/i18n';
+import { site } from '@/config/site';
 
-// 老板/公司 WhatsApp 号码（后续可从后端 contact_info 接口读取配置）
-const waNumber = '8613874990232';
+const submitting = ref(false);
 const route = useRoute();
 const form = reactive({ name: '', phone: '', message: route.query.subject ? t('contact_subject', { s: route.query.subject }) : '' });
 
 const waLink = computed(() => {
   const text = encodeURIComponent(t('contact_wa_hello', { c: form.name || t('contact_customer'), m: form.message || t('contact_wa_default') }));
-  return `https://wa.me/${waNumber}?text=${text}`;
+  return `${site.whatsappUrl}?text=${text}`;
 });
 
-function submit() {
-  if (!form.message) return ElMessage.warning(t('contact_msg_required'));
-  // 当前为演示；后续提交到后端 /api/contact/messages
-  ElMessage.success(t('contact_success'));
-  form.name = '';
-  form.phone = '';
-  form.message = '';
+async function submit() {
+  const message = form.message.trim();
+  if (!message) return ElMessage.warning(t('contact_msg_required'));
+  submitting.value = true;
+  try {
+    const res = await fetch('/api/contact/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: form.name.trim(), phone: form.phone.trim(), message })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || t('contact_fail'));
+    ElMessage.success(t('contact_success'));
+    form.name = '';
+    form.phone = '';
+    form.message = '';
+  } catch (e) {
+    ElMessage.error(e.message || t('contact_fail'));
+  } finally {
+    submitting.value = false;
+  }
 }
 </script>
 

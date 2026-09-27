@@ -11,8 +11,9 @@ let docs: KnowledgeDoc[] = []
 
 // 启动时从 PostgreSQL products 表加载产品资料（连接信息来自根目录 .env 的 DATABASE_*）
 export async function loadKnowledge(): Promise<boolean> {
+  let client: Client | undefined
   try {
-    const client = new Client({
+    client = new Client({
       host: process.env.DATABASE_HOST || 'localhost',
       port: Number(process.env.DATABASE_PORT) || 5432,
       user: process.env.DATABASE_USER || 'postgres',
@@ -23,7 +24,6 @@ export async function loadKnowledge(): Promise<boolean> {
     const { rows } = await client.query(
       'SELECT name, "nameEn", "categoryLabel", spec, "desc", features FROM products ORDER BY id'
     )
-    await client.end()
     docs = rows.map((p: any) => ({
       keywords: `${p.name} ${p.nameEn} ${p.categoryLabel} ${p.spec} ${p.features}`,
       text: `${p.name}（${p.nameEn}）：属于${p.categoryLabel}。规格：${p.spec}。${stripHtml(p.desc)} 特点：${p.features}。`
@@ -34,6 +34,8 @@ export async function loadKnowledge(): Promise<boolean> {
     // 数据库不可用时不阻塞服务启动（回复将仅基于公司简介）
     console.warn('[knowledge] 从数据库加载产品资料失败：', e?.message)
     return false
+  } finally {
+    if (client) await client.end().catch(() => {})
   }
 }
 

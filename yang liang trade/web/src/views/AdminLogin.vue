@@ -3,7 +3,7 @@
     <div class="card">
       <div class="logo"><el-icon :size="34"><FirstAidKit /></el-icon></div>
       <h2>扬良贸易 · 管理后台</h2>
-      <p class="sub">首次使用请注册管理员账号</p>
+      <p class="sub">{{ canRegister ? '首次使用请注册管理员账号' : '管理员登录' }}</p>
       <el-tabs v-model="tab" stretch>
         <el-tab-pane label="登录" name="login">
           <el-form :model="loginForm" label-position="top" @keyup.enter="doLogin">
@@ -12,7 +12,7 @@
             <el-button type="primary" :loading="loading" style="width: 100%" @click="doLogin">登 录</el-button>
           </el-form>
         </el-tab-pane>
-        <el-tab-pane label="注册" name="register">
+        <el-tab-pane v-if="canRegister" label="注册" name="register">
           <el-form :model="regForm" label-position="top" @keyup.enter="doRegister">
             <el-form-item label="账号"><el-input v-model="regForm.username" placeholder="设置管理员账号" /></el-form-item>
             <el-form-item label="密码"><el-input v-model="regForm.password" type="password" show-password placeholder="设置登录密码" /></el-form-item>
@@ -26,7 +26,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { FirstAidKit } from '@element-plus/icons-vue'
@@ -34,15 +34,16 @@ import { FirstAidKit } from '@element-plus/icons-vue'
 const route = useRoute()
 const router = useRouter()
 const tab = ref('login')
+const canRegister = ref(false)
 const loading = ref(false)
 const loginForm = ref({ username: '', password: '' })
 const regForm = ref({ username: '', password: '', confirm: '' })
 
-async function call(path, body) {
+async function call(path, body, method = 'POST') {
   const res = await fetch(`/api/${path}`, {
-    method: 'POST',
+    method,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    body: body === undefined ? undefined : JSON.stringify(body)
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.message || '请求失败')
@@ -64,6 +65,13 @@ async function doLogin() {
   catch (e) { ElMessage.error(e.message) }
   finally { loading.value = false }
 }
+
+onMounted(async () => {
+  try {
+    const data = await call('auth/setup-status', undefined, 'GET')
+    canRegister.value = data.canRegister === true
+  } catch {}
+})
 
 async function doRegister() {
   const { username, password, confirm } = regForm.value

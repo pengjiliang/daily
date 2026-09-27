@@ -23,6 +23,17 @@
         </el-input>
       </div>
 
+      <div v-if="activeCat !== 'all' && subOptions.length" class="sub-bar">
+        <button
+          v-for="s in ['', ...subOptions]"
+          :key="s || 'all'"
+          type="button"
+          class="sub-chip"
+          :class="{ active: activeSub === s }"
+          @click="activeSub = s"
+        >{{ s || t('catL_all') }}</button>
+      </div>
+
       <div v-if="filtered.length" class="grid">
         <ProductCard v-for="p in filtered" :key="p.id" :product="p" />
       </div>
@@ -37,11 +48,12 @@ import { useRoute } from 'vue-router'
 import { Search, Grid, FirstAidKit, Monitor, Operation, Aim, MagicStick } from '@element-plus/icons-vue'
 import ProductCard from '@/components/ProductCard.vue'
 import { products, loadProducts } from '@/api/products'
-import { categories } from '@/data/products'
+import { categories } from '@/data/categories'
 import { t } from '@/i18n'
 
 const route = useRoute()
 const activeCat = ref('all')
+const activeSub = ref('')
 const keyword = ref('')
 
 const iconMap = {
@@ -60,6 +72,16 @@ const tabItems = computed(() => [
   ...catKeys.value.map((k) => ({ key: k, label: t('catL_' + k), icon: iconMap[k] }))
 ])
 
+// 当前大类下实际存在的细类（来自导入的产品数据）
+const subOptions = computed(() => {
+  if (activeCat.value === 'all') return []
+  const seen = new Set()
+  products.value.forEach((p) => {
+    if (p.category === activeCat.value && p.subCategory) seen.add(p.subCategory)
+  })
+  return [...seen]
+})
+
 onMounted(() => {
   loadProducts()
   if (route.query.cat) activeCat.value = route.query.cat
@@ -67,11 +89,14 @@ onMounted(() => {
 })
 
 watch(() => route.query.cat, (v) => { if (v) activeCat.value = v })
+watch(activeCat, () => { activeSub.value = '' })
 watch(() => route.query.q, (v) => { keyword.value = v || '' })
 
 const filtered = computed(() =>
   products.value.filter((p) => {
     const okCat = activeCat.value === 'all' || p.category === activeCat.value
+    const okSub = !activeSub.value || p.subCategory === activeSub.value
+    if (!okSub) return false
     const kw = keyword.value.trim().toLowerCase()
     const okKw = !kw || [p.name, p.nameEn, p.spec].join(' ').toLowerCase().includes(kw)
     return okCat && okKw
@@ -86,6 +111,10 @@ const filtered = computed(() =>
 .tab:hover { color: var(--yl-primary); background: #ecf5ff; }
 .tab.active { color: var(--yl-primary); border-bottom-color: var(--yl-primary); background: #ecf5ff; }
 .search { width: 240px; }
+.sub-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: -12px 0 24px; }
+.sub-chip { padding: 5px 14px; border: 1px solid #dcdfe6; border-radius: 20px; background: #fff; font-size: 13px; color: #606266; cursor: pointer; transition: all .2s; }
+.sub-chip:hover { color: var(--yl-primary); border-color: var(--yl-primary); }
+.sub-chip.active { color: var(--yl-primary); background: #ecf5ff; border-color: var(--yl-primary); font-weight: 600; }
 .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
 @media (max-width: 1100px) { .grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, 1fr); } .toolbar { justify-content: center; } .search { width: 100%; } }

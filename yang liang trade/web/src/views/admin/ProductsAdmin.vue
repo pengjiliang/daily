@@ -5,35 +5,58 @@
         <h2 class="page-title">产品管理</h2>
         <p class="page-sub">管理网站展示的医疗器械产品（增删改），前台与 AI 客服同步使用数据库数据</p>
       </div>
-      <el-button type="primary" @click="openForm()"><el-icon><Plus /></el-icon>新增产品</el-button>
-      <el-button type="success" @click="openImport"><el-icon><Download /></el-icon>从 Alibaba 导入</el-button>
+      <div class="head-actions">
+        <el-button type="primary" @click="openForm()"><el-icon><Plus /></el-icon>新增产品</el-button>
+        <el-button type="success" @click="openImport"><el-icon><Download /></el-icon>从 Alibaba 导入</el-button>
+        <el-button type="primary" plain @click="fillSubs"><el-icon><Refresh /></el-icon>自动补全细类</el-button>
+        <el-button type="danger" :disabled="!selectedIds.length" @click="batchRemove"><el-icon><Delete /></el-icon>批量删除{{ selectedIds.length ? `（${selectedIds.length}）` : '' }}</el-button>
+      </div>
     </div>
 
     <el-card shadow="never">
       <div class="filter-bar">
-        <el-radio-group v-model="filterCat">
-          <el-radio-button value="all">全部（{{ list.length }}）</el-radio-button>
-          <el-radio-button v-for="c in CATS" :key="c.key" :value="c.key">{{ c.label }}</el-radio-button>
-        </el-radio-group>
+        <div class="filter-cats">
+          <el-radio-group v-model="filterCat">
+            <el-radio-button value="all">全部（{{ list.length }}）</el-radio-button>
+            <el-radio-button v-for="c in CATS" :key="c.key" :value="c.key">{{ c.label }}</el-radio-button>
+          </el-radio-group>
+          <el-select v-if="filterCat !== 'all' && filterSubOptions.length" v-model="filterSub" placeholder="全部细类" clearable style="width: 160px">
+            <el-option v-for="s in filterSubOptions" :key="s" :label="s" :value="s" />
+          </el-select>
+        </div>
+        <el-input v-model="keyword" clearable placeholder="搜索名称 / 英文名 / 分类 / 规格" style="width: 320px">
+          <template #prefix><el-icon><Search /></el-icon></template>
+        </el-input>
       </div>
-      <el-table :data="shownList" v-loading="loading" row-key="id">
+      <el-table :data="shownList" v-loading="loading" row-key="id" @selection-change="onSelectionChange" border>
+        <el-table-column type="selection" width="46" />
         <el-table-column label="图片" width="90">
           <template #default="{ row }"><el-image :src="row.image" fit="cover" style="width:56px;height:56px;border-radius:8px" /></template>
         </el-table-column>
         <el-table-column prop="name" label="名称" min-width="140" />
         <el-table-column prop="nameEn" label="英文名" min-width="160" show-overflow-tooltip />
         <el-table-column prop="categoryLabel" label="分类" width="110" />
+        <el-table-column prop="subCategory" label="细类" width="120" show-overflow-tooltip />
         <el-table-column prop="spec" label="规格" min-width="180" show-overflow-tooltip />
         <el-table-column label="描述" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">{{ plainText(row.desc) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column label="操作" width="160" fixed="right" :resizable="false">
           <template #default="{ row }">
             <el-button link type="primary" @click="openForm(row)">编辑</el-button>
             <el-button link type="danger" @click="remove(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
+      <div v-if="filteredList.length" class="pager">
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="pageSize"
+          :total="filteredList.length"
+          :page-sizes="[10, 30, 50, 100, 200, 500]"
+          layout="total, sizes, prev, pager, next"
+        />
+      </div>
     </el-card>
 
     <el-dialog v-model="impDialog" title="从 Alibaba 店铺导入产品" width="920px" destroy-on-close>
@@ -55,13 +78,16 @@
         </el-form-item>
       </el-form>
 
-      <el-table v-if="impItems.length" :data="impItems" max-height="360" style="margin-top: 4px" @selection-change="(rows) => (impSelection = rows)">
+      <el-table v-if="impItems.length" :data="impItems" max-height="360" style="margin-top: 4px" @selection-change="(rows) => (impSelection = rows)" border>
         <el-table-column type="selection" width="46" />
         <el-table-column label="图片" width="80">
           <template #default="{ row }"><el-image :src="row.image" fit="cover" style="width: 52px; height: 52px; border-radius: 6px" :preview-src-list="row.images" /></template>
         </el-table-column>
         <el-table-column label="产品名称（可改）" min-width="240">
           <template #default="{ row }"><el-input v-model="row.name" size="small" /></template>
+        </el-table-column>
+        <el-table-column label="细类（自动识别，可改）" min-width="160">
+          <template #default="{ row }"><el-input v-model="row.subCategory" size="small" placeholder="自动识别" /></template>
         </el-table-column>
         <el-table-column prop="price" label="FOB 价" width="110" />
         <el-table-column prop="moq" label="MOQ" width="110" />
@@ -86,6 +112,11 @@
             <el-option v-for="c in CATS" :key="c.key" :label="c.label" :value="c.key" />
           </el-select>
         </el-form-item>
+        <el-form-item label="细类（可选）">
+          <el-select v-model="form.subCategory" filterable allow-create default-first-option clearable placeholder="选择或输入新细类，如：血压计" style="width:100%">
+            <el-option v-for="s in subOptsFor(form.category)" :key="s" :label="s" :value="s" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="规格" required><el-input v-model="form.spec" placeholder="如：三层防护 · 细菌过滤率 ≥ 95%" /></el-form-item>
         <el-form-item label="产品描述（支持图片、文字、表格）" required>
           <div class="rich-editor" v-if="editorReady">
@@ -105,25 +136,44 @@
 </template>
 
 <script setup>
-import { ref, computed, shallowRef, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, shallowRef, watch, onMounted, onBeforeUnmount } from 'vue'
 import '@wangeditor/editor/dist/css/style.css'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Download, Search } from '@element-plus/icons-vue'
+import { Plus, Download, Search, Delete, Refresh } from '@element-plus/icons-vue'
+import { categories } from '@/data/categories'
 
-const CATS = [
-  { key: 'ppe', label: '防护用品' },
-  { key: 'monitoring', label: '监测设备' },
-  { key: 'consumables', label: '耗材器械' },
-  { key: 'rehab', label: '护理康复' },
-  { key: 'disinfection', label: '消毒净化' }
-]
+const CATS = categories.filter((c) => c.key !== 'all')
+const DEFAULT_CAT = CATS[0] || { key: 'ppe', label: '防护用品' }
+function subOptsFor(cat) {
+  const seen = new Set()
+  list.value.forEach((p) => {
+    if (cat && p.category !== cat) return
+    if (p.subCategory) seen.add(p.subCategory)
+  })
+  return [...seen]
+}
+const filterSubOptions = computed(() => subOptsFor(filterCat.value))
 const list = ref([])
-const shownList = computed(() => filterCat.value === 'all' ? list.value : list.value.filter((p) => p.category === filterCat.value))
+const loading = ref(false)
+const selectedIds = ref([])
+const filterCat = ref('all')
+const filterSub = ref('')
+const keyword = ref('')
+const page = ref(1)
+const pageSize = ref(10)
+const filteredList = computed(() => {
+  const q = keyword.value.trim().toLowerCase()
+  return list.value.filter((p) => {
+    if (filterCat.value !== 'all' && p.category !== filterCat.value) return false
+    if (filterSub.value && p.subCategory !== filterSub.value) return false
+    if (!q) return true
+    return [p.name, p.nameEn, p.categoryLabel, p.spec].some((v) => String(v || '').toLowerCase().includes(q))
+  })
+})
+const shownList = computed(() => filteredList.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 const dialog = ref(false)
 const editorReady = ref(false)
-const loading = ref(false)
-const filterCat = ref('all')
 const form = ref({})
 const featuresText = ref('')
 const descHtml = ref('')
@@ -177,9 +227,15 @@ async function load() {
   finally { loading.value = false }
 }
 onMounted(load)
+watch([filterCat, filterSub, keyword, pageSize], () => { page.value = 1 })
+watch(filteredList, (items) => {
+  const maxPage = Math.max(1, Math.ceil(items.length / pageSize.value))
+  if (page.value > maxPage) page.value = maxPage
+})
 
 function onCatChange(key) {
   form.value.categoryLabel = CATS.find((c) => c.key === key)?.label || ''
+  form.value.subCategory = ''
 }
 
 function openForm(row) {
@@ -188,7 +244,7 @@ function openForm(row) {
     featuresText.value = (row.features || []).join('、')
     descHtml.value = row.desc || ''
   } else {
-    form.value = { name: '', nameEn: '', category: 'ppe', categoryLabel: '防护用品', spec: '', desc: '', image: '' }
+    form.value = { name: '', nameEn: '', category: DEFAULT_CAT.key, categoryLabel: DEFAULT_CAT.label, subCategory: '', spec: '', desc: '', image: '' }
     featuresText.value = ''
     descHtml.value = ''
   }
@@ -235,7 +291,7 @@ async function previewImport() {
     const res = await fetch('/api/alibaba/preview', {
       method: 'POST',
       headers: headers(),
-      body: JSON.stringify({ url: impUrl.value.trim(), limit: impLimit.value })
+      body: JSON.stringify({ url: impUrl.value.trim(), limit: impLimit.value, category: impCategory.value })
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data.message || '抓取失败')
@@ -265,7 +321,8 @@ async function doImport() {
     image: it.image || '',
     spec: it.price ? `FOB ${it.price}${it.moq ? ' · MOQ ' + it.moq : ''}` : '',
     desc: buildImpDesc(it),
-    features: it.certs || []
+    features: it.certs || [],
+    subCategory: it.subCategory || ''
   }))
   impSaving.value = true
   try {
@@ -283,6 +340,36 @@ async function doImport() {
   finally { impSaving.value = false }
 }
 
+function onSelectionChange(rows) {
+  selectedIds.value = rows.map((r) => r.id)
+}
+
+// 为已有产品（细类为空）自动识别补全细类
+async function fillSubs() {
+  try {
+    const data = await api('/fill-subcategories', { method: 'POST' })
+    ElMessage.success(data.updated ? `已为 ${data.updated} 个产品补全细类` : '没有需要补全细类的产品')
+    await load()
+  } catch (e) { ElMessage.error(e.message) }
+}
+
+async function batchRemove() {
+  if (!selectedIds.value.length) return
+  await ElMessageBox.confirm(`确定删除选中的 ${selectedIds.value.length} 个产品？`, '提示', { type: 'warning' })
+  try {
+    const res = await fetch('/api/products/batch-delete', {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ ids: selectedIds.value })
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.message || '批量删除失败')
+    ElMessage.success(`已删除 ${data.count} 个产品`)
+    selectedIds.value = []
+    await load()
+  } catch (e) { ElMessage.error(e.message) }
+}
+
 async function remove(row) {
   await ElMessageBox.confirm(`确定删除产品“${row.name}”？`, '提示', { type: 'warning' })
   try { await api(`/${row.id}`, { method: 'DELETE' }); ElMessage.success('已删除'); await load() }
@@ -291,8 +378,11 @@ async function remove(row) {
 </script>
 
 <style scoped>
-.filter-bar { margin-bottom: 16px; }
-.head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+.filter-bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; }
+.filter-cats { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pager { display: flex; justify-content: flex-end; margin-top: 16px; }
+.head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 20px; }
+.head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 .page-title { margin: 0 0 6px; font-size: 24px; }
 .page-sub { margin: 0; color: var(--yl-text-light); }
 .rich-editor { width: 100%; }
