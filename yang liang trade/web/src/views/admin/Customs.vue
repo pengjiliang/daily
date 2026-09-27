@@ -292,7 +292,7 @@ onBeforeUnmount(() => {
 .head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
 .block { margin-bottom: 18px; }
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
-.stat-card { background: #fff; border: 1px solid #ebeef5; border-radius: 8px; padding: 18px; }
+.stat-card { background: var(--yl-white); border: 1px solid var(--yl-border); border-radius: 8px; padding: 18px; }
 .stat-card .num { font-size: 22px; font-weight: 700; color: #303133; }
 .stat-card .unit { font-size: 13px; color: #909399; margin-left: 4px; }
 .stat-card .label { margin-top: 6px; font-size: 13px; color: #909399; }

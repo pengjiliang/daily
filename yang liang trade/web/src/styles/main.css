@@ -8,6 +8,9 @@
   --yl-cyan: #79bbff;
   --yl-bg: #f5f7fa;
   --yl-white: #ffffff;
+  --yl-card-bg: #ffffff;
+  --yl-border: #eef2f7;
+  --yl-hover-bg: #f5f7fa;
   --yl-text: #303133;
   --yl-text-light: #909399;
   --yl-radius: 8px;
@@ -54,3 +57,20 @@ img { max-width: 100%; }
   white-space: nowrap;
   word-break: keep-all;
 }
+
+/* ===== 暗色主题（html.dark 由 web/src/theme.js 切换）===== */
+html.dark {
+  --yl-bg: #141414;
+  --yl-white: #1d1e1f;
+  --yl-card-bg: #1d1e1f;
+  --yl-border: #2a2c30;
+  --yl-hover-bg: #232528;
+  --yl-text: #e5eaf3;
+  --yl-text-light: #a3a6ad;
+  --yl-shadow: 0 2px 12px rgba(0, 0, 0, .4);
+  --yl-shadow-lg: 0 6px 18px rgba(0, 0, 0, .5);
+  color-scheme: dark;
+}
+html.dark body { background: var(--yl-bg); color: var(--yl-text); }
+html.dark .el-card { --el-card-bg-color: var(--yl-card-bg); }
+html.dark .section-title { color: var(--yl-primary-light); }

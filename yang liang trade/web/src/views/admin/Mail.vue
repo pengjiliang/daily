@@ -75,7 +75,7 @@
             <template #header><b>收件箱（{{ inbox.total }} 封，显示最近 {{ inbox.items.length }} 封）</b></template>
             <div v-loading="inboxLoading" class="inbox">
               <el-empty v-if="!inboxLoading && !inbox.items.length" description="收件箱为空" :image-size="70" />
-              <div v-for="m in inbox.items" :key="m.uid" class="mail-item" @click="openMail(m)">
+              <div v-for="m in inbox.items" :key="m.uid" :id="'mail-' + m.uid" :class="['mail-item', { highlight: highlightUid === m.uid }]" @click="openMail(m)">
                 <div class="mail-item-head">
                   <span class="mail-subject">{{ m.subject || '（无主题）' }}</span>
                   <span class="mail-date">{{ fmtTime(m.date) }}</span>
@@ -94,6 +94,10 @@
                 <el-select v-model="toList" multiple filterable allow-create default-first-option placeholder="输入邮箱后回车" style="width: 100%">
                   <el-option v-for="e in leadEmails" :key="e" :label="e" :value="e" />
                 </el-select>
+                <div class="manual-row">
+                  <el-input v-model="manualTo" placeholder="手动输入收件人邮箱，多个用逗号或分号分隔" clearable @keyup.enter="addManualTo" />
+                  <el-button type="primary" plain @click="addManualTo">添加收件人</el-button>
+                </div>
                 <div class="pick-row">
                   <el-button size="small" @click="openPick"><el-icon><User /></el-icon>从客户线索选择</el-button>
                   <span class="pick-tip">已选 {{ toList.length }} 个收件人</span>
@@ -112,13 +116,28 @@
       </el-row>
 
       <el-card shadow="never" class="block">
-        <template #header><b>发送记录</b></template>
+        <template #header>
+          <div class="record-head"><b>发送记录</b><el-button size="small" :loading="replyChecking" @click="doCheckReplies">刷新回复状态</el-button></div>
+        </template>
         <el-table :data="campaigns" style="width: 100%" border>
           <el-table-column label="时间" width="170">
             <template #default="{ row }">{{ fmtTime(row.createdAt) }}</template>
           </el-table-column>
+          <el-table-column label="收件人" min-width="220" show-overflow-tooltip>
+            <template #default="{ row }">{{ recipientText(row) }}</template>
+          </el-table-column>
           <el-table-column prop="count" label="收件人数" width="100" />
           <el-table-column prop="note" label="主题" min-width="240" show-overflow-tooltip />
+          <el-table-column label="已查看" width="120">
+            <template #default="{ row }">
+              <el-tag :type="readCount(row) ? 'success' : 'info'" size="small">{{ readCount(row) }}/{{ row.count || 0 }} 已查看</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="已回复" width="120">
+            <template #default="{ row }">
+              <el-tag :type="replyCount(row) ? 'success' : 'info'" size="small" :class="{ 'reply-link': replyCount(row) }" @click="replyCount(row) && locateReply(row)">{{ replyCount(row) }}/{{ row.count || 0 }} 已回复</el-tag>
+            </template>
+          </el-table-column>
           <el-table-column label="状态" width="100">
             <template #default="{ row }"><el-tag type="success" size="small">{{ row.status }}</el-tag></template>
           </el-table-column>
@@ -148,7 +167,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheckFilled, Refresh, User, Promotion } from '@element-plus/icons-vue'
 
@@ -158,9 +177,12 @@ const logging = ref(false)
 const inbox = ref({ total: 0, items: [] })
 const inboxLoading = ref(false)
 const toList = ref([])
+const manualTo = ref('')
 const leadEmails = ref([])
 const mailForm = ref({ subject: '', text: '' })
 const sending = ref(false)
+const replyChecking = ref(false)
+const highlightUid = ref(null)
 const campaigns = ref([])
 const mailVisible = ref(false)
 const current = ref({ subject: '', from: '', date: null, preview: '' })
@@ -229,6 +251,24 @@ function openMail(m) {
   mailVisible.value = true
 }
 
+function parseRecipients(row) {
+  try {
+    const d = JSON.parse(row.detail || '')
+    if (Array.isArray(d.recipients)) return d.recipients
+    if (Array.isArray(d.to)) return d.to.map((e) => ({ email: e, readAt: null }))
+    return []
+  } catch { return [] }
+}
+function recipientText(row) {
+  return parseRecipients(row).map((r) => r.email).join('、')
+}
+function readCount(row) {
+  return parseRecipients(row).filter((r) => r.readAt).length
+}
+function replyCount(row) {
+  return parseRecipients(row).filter((r) => r.repliedAt).length
+}
+
 async function loadCampaigns() {
   try {
     const res = await fetch('/api/leads/campaigns', { headers: headers() })
@@ -260,6 +300,20 @@ function confirmPick() {
   ElMessage.success(`已添加 ${add.length} 个收件人`)
 }
 
+function addManualTo() {
+  const raw = manualTo.value || ''
+  if (!raw.trim()) return ElMessage.warning('请输入收件人邮箱')
+  const parts = raw.split(/[,;，；\s]+/).map((x) => x.trim()).filter(Boolean)
+  const valid = parts.filter((x) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x))
+  const invalid = parts.filter((x) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x))
+  if (invalid.length) ElMessage.warning('以下邮箱格式不正确：' + invalid.join('、'))
+  if (!valid.length) return
+  const before = toList.value.length
+  toList.value = [...new Set([...toList.value, ...valid])]
+  manualTo.value = ''
+  ElMessage.success('已添加 ' + (toList.value.length - before) + ' 个收件人')
+}
+
 async function doSend() {
   if (!toList.value.length) return ElMessage.warning('请至少填写一个收件人')
   if (!mailForm.value.subject) return ElMessage.warning('请填写邮件主题')
@@ -273,6 +327,34 @@ async function doSend() {
     loadCampaigns()
   } catch (e) { ElMessage.error(e.message) }
   finally { sending.value = false }
+}
+
+async function doCheckReplies() {
+  replyChecking.value = true
+  try {
+    const r = await api('/check-replies', { method: 'POST' })
+    ElMessage.success('回复状态已更新：' + (r.replied || 0) + ' 封回复')
+    await loadCampaigns()
+  } catch (e) { ElMessage.error(e.message) }
+  finally { replyChecking.value = false }
+}
+
+async function locateReply(row) {
+  const rec = parseRecipients(row).find((r) => r.repliedAt && r.replyUid)
+  if (!rec) return ElMessage.warning('该记录暂无可定位的回复邮件')
+  let target = inbox.value.items.find((m) => m.uid === rec.replyUid)
+  if (!target) {
+    try {
+      target = await api('/message?uid=' + rec.replyUid)
+      if (target && target.uid) inbox.value.items.unshift(target)
+    } catch (e) { return ElMessage.error(e.message) }
+  }
+  if (!target) return ElMessage.warning('未找到该回复邮件')
+  highlightUid.value = target.uid
+  await nextTick()
+  const el = document.getElementById('mail-' + target.uid)
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  setTimeout(() => { highlightUid.value = null }, 2500)
 }
 
 onMounted(loadConfig)
@@ -290,6 +372,9 @@ onMounted(loadConfig)
 .connected-mail { font-size: 16px; font-weight: 700; }
 .connected-sub { color: var(--yl-text-light); font-size: 13px; }
 .block { margin-top: 16px; }
+.record-head { display: flex; justify-content: space-between; align-items: center; }
+.mail-item.highlight { border-color: #e6a23c; background: #fdf6ec; box-shadow: 0 0 0 2px rgba(230, 162, 60, .35); }
+.reply-link { cursor: pointer; }
 .inbox { max-height: 560px; overflow: auto; }
 .mail-item { border: 1px solid #e4e7ed; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer; transition: all .2s; }
 .mail-item:hover { border-color: #409eff; background: #f5f9ff; }
@@ -298,6 +383,7 @@ onMounted(loadConfig)
 .mail-date { color: var(--yl-text-light); font-size: 12px; white-space: nowrap; }
 .mail-from { color: #409eff; font-size: 13px; margin: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mail-preview { color: var(--yl-text-light); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.manual-row { margin-top: 8px; display: flex; gap: 8px; }
 .pick-row { margin-top: 6px; display: flex; align-items: center; gap: 10px; }
 .pick-tip { color: var(--yl-text-light); font-size: 13px; }
 .mail-meta { color: var(--yl-text-light); font-size: 13px; margin-bottom: 12px; }

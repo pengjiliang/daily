@@ -60,7 +60,7 @@
     </el-card>
 
     <el-dialog v-model="impDialog" title="从 Alibaba 店铺导入产品" width="920px" destroy-on-close>
-      <el-form label-width="110px">
+      <el-form label-width="150px">
         <el-form-item label="店铺产品页 URL" required>
           <el-input v-model="impUrl" placeholder="https://joytechhealth.en.alibaba.com/productlist.html 或收藏集页，可整店/分类导入" />
         </el-form-item>
@@ -381,6 +381,7 @@ async function remove(row) {
 .filter-bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; }
 .filter-cats { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .pager { display: flex; justify-content: flex-end; margin-top: 16px; }
+:deep(.el-form-item__label) { white-space: nowrap; }
 .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 20px; }
 .head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 .page-title { margin: 0 0 6px; font-size: 24px; }

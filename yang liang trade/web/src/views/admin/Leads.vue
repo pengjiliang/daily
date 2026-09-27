@@ -77,7 +77,7 @@
             <el-tag :type="srcTag(row.source)" size="small">{{ srcLabel(row.source) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="联系" width="176" fixed="right" :resizable="false">
+        <el-table-column label="联系" width="190" fixed="right" :resizable="false">
           <template #default="{ row }">
             <a v-if="row.phone" :href="waAppLink(row.phone, shortMsg(row.name))" class="cta cta-wa">WhatsApp</a>
             <a :href="'fb-messenger://'" class="cta cta-fb" @click="copyShort(row.name)">Messenger</a>
@@ -348,12 +348,12 @@ async function markSent() {
 .send-grid { max-width: 760px; }
 .send-actions { margin-top: 4px; }
 .pv-tip { background: #fff7e6; border: 1px solid #ffe7ba; color: #ad6800; padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
-.pv-item { border: 1px solid #eef2f7; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+.pv-item { border: 1px solid var(--yl-border); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
 .pv-name { font-weight: 700; }
 .pv-phone { color: var(--yl-text-light); font-size: 13px; margin: 2px 0 8px; }
 .pv-text { background: #f6f9fc; padding: 8px 10px; border-radius: 8px; font-size: 13px; line-height: 1.7; }
 .pv-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
-.cta { display: inline-block; margin: 0 4px 4px 0; padding: 3px 10px; border-radius: 6px; font-size: 12px; text-decoration: none; color: #fff; }
+.cta { display: inline-block; margin: 0 3px 2px 0; padding: 2px 7px; border-radius: 5px; font-size: 11px; line-height: 1.5; text-decoration: none; color: #fff; white-space: nowrap; }
 .cta-wa { background: #25d366; }
 .cta-wa:hover { background: #1eb857; }
 .cta-fb { background: #1877f2; }

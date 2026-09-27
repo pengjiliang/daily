@@ -4,7 +4,7 @@
       <!-- 品牌 -->
       <div class="footer-brand">
         <div class="footer-logo">
-          <span class="fl-icon"><el-icon><FirstAidKit /></el-icon></span>
+          <span class="fl-icon"><BrandLogo :size="44" /></span>
           <span class="fl-name">{{ t('footer_brand') }}</span>
         </div>
         <p class="muted">{{ t('footer_slogan') }}</p>
@@ -51,7 +51,8 @@
 
 <script setup>
 import { computed } from 'vue'
-import { FirstAidKit, ChatDotRound, Message, Share, Phone, Location, Clock } from '@element-plus/icons-vue'
+import { ChatDotRound, Message, Share, Phone, Location, Clock } from '@element-plus/icons-vue'
+import BrandLogo from '@/components/BrandLogo.vue'
 import { t, setLang, isEn } from '@/i18n'
 import { categories } from '@/data/categories'
 import { site } from '@/config/site'

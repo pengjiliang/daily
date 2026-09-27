@@ -1,11 +1,47 @@
 <template>
   <div>
     <h2 class="page-title">仪表盘</h2>
+
     <div class="stats">
-      <div class="stat-card"><div class="num">{{ stats.products }}</div><div class="label">产品总数</div></div>
-      <div class="stat-card"><div class="num">{{ stats.leads }}</div><div class="label">已抓取线索</div></div>
-      <div class="stat-card"><div class="num">{{ stats.campaigns }}</div><div class="label">群发任务</div></div>
-      <div class="stat-card"><div class="num">{{ stats.messages }}</div><div class="label">已发送消息</div></div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background: #ecf5ff; color: #409eff"><el-icon><Goods /></el-icon></div>
+        <div><div class="num">{{ stats.products }}</div><div class="label">产品总数</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background: #f0f9eb; color: #67c23a"><el-icon><Position /></el-icon></div>
+        <div><div class="num">{{ stats.leads }}</div><div class="label">已抓取线索</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background: #fdf6ec; color: #e6a23c"><el-icon><Promotion /></el-icon></div>
+        <div><div class="num">{{ stats.campaigns }}</div><div class="label">群发任务</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background: #fef0f0; color: #f56c6c"><el-icon><Message /></el-icon></div>
+        <div><div class="num">{{ stats.messages }}</div><div class="label">已发送消息</div></div>
+      </div>
+    </div>
+
+    <div class="chart-grid">
+      <el-card shadow="never" class="chart-card">
+        <template #header>线索质量 · WhatsApp 覆盖率</template>
+        <div ref="gaugeEl" class="chart" />
+      </el-card>
+      <el-card shadow="never" class="chart-card">
+        <template #header>线索来源分布</template>
+        <div ref="sourceEl" class="chart" />
+      </el-card>
+      <el-card shadow="never" class="chart-card">
+        <template #header>最近 7 天线索趋势</template>
+        <div ref="trendEl" class="chart" />
+      </el-card>
+      <el-card shadow="never" class="chart-card">
+        <template #header>产品分类分布</template>
+        <div ref="categoryEl" class="chart" />
+      </el-card>
+      <el-card shadow="never" class="chart-card">
+        <template #header>线索地区 Top 8</template>
+        <div ref="regionEl" class="chart" />
+      </el-card>
     </div>
 
     <el-card shadow="never" style="margin-top: 24px">
@@ -28,7 +64,7 @@
         :total="total"
         :page-size="pageSize"
         :current-page="page"
-        :page-sizes="[100, 200, 300, 400, 500]"
+        :page-sizes="[10, 30, 50, 100, 200, 500]"
         @current-change="onPageChange"
         @size-change="onSizeChange"
       />
@@ -37,8 +73,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Goods, Position, Promotion, Message } from '@element-plus/icons-vue'
+import * as echarts from 'echarts/core'
+import { GaugeChart, PieChart, LineChart, BarChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+
+echarts.use([GaugeChart, PieChart, LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
 const stats = ref({ products: 0, leads: 0, campaigns: 0, messages: 0 })
 const recentLeads = ref([])
@@ -46,6 +89,15 @@ const loading = ref(false)
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(100)
+
+const gaugeEl = ref(null)
+const sourceEl = ref(null)
+const trendEl = ref(null)
+const categoryEl = ref(null)
+const regionEl = ref(null)
+let charts = []
+
+const COLORS = ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#8e44ad', '#16a085', '#2980b9', '#d35400', '#27ae60', '#2c3e50']
 
 function headers() {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('yl_admin_token') || ''}` }
@@ -58,20 +110,110 @@ async function api(path, options = {}) {
   return data
 }
 
+function setChart(el, option) {
+  if (!el) return
+  const c = echarts.init(el)
+  c.setOption(option)
+  charts.push(c)
+}
+
+function renderCharts(data) {
+  charts.forEach((c) => c.dispose())
+  charts = []
+  const dark = document.documentElement.classList.contains('dark')
+  const axisColor = dark ? '#2a2c30' : '#eef2f7'
+  const splitColor = dark ? '#26282b' : '#f0f2f5'
+  const pieBorder = dark ? '#1d1e1f' : '#fff'
+
+  setChart(gaugeEl.value, {
+    series: [{
+      type: 'gauge',
+      startAngle: 210,
+      endAngle: -30,
+      min: 0,
+      max: 100,
+      progress: { show: true, width: 16, itemStyle: { color: '#409eff' } },
+      axisLine: { lineStyle: { width: 16, color: [[1, axisColor]] } },
+      axisTick: { show: false },
+      splitLine: { show: false },
+      axisLabel: { show: false },
+      pointer: { show: false },
+      title: { show: true, offsetCenter: [0, '34%'], fontSize: 14, color: '#909399', formatter: '共 ' + data.whatsappCount + ' 条' },
+      detail: { valueAnimation: true, formatter: (v) => `${v}%`, fontSize: 36, fontWeight: 700, color: '#409eff', offsetCenter: [0, 0] },
+      data: [{ value: data.whatsappRate }]
+    }]
+  })
+
+  setChart(sourceEl.value, {
+    color: COLORS,
+    tooltip: { trigger: 'item' },
+    legend: { bottom: 0, type: 'scroll', textStyle: { fontSize: 12 } },
+    series: [{
+      type: 'pie',
+      radius: ['38%', '66%'],
+      center: ['50%', '44%'],
+      itemStyle: { borderRadius: 6, borderColor: pieBorder, borderWidth: 2 },
+      label: { formatter: '{b}\n{c} 条' },
+      data: data.sourceDist.length ? data.sourceDist : [{ name: '暂无数据', value: 0 }]
+    }]
+  })
+
+  setChart(trendEl.value, {
+    color: ['#409eff'],
+    tooltip: { trigger: 'axis', confine: true },
+    grid: { left: 36, right: 20, top: 24, bottom: 28 },
+    xAxis: { type: 'category', data: data.trend7d.dates, axisLabel: { color: '#909399', fontSize: 11 }, axisLine: { lineStyle: { color: '#dcdfe6' } } },
+    yAxis: { type: 'value', minInterval: 1, axisLabel: { color: '#909399' }, splitLine: { lineStyle: { color: splitColor } } },
+    series: [{
+      type: 'line',
+      name: '新线索',
+      data: data.trend7d.values,
+      smooth: true,
+      symbol: 'circle',
+      symbolSize: 6,
+      lineStyle: { width: 2 },
+      areaStyle: { color: 'rgba(64,158,255,.12)' }
+    }]
+  })
+
+  setChart(categoryEl.value, {
+    color: COLORS,
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, confine: true },
+    grid: { left: 12, right: 30, top: 12, bottom: 12, containLabel: true },
+    xAxis: { type: 'value', axisLabel: { color: '#909399' }, splitLine: { lineStyle: { color: splitColor } } },
+    yAxis: { type: 'category', inverse: true, data: data.categoryDist.map((i) => i.name), axisLabel: { color: '#606266', fontSize: 12 } },
+    series: [{
+      type: 'bar',
+      data: data.categoryDist.map((i) => i.value),
+      barWidth: 14,
+      itemStyle: { borderRadius: [0, 7, 7, 0] }
+    }]
+  })
+
+  setChart(regionEl.value, {
+    color: COLORS,
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, confine: true },
+    grid: { left: 12, right: 30, top: 12, bottom: 12, containLabel: true },
+    xAxis: { type: 'value', axisLabel: { color: '#909399' }, splitLine: { lineStyle: { color: splitColor } } },
+    yAxis: { type: 'category', inverse: true, data: data.regionDist.map((i) => i.name), axisLabel: { color: '#606266', fontSize: 12 } },
+    series: [{
+      type: 'bar',
+      data: data.regionDist.map((i) => i.value),
+      barWidth: 14,
+      itemStyle: { borderRadius: [0, 7, 7, 0] }
+    }]
+  })
+}
+
 async function load() {
   loading.value = true
   try {
-    const [products, leads, campaigns] = await Promise.all([
-      api('/api/products'),
-      api(`/api/leads?page=${page.value}&pageSize=${pageSize.value}`),
-      api('/api/leads/campaigns')
+    const [dash, leads] = await Promise.all([
+      api('/api/dashboard'),
+      api(`/api/leads?page=${page.value}&pageSize=${pageSize.value}`)
     ])
-    stats.value = {
-      products: (products || []).length,
-      leads: Number(leads?.total) || 0,
-      campaigns: (campaigns || []).length,
-      messages: (campaigns || []).reduce((s, c) => s + (c.count || 0), 0)
-    }
+    stats.value = dash.counts
+    renderCharts(dash)
     total.value = Number(leads?.total) || 0
     recentLeads.value = Array.isArray(leads?.items) ? leads.items : []
   } catch (e) {
@@ -90,13 +232,33 @@ function onSizeChange(s) {
   page.value = 1
   load()
 }
-onMounted(load)
+
+function onResize() {
+  charts.forEach((c) => c.resize())
+}
+onMounted(() => {
+  window.addEventListener('resize', onResize)
+  load()
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', onResize)
+  charts.forEach((c) => c.dispose())
+  charts = []
+})
 </script>
 
 <style scoped>
 .page-title { margin: 0 0 20px; font-size: 24px; }
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
-.stat-card { background: #fff; border-radius: var(--yl-radius); border: 1px solid #eef2f7; padding: 24px; }
-.stat-card .num { font-size: 30px; font-weight: 800; color: var(--yl-primary); }
-.stat-card .label { color: var(--yl-text-light); margin-top: 6px; font-size: 14px; }
+.stat-card { display: flex; align-items: center; gap: 16px; background: var(--yl-white); border-radius: var(--yl-radius); border: 1px solid var(--yl-border); padding: 22px 24px; }
+.stat-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
+.stat-card .num { font-size: 28px; font-weight: 800; color: var(--yl-text); line-height: 1.2; }
+.stat-card .label { color: var(--yl-text-light); margin-top: 4px; font-size: 13px; }
+.chart-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-top: 20px; }
+.chart-card .chart { height: 300px; }
+@media (max-width: 1200px) {
+  .chart-grid { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+}
 </style>
+

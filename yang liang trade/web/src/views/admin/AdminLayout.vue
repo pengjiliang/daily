@@ -2,7 +2,7 @@
   <el-container class="layout">
     <el-aside width="220px" class="aside">
       <div class="logo">
-        <el-icon :size="24"><FirstAidKit /></el-icon>
+        <BrandLogo :size="26" />
         <span>扬良管理后台</span>
       </div>
       <el-menu :default-active="$route.path" router class="menu">
@@ -16,6 +16,7 @@
         <el-menu-item index="/admin/customs"><el-icon><Ship /></el-icon>海关数据</el-menu-item>
       </el-menu>
       <div class="aside-foot">
+        <el-button text @click="toggleTheme"><el-icon><Sunny v-if="theme === 'dark'" /><Moon v-else /></el-icon>{{ theme === 'dark' ? '浅色模式' : '深色模式' }}</el-button>
         <el-button text @click="goSite"><el-icon><Back /></el-icon>返回网站</el-button>
         <el-button text type="danger" @click="logout"><el-icon><SwitchButton /></el-icon>退出登录</el-button>
       </div>
@@ -28,7 +29,9 @@
 
 <script setup>
 import { useRouter } from 'vue-router'
-import { FirstAidKit, DataBoard, MagicStick, Goods, Message, Position, Promotion, TrendCharts, Back, SwitchButton, Ship } from '@element-plus/icons-vue'
+import { DataBoard, MagicStick, Goods, Message, Position, Promotion, TrendCharts, Back, SwitchButton, Ship, Sunny, Moon } from '@element-plus/icons-vue'
+import BrandLogo from '@/components/BrandLogo.vue'
+import { theme, toggleTheme } from '@/theme'
 
 const router = useRouter()
 function goSite() { router.push('/') }
@@ -39,7 +42,7 @@ function logout() {
 </script>
 
 <style scoped>
-.layout { min-height: 100vh; }
+.layout { height: 100vh; overflow: hidden; }
 .aside { background: #304156; color: #c0c4cc; display: flex; flex-direction: column; }
 .logo { display: flex; align-items: center; gap: 10px; color: #fff; font-weight: 700; padding: 20px 16px; font-size: 16px; }
 .menu { border-right: none; background: transparent; --el-menu-text-color: #c0c4cc; --el-menu-hover-bg-color: rgba(255,255,255,.06); --el-menu-active-color: #409eff; --el-menu-bg-color: transparent; flex: 1; }
@@ -47,6 +50,6 @@ function logout() {
 .menu :deep(.el-menu-item.is-active) { background: rgba(64,158,255,.15); }
 .aside-foot { padding: 16px; display: flex; flex-direction: column; align-items: stretch; }
 .aside-foot .el-button { justify-content: flex-start; color: #c0c4cc; }
-.main { background: var(--yl-bg); padding: 28px; }
+.main { background: var(--yl-bg); padding: 28px; height: 100%; overflow-y: auto; }
 </style>
 

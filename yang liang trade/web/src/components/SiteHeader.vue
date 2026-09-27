@@ -21,6 +21,9 @@
               </el-dropdown-menu>
             </template>
           </el-dropdown>
+          <el-button link class="topbar-link theme-btn" @click="toggleTheme" :title="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'">
+            <el-icon><Sunny v-if="theme === 'dark'" /><Moon v-else /></el-icon>
+          </el-button>
           <el-button v-if="!isAdmin" link class="topbar-link" @click="$router.push('/admin/login')">
             <el-icon><Lock /></el-icon> {{ t('action_login') }}
           </el-button>
@@ -40,7 +43,10 @@
     <!-- 主 header：品牌 + 搜索框 + 导航 -->
     <div class="mainbar">
       <div class="container mainbar-inner">
-        
+        <router-link to="/" class="brand">
+          <BrandLogo :size="42" />
+          <span class="brand-name">YANGLIANG TRADE</span>
+        </router-link>
 
         <div class="search-box">
           <el-input v-model="keyword" :placeholder="t('search_placeholder')" clearable @keyup.enter="doSearch">
@@ -82,8 +88,10 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Lock, Setting, Place, ArrowDown, Search, Phone, Clock, ChatDotRound } from '@element-plus/icons-vue'
+import { Lock, Setting, Place, ArrowDown, Search, Phone, Clock, ChatDotRound, Sunny, Moon } from '@element-plus/icons-vue'
+import BrandLogo from '@/components/BrandLogo.vue'
 import { lang, setLang, t } from '@/i18n'
+import { theme, toggleTheme } from '@/theme'
 import { site } from '@/config/site'
 
 const router = useRouter()
@@ -123,7 +131,7 @@ function doSearch() {
 </script>
 
 <style scoped>
-.header { position: sticky; top: 0; z-index: 100; background: #fff; box-shadow: 0 2px 12px rgba(0, 0, 0, .06); }
+.header { position: sticky; top: 0; z-index: 100; background: var(--yl-white); box-shadow: 0 2px 12px rgba(0, 0, 0, .06); }
 .topbar { background: var(--yl-primary-deep); color: #c7d2ea; font-size: 13px; }
 .topbar-inner { display: flex; align-items: center; justify-content: space-between; height: 38px; gap: 12px; }
 .topbar-left { display: flex; align-items: center; gap: 20px; overflow: hidden; white-space: nowrap; }
@@ -134,10 +142,15 @@ function doSearch() {
 .lang-current:hover { color: #79bbff; }
 .lang-current .arrow { font-size: 12px; }
 .topbar-right { display: flex; align-items: center; gap: 18px; }
+.theme-btn { font-size: 15px; color: #e2e8f0; padding: 0; }
+.theme-btn:hover { color: #79bbff; }
 .topbar-link { color: #c7d2ea; font-size: 13px; padding: 0; }
 .topbar-link:hover { color: #79bbff; }
-.mainbar { border-bottom: 1px solid #eef2f7; }
+.mainbar { border-bottom: 1px solid var(--yl-border); }
 .mainbar-inner { display: flex; align-items: center; gap: 24px; height: 76px; }
+.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; flex-shrink: 0; }
+.brand:hover .brand-name { color: var(--yl-primary); }
+.brand-name { font-size: 20px; font-weight: 800; letter-spacing: 1px; color: var(--yl-primary-dark); white-space: nowrap; transition: color .2s; }
 
 .search-box { flex: 1; max-width: 440px; margin-right: auto; }
 .search-box :deep(.el-input-group__append) { padding: 0; background: transparent; box-shadow: none; }

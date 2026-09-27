@@ -1,7 +1,7 @@
 <template>
   <div class="login-page">
     <div class="card">
-      <div class="logo"><el-icon :size="34"><FirstAidKit /></el-icon></div>
+      <div class="logo"><BrandLogo :size="60" /></div>
       <h2>扬良贸易 · 管理后台</h2>
       <p class="sub">{{ canRegister ? '首次使用请注册管理员账号' : '管理员登录' }}</p>
       <el-tabs v-model="tab" stretch>
@@ -29,7 +29,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { FirstAidKit } from '@element-plus/icons-vue'
+import BrandLogo from '@/components/BrandLogo.vue'
 
 const route = useRoute()
 const router = useRouter()

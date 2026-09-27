@@ -6,6 +6,6 @@ server/data/
 web/scripts/
 !web/scripts/generate-images.mjs
 
-# 图片处理中间产物（保留供后续恢复，不入库）
-.tmp_*.json
+# 开发/调试临时脚本、中间产物与预览图（不入库）
+.tmp_*
 server/.tmp_product_images/

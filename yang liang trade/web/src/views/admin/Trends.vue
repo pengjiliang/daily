@@ -314,11 +314,11 @@ onMounted(() => {
 .page-title { margin: 0 0 6px; font-size: 24px; }
 .page-sub { margin: 0; font-size: 14px; }
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-.stat-card { background: #fff; border-radius: var(--yl-radius); border: 1px solid #eef2f7; padding: 24px; }
+.stat-card { background: var(--yl-white); border-radius: var(--yl-radius); border: 1px solid var(--yl-border); padding: 24px; }
 .stat-card .num { font-size: 30px; font-weight: 800; color: var(--yl-primary); }
 .stat-card .num .unit { font-size: 14px; font-weight: 400; color: #909399; margin-left: 4px; }
 .stat-card .label { color: var(--yl-text-light); margin-top: 6px; font-size: 14px; }
-.detail { margin-top: 16px; background: #fafbfc; border: 1px solid #eef2f7; border-radius: var(--yl-radius); padding: 16px; }
+.detail { margin-top: 16px; background: var(--yl-hover-bg); border: 1px solid var(--yl-border); border-radius: var(--yl-radius); padding: 16px; }
 .detail-title { display: flex; align-items: center; margin-bottom: 12px; }
 .kw-en { color: #909399; font-size: 13px; margin-left: 8px; }
 .detail-desc { margin-top: 0; }

@@ -24,16 +24,16 @@ const categoryLabel = computed(() => {
 </script>
 
 <style scoped>
-.card { background: #fff; border: 1px solid #e4e7ed; border-radius: var(--yl-radius); overflow: hidden; cursor: pointer; transition: transform .25s ease, box-shadow .25s ease; }
+.card { background: var(--yl-white); border: 1px solid var(--yl-border); border-radius: var(--yl-radius); overflow: hidden; cursor: pointer; transition: transform .25s ease, box-shadow .25s ease; }
 .card:hover { transform: translateY(-6px); box-shadow: var(--yl-shadow-lg); }
-.img-wrap { background: #f5f7fa; position: relative; aspect-ratio: 1 / 1; }
+.img-wrap { background: var(--yl-hover-bg); position: relative; aspect-ratio: 1 / 1; }
 .img-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .35s ease; }
 .card:hover .img-wrap img { transform: scale(1.05); }
 .info { padding: 16px 18px 18px; }
 .tag { display: inline-block; font-size: 12px; color: var(--yl-primary); background: rgba(64,158,255,.10); padding: 2px 10px; border-radius: 20px; margin-bottom: 10px; }
 .name { font-size: 17px; font-weight: 700; margin-bottom: 6px; color: var(--yl-primary-dark); }
 .spec { font-size: 13px; color: var(--yl-text-light); margin-bottom: 12px; min-height: 18px; }
-.foot { display: flex; justify-content: space-between; align-items: center; font-size: 12px; border-top: 1px dashed #e8edf5; padding-top: 12px; }
+.foot { display: flex; justify-content: space-between; align-items: center; font-size: 12px; border-top: 1px dashed var(--yl-border); padding-top: 12px; }
 .en { color: var(--yl-text-light); }
 .more { color: var(--yl-accent); font-weight: 600; }
 </style>

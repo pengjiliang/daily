@@ -9,6 +9,7 @@ import { ContactModule } from './modules/contact/contact.module'
 import { TrendsModule } from './modules/trends/trends.module'
 import { MailModule } from './modules/mail/mail.module'
 import { CustomsModule } from './modules/customs/customs.module'
+import { DashboardModule } from './modules/dashboard/dashboard.module'
 import { SeedService } from './seed.service'
 import { User } from './entities/user.entity'
 import { AiConfig } from './entities/ai-config.entity'
@@ -41,9 +42,11 @@ import { CustomsConfig } from './entities/customs-config.entity'
     ContactModule,
     TrendsModule,
     MailModule,
-    CustomsModule
+    CustomsModule,
+    DashboardModule
   ],
   providers: [SeedService]
 })
 export class AppModule {}
+
 
