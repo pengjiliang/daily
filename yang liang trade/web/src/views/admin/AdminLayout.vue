@@ -3,22 +3,23 @@
     <el-aside width="220px" class="aside">
       <div class="logo">
         <BrandLogo :size="26" />
-        <span>扬良管理后台</span>
+        <span>{{ t('al_brand') }}</span>
       </div>
       <el-menu :default-active="$route.path" router class="menu">
-        <el-menu-item index="/admin/dashboard"><el-icon><DataBoard /></el-icon>仪表盘</el-menu-item>
-        <el-menu-item index="/admin/ai-config"><el-icon><MagicStick /></el-icon>AI 模型配置</el-menu-item>
-        <el-menu-item index="/admin/products"><el-icon><Goods /></el-icon>产品管理</el-menu-item>
-        <el-menu-item index="/admin/messages"><el-icon><Message /></el-icon>用户留言</el-menu-item>
-        <el-menu-item index="/admin/leads"><el-icon><Position /></el-icon>线索抓取与群发</el-menu-item>
-        <el-menu-item index="/admin/mail"><el-icon><Promotion /></el-icon>邮箱营销</el-menu-item>
-        <el-menu-item index="/admin/trends"><el-icon><TrendCharts /></el-icon>热卖趋势分析</el-menu-item>
-        <el-menu-item index="/admin/customs"><el-icon><Ship /></el-icon>海关数据</el-menu-item>
+        <el-menu-item index="/admin/dashboard"><el-icon><DataBoard /></el-icon>{{ t('al_menu_dashboard') }}</el-menu-item>
+        <el-menu-item index="/admin/ai-config"><el-icon><MagicStick /></el-icon>{{ t('al_menu_ai') }}</el-menu-item>
+        <el-menu-item index="/admin/products"><el-icon><Goods /></el-icon>{{ t('al_menu_products') }}</el-menu-item>
+        <el-menu-item index="/admin/messages"><el-icon><Message /></el-icon>{{ t('al_menu_messages') }}</el-menu-item>
+        <el-menu-item index="/admin/leads"><el-icon><Position /></el-icon>{{ t('al_menu_leads') }}</el-menu-item>
+        <el-menu-item index="/admin/mail"><el-icon><Promotion /></el-icon>{{ t('al_menu_mail') }}</el-menu-item>
+        <el-menu-item index="/admin/trends"><el-icon><TrendCharts /></el-icon>{{ t('al_menu_trends') }}</el-menu-item>
+        <el-menu-item index="/admin/customs"><el-icon><Ship /></el-icon>{{ t('al_menu_customs') }}</el-menu-item>
       </el-menu>
       <div class="aside-foot">
-        <el-button text @click="toggleTheme"><el-icon><Sunny v-if="theme === 'dark'" /><Moon v-else /></el-icon>{{ theme === 'dark' ? '浅色模式' : '深色模式' }}</el-button>
-        <el-button text @click="goSite"><el-icon><Back /></el-icon>返回网站</el-button>
-        <el-button text type="danger" @click="logout"><el-icon><SwitchButton /></el-icon>退出登录</el-button>
+        <el-button text @click="toggleTheme"><el-icon><Sunny v-if="theme === 'dark'" /><Moon v-else /></el-icon>{{ t(theme === 'dark' ? 'al_theme_light' : 'al_theme_dark') }}</el-button>
+        <el-button text @click="goSite"><el-icon><Back /></el-icon>{{ t('al_back_site') }}</el-button>
+        <el-button text type="danger" @click="logout"><el-icon><SwitchButton /></el-icon>{{ t('al_logout') }}</el-button>
+        <el-button text @click="toggleLang">{{ isEn ? t('hd_lang_zh') : t('hd_lang_en') }}</el-button>
       </div>
     </el-aside>
     <el-main class="main">
@@ -32,9 +33,11 @@ import { useRouter } from 'vue-router'
 import { DataBoard, MagicStick, Goods, Message, Position, Promotion, TrendCharts, Back, SwitchButton, Ship, Sunny, Moon } from '@element-plus/icons-vue'
 import BrandLogo from '@/components/BrandLogo.vue'
 import { theme, toggleTheme } from '@/theme'
+import { t, isEn, setLang } from '@/i18n'
 
 const router = useRouter()
 function goSite() { router.push('/') }
+function toggleLang() { setLang(isEn.value ? 'zh' : 'en') }
 function logout() {
   localStorage.removeItem('yl_admin_token')
   router.push('/')

@@ -81,8 +81,8 @@
               </div>
             </div>
           </div>
-          <button v-if="featuredGroups.length > 1" class="car-btn prev" type="button" aria-label="上一页" @click="prevPage">‹</button>
-          <button v-if="featuredGroups.length > 1" class="car-btn next" type="button" aria-label="下一页" @click="nextPage">›</button>
+          <button v-if="featuredGroups.length > 1" class="car-btn prev" type="button" :aria-label="t('home_prev_aria')" @click="prevPage">‹</button>
+          <button v-if="featuredGroups.length > 1" class="car-btn next" type="button" :aria-label="t('home_next_aria')" @click="nextPage">›</button>
           <div v-if="featuredGroups.length > 1" class="car-dots">
             <span v-for="(g, gi) in featuredGroups" :key="gi" :class="{ active: gi === current }" @click="current = gi" />
           </div>
@@ -107,7 +107,7 @@
     <section class="page-section about-sec">
       <div class="container about-inner">
         <div class="about-visual">
-          <div class="about-img-wrap"><img src="/images/about-company.jpg" alt="Yangliang Trade" loading="lazy" /></div>
+          <div class="about-img-wrap"><img src="/images/about-company.jpg" alt="YANGLIANG Technology Co., Ltd" loading="lazy" /></div>
         </div>
         <div class="about-text">
           <span class="kicker">{{ t('home_about_badge') }}</span>

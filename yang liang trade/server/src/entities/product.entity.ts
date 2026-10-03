@@ -20,6 +20,12 @@ export class Product {
   @Column({ default: '' })
   subCategory: string
 
+  @Column({ default: '' })
+  shopUrl: string
+
+  @Column({ default: '' })
+  shopUrl2: string
+
   @Column()
   spec: string
 

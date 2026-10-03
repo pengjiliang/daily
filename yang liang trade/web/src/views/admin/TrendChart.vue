@@ -8,6 +8,7 @@ import * as echarts from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { t } from '@/i18n'
 
 echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
@@ -24,7 +25,7 @@ function monthLabels(n) {
   const now = new Date()
   return Array.from({ length: n }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - (n - 1 - i), 1)
-    return `${d.getMonth() + 1}月`
+    return t('atc_month_n', { n: d.getMonth() + 1 })
   })
 }
 
@@ -55,9 +56,9 @@ function yAxisRange() {
 // 每条线 hover 时显示具体产品名称
 function tooltipFormatter(params) {
   const item = props.items.find((i) => i.label === params.seriesName)
-  if (!item) return `${params.seriesName}<br/>热度：${params.value}`
-  const products = item.products.length ? item.products.join('、') : '无'
-  return `${item.label}（${item.keyword}）<br/>热度：${params.value}<br/>覆盖产品：${products}`
+  if (!item) return `${params.seriesName}<br/>${t('atc_heat', { v: params.value })}`
+  const products = item.products.length ? item.products.join('、') : t('atc_none')
+  return `${item.label}（${item.keyword}）<br/>${t('atc_heat', { v: params.value })}<br/>${t('atc_covered_products', { list: products })}`
 }
 
 function render() {

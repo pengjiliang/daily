@@ -16,12 +16,12 @@
             </span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="zh" :disabled="lang === 'zh'">简体中文</el-dropdown-item>
+                <el-dropdown-item command="zh" :disabled="lang === 'zh'">{{ t('hd_lang_zh') }}</el-dropdown-item>
                 <el-dropdown-item command="en" :disabled="lang === 'en'">English</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
-          <el-button link class="topbar-link theme-btn" @click="toggleTheme" :title="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'">
+          <el-button link class="topbar-link theme-btn" @click="toggleTheme" :title="t(theme === 'dark' ? 'hd_theme_light' : 'hd_theme_dark')">
             <el-icon><Sunny v-if="theme === 'dark'" /><Moon v-else /></el-icon>
           </el-button>
           <el-button v-if="!isAdmin" link class="topbar-link" @click="$router.push('/admin/login')">
@@ -45,7 +45,7 @@
       <div class="container mainbar-inner">
         <router-link to="/" class="brand">
           <BrandLogo :size="42" />
-          <span class="brand-name">YANGLIANG TRADE</span>
+          <span class="brand-name">YANGLIANG Technology Co., Ltd</span>
         </router-link>
 
         <div class="search-box">
@@ -76,19 +76,30 @@
               <svg viewBox="0 0 512 512"><path d="M504 256C504 119 393 8 256 8S8 119 8 256c0 123.78 90.69 226.38 209.25 245V327.69h-63V256h63v-54.64c0-62.15 37-96.48 93.67-96.48 27.14 0 55.52 4.84 55.52 4.84v61h-31.28c-30.8 0-40.41 19.12-40.41 38.73V256h68.78l-11 71.69h-57.78V501C413.31 482.38 504 379.78 504 256z"/></svg>
             </a>
           </div>
-          <el-button type="accent" round @click="$router.push('/contact')">
-            <el-icon><ChatDotRound /></el-icon>{{ t('action_inquiry') }}
+          <el-button type="accent" round class="inquiry-btn" @click="$router.push('/contact')">
+            <template #icon><el-icon><ChatDotRound /></el-icon></template><span class="inq-text">{{ t('action_inquiry') }}</span>
           </el-button>
         </div>
+        <button class="menu-btn" :class="{ open: menuOpen }" @click="menuOpen = !menuOpen" :aria-label="t('hd_menu_aria')">
+          <el-icon><Menu /></el-icon>
+        </button>
       </div>
+    </div>
+
+    <!-- 移动端导航菜单 -->
+    <div class="mobile-menu" :class="{ open: menuOpen }">
+      <router-link to="/" class="m-link" exact-active-class="active" @click="menuOpen = false">{{ t('nav_home') }}</router-link>
+      <router-link to="/products" class="m-link" active-class="active" @click="menuOpen = false">{{ t('nav_products') }}</router-link>
+      <router-link to="/about" class="m-link" active-class="active" @click="menuOpen = false">{{ t('nav_about') }}</router-link>
+      <router-link to="/contact" class="m-link" active-class="active" @click="menuOpen = false">{{ t('nav_contact') }}</router-link>
     </div>
   </header>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Lock, Setting, Place, ArrowDown, Search, Phone, Clock, ChatDotRound, Sunny, Moon } from '@element-plus/icons-vue'
+import { Lock, Setting, Place, ArrowDown, Search, Phone, Clock, ChatDotRound, Sunny, Moon, Menu } from '@element-plus/icons-vue'
 import BrandLogo from '@/components/BrandLogo.vue'
 import { lang, setLang, t } from '@/i18n'
 import { theme, toggleTheme } from '@/theme'
@@ -98,8 +109,12 @@ const router = useRouter()
 const route = useRoute()
 const isAdmin = ref(false)
 const keyword = ref('')
+const menuOpen = ref(false)
 
-const langLabel = computed(() => (lang.value === 'en' ? 'English' : '简体中文'))
+const langLabel = computed(() => (lang.value === 'en' ? t('hd_lang_en') : t('hd_lang_zh')))
+
+// 路由变化时收起移动端菜单
+watch(() => route.path, () => { menuOpen.value = false })
 
 // 社交联系链接统一维护在 @/config/site
 const waLink = site.whatsappUrl
@@ -147,22 +162,23 @@ function doSearch() {
 .topbar-link { color: #c7d2ea; font-size: 13px; padding: 0; }
 .topbar-link:hover { color: #79bbff; }
 .mainbar { border-bottom: 1px solid var(--yl-border); }
-.mainbar-inner { display: flex; align-items: center; gap: 24px; height: 76px; }
-.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; flex-shrink: 0; }
+.mainbar-inner { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; min-height: 76px; padding: 10px 0; }
+.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; flex-shrink: 0; min-width: 0; }
 .brand:hover .brand-name { color: var(--yl-primary); }
-.brand-name { font-size: 20px; font-weight: 800; letter-spacing: 1px; color: var(--yl-primary-dark); white-space: nowrap; transition: color .2s; }
+.brand-name { font-size: 20px; font-weight: 800; letter-spacing: 1px; color: var(--yl-primary-dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .2s; }
 
-.search-box { flex: 1; max-width: 440px; margin-right: auto; }
+/* 搜索框：放不下时自动换到第二行并居中显示 */
+.search-box { flex: 1 1 300px; max-width: 640px; min-width: 0; order: 3; margin: 0 auto; }
 .search-box :deep(.el-input-group__append) { padding: 0; background: transparent; box-shadow: none; }
 .search-btn { height: 32px; margin: 2px; background: var(--yl-accent); color: #fff; border: none; border-radius: 6px; }
 .search-btn:hover { background: var(--yl-accent-dark); color: #fff; }
 .search-btn-text { margin-left: 2px; }
-.nav { display: flex; gap: 26px; margin-left: auto; }
-.nav-link { font-size: 15px; font-weight: 500; color: var(--yl-text); padding: 6px 2px; position: relative; }
+.nav { display: flex; align-items: center; gap: 24px; margin-left: auto; white-space: nowrap; }
+.nav-link { font-size: 15px; font-weight: 500; color: var(--yl-text); padding: 6px 2px; position: relative; white-space: nowrap; }
 .nav-link:hover { color: var(--yl-primary); }
 .nav-link.active { color: var(--yl-primary); font-weight: 700; }
 .nav-link.active::after { content: ''; position: absolute; left: 0; right: 0; bottom: -4px; height: 3px; border-radius: 3px; background: var(--yl-accent); }
-.header-actions { display: flex; align-items: center; gap: 8px; }
+.header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .social-icons { display: flex; gap: 8px; align-items: center; }
 .soc-btn { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; transition: transform .2s, box-shadow .2s; }
 .soc-btn svg { width: 16px; height: 16px; fill: currentColor; }
@@ -170,6 +186,31 @@ function doSearch() {
 .soc-btn.wa { background: #25d366; }
 .soc-btn.ig { background: #e4405f; }
 .soc-btn.fb { background: #1877f2; }
-@media (max-width: 1080px) { .nav { display: none; } .tb-item.tb-divider { display: none; } .social-icons { display: none; } }
-@media (max-width: 640px) { .search-box { display: none; } .topbar-left .tb-item { display: none; } }
+
+/* 移动端菜单按钮与抽屉 */
+.menu-btn { display: none; align-items: center; justify-content: center; width: 40px; height: 40px; border: 1px solid var(--yl-border); border-radius: 8px; background: var(--yl-white); color: var(--yl-text); font-size: 20px; cursor: pointer; flex-shrink: 0; }
+.menu-btn:hover { color: var(--yl-primary); border-color: var(--yl-primary); }
+.mobile-menu { display: none; border-top: 1px solid var(--yl-border); padding: 6px 0; }
+.mobile-menu.open { display: block; }
+.m-link { display: block; padding: 12px 4px; font-size: 15px; font-weight: 500; color: var(--yl-text); text-decoration: none; border-bottom: 1px solid var(--yl-border); }
+.m-link:last-child { border-bottom: none; }
+.m-link.active { color: var(--yl-primary); font-weight: 700; }
+
+/* 中宽屏：品牌名/导航间距适当缩小，保证导航不换行 */
+@media (max-width: 1240px) {
+  .brand-name { font-size: 18px; letter-spacing: 0; }
+  .nav { gap: 20px; }
+}
+@media (max-width: 1080px) {
+  .nav { display: none; }
+  .menu-btn { display: flex; }
+  .tb-item.tb-divider { display: none; }
+  .social-icons { display: none; }
+}
+@media (max-width: 640px) {
+  .brand-name { font-size: 16px; max-width: 42vw; }
+  .topbar-left .tb-item { display: none; }
+  .inquiry-btn .inq-text { display: none; }
+  .inquiry-btn { width: 38px; padding: 0; }
+}
 </style>

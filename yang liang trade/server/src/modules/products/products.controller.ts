@@ -12,6 +12,8 @@ export class ProductDto {
   category: string
   categoryLabel: string
   subCategory?: string
+  shopUrl?: string
+  shopUrl2?: string
   spec: string
   desc: string
   features?: string[]
@@ -67,6 +69,8 @@ export class ProductsController {
       category: dto.category,
       categoryLabel: dto.categoryLabel,
       subCategory: dto.subCategory || '',
+      shopUrl: dto.shopUrl || '',
+      shopUrl2: dto.shopUrl2 || '',
       spec: dto.spec,
       desc: dto.desc,
       features: dto.features || [],

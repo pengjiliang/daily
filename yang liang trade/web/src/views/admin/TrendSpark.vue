@@ -8,6 +8,7 @@ import * as echarts from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { t } from '@/i18n'
 
 echarts.use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 
@@ -25,7 +26,7 @@ function render() {
   const now = new Date()
   const labels = props.series.map((_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - (props.series.length - 1 - i), 1)
-    return `${d.getMonth() + 1}月`
+    return t('atc_month_n', { n: d.getMonth() + 1 })
   })
   chart.setOption({
     grid: { left: 2, right: 2, top: 4, bottom: 2 },

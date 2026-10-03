@@ -18,7 +18,7 @@
           <div class="en">{{ product.nameEn }}</div>
           <div class="spec" v-if="product.spec">
             <div class="sp-title">{{ t('detail_spec') }}</div>
-            <div class="sp-value">{{ product.spec }}</div>
+            <div class="sp-value">{{ markupSpec(product.spec) }}</div>
           </div>
 
           <div class="features" v-if="product.features && product.features.length">
@@ -38,7 +38,7 @@
       <!-- 商品详情：富文本内容通栏展示 -->
       <div class="detail-section" v-if="product.desc">
         <h2 class="ds-title">{{ t('detail_section') }}</h2>
-        <div class="rich" v-html="product.desc"></div>
+        <div class="rich" v-html="markupSpec(product.desc)"></div>
       </div>
 
       <!-- 相关产品 -->
@@ -58,6 +58,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { CircleCheck } from '@element-plus/icons-vue'
 import ProductCard from '@/components/ProductCard.vue'
 import { products, getProduct, loadProducts } from '@/api/products'
+import { markupSpec } from '@/utils/price'
 import { t } from '@/i18n'
 
 const route = useRoute()

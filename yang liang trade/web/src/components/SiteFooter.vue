@@ -43,7 +43,7 @@
     <div class="footer-bottom">
       <div class="container fb-inner">
         <span>{{ t('footer_copyright') }}</span>
-        <span class="fb-lang" @click="setLang(isEn ? 'zh' : 'en')">{{ isEn ? '简体中文' : 'English' }}</span>
+        <span class="fb-lang" @click="setLang(isEn ? 'zh' : 'en')">{{ isEn ? t('hd_lang_zh') : t('hd_lang_en') }}</span>
       </div>
     </div>
   </footer>

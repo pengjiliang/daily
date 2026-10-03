@@ -2,43 +2,43 @@
   <div>
     <div class="head">
       <div>
-        <h2 class="page-title">线索抓取与群发</h2>
-        <p class="page-sub">自动抓取 Google 地图同行业店铺联系方式 → 筛选 → 群发 WhatsApp / Facebook 消息（仅管理员可见）</p>
+        <h2 class="page-title">{{ t('ale_title') }}</h2>
+        <p class="page-sub">{{ t('ale_sub') }}</p>
       </div>
     </div>
 
     <el-alert type="warning" :closable="false" show-icon style="margin-bottom: 16px">
-      当前为<b>低成本零风险模式</b>：抓取支持四种数据源——<b>演示数据</b>（默认，无需配置）、<b>OpenStreetMap Overpass</b>
-      （免费真实、无需 Key）、<b>BusinessList.pk 黄页</b>（巴基斯坦真实商家·无需 Key·关键词忽略按行业分类抓取）、<b>Google Places API</b>（真实，需根目录 <code>.env</code> 配置
-      <code>GOOGLE_PLACES_API_KEY</code> + Clash 代理）。「联系 / 打开发送」直接唤起电脑上已安装的
-      <b>WhatsApp / Messenger 桌面 App</b>；群发采用“生成消息 + 复制”半自动方式，避免网页自动化封号风险。后续可平滑升级为官方 Meta API 全自动群发。
+      {{ t('ale_intro_part1') }}
+      {{ t('ale_intro_part2') }}
+      {{ t('ale_intro_part3') }}
+      {{ t('ale_intro_part4') }}
     </el-alert>
 
     <!-- 抓取配置 -->
     <el-card shadow="never" class="block">
-      <template #header><b>① 配置抓取任务</b></template>
+      <template #header><b>{{ t('ale_step1') }}</b></template>
       <el-form :inline="true" :model="cfg" label-width="80px">
-        <el-form-item label="关键词">
-          <el-input v-model="cfg.keyword" placeholder="关键词可留空；如 medical equipment / pharmacy" style="width: 280px" />
+        <el-form-item :label="t('ale_keyword')">
+          <el-input v-model="cfg.keyword" :placeholder="t('ale_keyword_ph')" style="width: 280px" />
         </el-form-item>
-        <el-form-item label="目标区域">
-          <el-select v-model="cfg.regions" multiple placeholder="选择区域" style="width: 260px">
-            <el-option v-for="r in REGIONS" :key="r.key" :label="r.label" :value="r.key" />
+        <el-form-item :label="t('ale_region')">
+          <el-select v-model="cfg.regions" multiple :placeholder="t('ale_region_ph')" style="width: 260px">
+            <el-option v-for="r in REGIONS" :key="r.key" :label="t(r.tkey)" :value="r.key" />
           </el-select>
         </el-form-item>
-        <el-form-item label="目标类型">
-          <el-select v-model="cfg.types" multiple placeholder="选择店铺类型" style="width: 260px">
-            <el-option v-for="t in TYPES" :key="t" :label="t" :value="t" />
+        <el-form-item :label="t('ale_types')">
+          <el-select v-model="cfg.types" multiple :placeholder="t('ale_types_ph')" style="width: 260px">
+            <el-option v-for="opt in TYPES" :key="opt.value" :label="t(opt.tkey)" :value="opt.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="数据源">
+        <el-form-item :label="t('ale_source')">
           <el-select v-model="cfg.mode" style="width: 280px">
-            <el-option v-for="m in MODES" :key="m.key" :label="m.label" :value="m.key" />
+            <el-option v-for="m in MODES" :key="m.key" :label="t(m.tkey)" :value="m.key" />
           </el-select>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="fetching" @click="fetchLeads">
-            <el-icon><Search /></el-icon>&nbsp;{{ fetching ? '抓取中...' : '开始抓取' }}
+            <el-icon><Search /></el-icon>&nbsp;{{ fetching ? t('ale_fetching') : t('ale_start_fetch') }}
           </el-button>
         </el-form-item>
       </el-form>
@@ -48,44 +48,44 @@
     <el-card shadow="never" class="block">
       <template #header>
         <div class="table-head">
-          <span><b>② 抓取结果</b>（共 {{ total }} 条，已选 {{ selection.length }} 条）</span>
-          <el-button v-if="leads.length" link type="danger" @click="clearLeads">清空</el-button>
+          <span><b>{{ t('ale_step2') }}</b>{{ t('ale_result_n', { total, selected: selection.length }) }}</span>
+          <el-button v-if="leads.length" link type="danger" @click="clearLeads">{{ t('ale_clear') }}</el-button>
         </div>
       </template>
       <el-table :data="leads" @selection-change="(rows) => (selection = rows)" style="width: 100%" border>
         <el-table-column type="selection" width="46" />
         <el-table-column type="index" label="#" width="60" :index="rowIndex" />
-        <el-table-column prop="name" label="店铺名称" min-width="150" />
-        <el-table-column prop="type" label="类型" width="100" />
-        <el-table-column prop="phone" label="电话" width="125" />
-        <el-table-column label="邮箱" min-width="190">
+        <el-table-column prop="name" :label="t('ale_col_name')" min-width="150" />
+        <el-table-column prop="type" :label="t('ale_col_type')" width="100" />
+        <el-table-column prop="phone" :label="t('ale_col_phone')" width="125" />
+        <el-table-column :label="t('ale_col_email')" min-width="190">
           <template #default="{ row }">
             <a v-if="row.email" :href="mailtoLink(row.email, row.name)" class="email-link">{{ row.email }}</a>
-            <el-tag v-else type="info" size="small">无</el-tag>
+            <el-tag v-else type="info" size="small">{{ t('ale_none') }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="website" label="网站" min-width="120" show-overflow-tooltip />
-        <el-table-column prop="region" label="区域" width="76" />
-        <el-table-column prop="city" label="城市" width="90" />
+        <el-table-column prop="website" :label="t('ale_col_website')" min-width="120" show-overflow-tooltip />
+        <el-table-column prop="region" :label="t('ale_col_region')" width="76" />
+        <el-table-column prop="city" :label="t('ale_col_city')" width="90" />
         <el-table-column label="WhatsApp" width="86">
           <template #default="{ row }">
-            <el-tag :type="row.hasWhatsApp ? 'success' : 'info'" size="small">{{ row.hasWhatsApp ? '已识别' : '未知' }}</el-tag>
+            <el-tag :type="row.hasWhatsApp ? 'success' : 'info'" size="small">{{ t(row.hasWhatsApp ? 'ale_recognized' : 'ale_unknown') }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="来源" width="76">
+        <el-table-column :label="t('ale_col_source')" width="76">
           <template #default="{ row }">
             <el-tag :type="srcTag(row.source)" size="small">{{ srcLabel(row.source) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="联系" width="190" fixed="right" :resizable="false">
+        <el-table-column :label="t('ale_col_contact')" width="190" fixed="right" :resizable="false">
           <template #default="{ row }">
             <a v-if="row.phone" :href="waAppLink(row.phone, shortMsg(row.name))" class="cta cta-wa">WhatsApp</a>
             <a :href="'fb-messenger://'" class="cta cta-fb" @click="copyShort(row.name)">Messenger</a>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="66" fixed="right" :resizable="false">
+        <el-table-column :label="t('ale_col_actions')" width="66" fixed="right" :resizable="false">
           <template #default="{ row }">
-            <el-button link type="danger" @click="removeLead(row)">删除</el-button>
+            <el-button link type="danger" @click="removeLead(row)">{{ t('a_delete') }}</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -93,31 +93,31 @@
         layout="total, sizes, prev, pager, next, jumper"
         :total="total" v-model:current-page="page" v-model:page-size="pageSize"
         :page-sizes="[10, 30, 50, 100, 200, 500]" @current-change="loadLeads" @size-change="changePageSize" />
-      <el-empty v-if="!total" description="尚未抓取线索，请先配置上方任务" />
+      <el-empty v-if="!total" :description="t('ale_empty')" />
     </el-card>
 
     <!-- 群发 -->
     <el-card shadow="never" class="block">
-      <template #header><b>③ 群发消息（每次建议 ≤ 10 条，可拓展）</b></template>
+      <template #header><b>{{ t('ale_step3') }}</b></template>
       <el-form label-position="top" class="send-form">
         <div class="send-grid">
-          <el-form-item label="发送渠道">
+          <el-form-item :label="t('ale_channel')">
             <el-radio-group v-model="sendChannel">
               <el-radio-button value="whatsapp">WhatsApp</el-radio-button>
               <el-radio-button value="facebook">Facebook Messenger</el-radio-button>
-              <el-radio-button value="email">Email 邮件</el-radio-button>
+              <el-radio-button value="email">{{ t('ale_channel_email') }}</el-radio-button>
             </el-radio-group>
           </el-form-item>
-          <el-form-item v-if="sendChannel === 'email'" label="邮件主题（{name} 将替换为店铺名称）">
+          <el-form-item v-if="sendChannel === 'email'" :label="t('ale_email_subject')">
             <el-input v-model="emailSubject" />
           </el-form-item>
-          <el-form-item label="消息模板（{name} 将替换为店铺名称）">
+          <el-form-item :label="t('ale_msg_template')">
             <el-input v-model="template" type="textarea" :rows="4" />
           </el-form-item>
         </div>
         <div class="send-actions">
           <el-button type="primary" :disabled="!selection.length" @click="preview">
-            <el-icon><Promotion /></el-icon>&nbsp;生成消息（{{ selection.length }} 条）
+            <el-icon><Promotion /></el-icon>&nbsp;{{ t('ale_gen', { n: selection.length }) }}
           </el-button>
         </div>
       </el-form>
@@ -125,30 +125,30 @@
 
     <!-- 发送记录 -->
     <el-card shadow="never" class="block">
-      <template #header><b>④ 发送记录</b></template>
+      <template #header><b>{{ t('ale_step4') }}</b></template>
       <el-table :data="campaigns" style="width: 100%" border>
-        <el-table-column label="时间" width="170">
+        <el-table-column :label="t('ale_col_time')" width="170">
           <template #default="{ row }">{{ fmtTime(row.createdAt) }}</template>
         </el-table-column>
-        <el-table-column prop="channel" label="渠道" width="140" />
-        <el-table-column prop="count" label="条数" width="80" />
-        <el-table-column label="状态" width="100">
-          <template #default="{ row }"><el-tag :type="row.status === '已发送' ? 'success' : 'info'" size="small">{{ row.status }}</el-tag></template>
+        <el-table-column prop="channel" :label="t('ale_col_channel')" width="140" />
+        <el-table-column prop="count" :label="t('ale_col_count')" width="80" />
+        <el-table-column :label="t('ale_col_status')" width="100">
+          <template #default="{ row }"><el-tag :type="row.status === '已发送' ? 'success' : 'info'" size="small">{{ row.status === '已发送' ? t('ale_status_sent') : row.status }}</el-tag></template>
         </el-table-column>
-        <el-table-column prop="note" label="说明" min-width="240" show-overflow-tooltip />
+        <el-table-column prop="note" :label="t('ale_col_note')" min-width="240" show-overflow-tooltip />
       </el-table>
-      <el-empty v-if="!campaigns.length" description="暂无发送记录" />
+      <el-empty v-if="!campaigns.length" :description="t('ale_records_empty')" />
     </el-card>
 
     <!-- 消息预览抽屉 -->
-    <el-drawer v-model="drawer" :title="`待发送消息（${previewList.length} 条）`" size="480px">
+    <el-drawer v-model="drawer" :title="t('ale_drawer_title', { n: previewList.length })" size="480px">
       <div class="pv-tip">
         <template v-if="sendChannel === 'email'">
-          零风险模式：<b>「打开发送」将唤起系统默认邮箱客户端</b>，自动带出收件人、主题与开发信正文，逐条点击发送即可。
+          {{ t('ale_drawer_email_tip') }}
         </template>
         <template v-else>
-          零风险模式：<b>「打开发送」直接唤起桌面 App</b>。WhatsApp 会自动带出消息；Facebook 会打开 Messenger App，
-          请在其中搜索联系人后粘贴消息发送（Google 抓到的线索无对方 FB 用户 ID，无法自动定位个人）。升级官方 API 后可全自动。
+          {{ t('ale_drawer_wa_tip1') }}{{ t('ale_drawer_wa_tip2') }}
+
         </template>
       </div>
       <div v-for="(m, i) in previewList" :key="i" class="pv-item">
@@ -156,12 +156,12 @@
         <div class="pv-phone">{{ m.phone }}</div>
         <div class="pv-text">{{ m.text }}</div>
         <div class="pv-actions">
-          <el-button v-if="m.link" link type="primary" tag="a" :href="m.link" target="_blank" rel="noopener">打开发送</el-button>
-          <el-button link type="success" @click="copyText(m.text)">复制文案</el-button>
+          <el-button v-if="m.link" link type="primary" tag="a" :href="m.link" target="_blank" rel="noopener">{{ t('ale_open_send') }}</el-button>
+          <el-button link type="success" @click="copyText(m.text)">{{ t('ale_copy') }}</el-button>
         </div>
       </div>
       <template #footer>
-        <el-button @click="markSent">全部标记为已发送</el-button>
+        <el-button @click="markSent">{{ t('ale_mark_sent') }}</el-button>
       </template>
     </el-drawer>
   </div>
@@ -171,23 +171,30 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Promotion } from '@element-plus/icons-vue'
+import { t } from '@/i18n'
 
 const REGIONS = [
-  { key: 'se', label: '东南亚' }, { key: 'sa', label: '南亚' },
-  { key: 'ca', label: '中亚' }, { key: 'na', label: '北非' }
+  { key: 'se', label: '东南亚', tkey: 'ale_region_se' }, { key: 'sa', label: '南亚', tkey: 'ale_region_sa' },
+  { key: 'ca', label: '中亚', tkey: 'ale_region_ca' }, { key: 'na', label: '北非', tkey: 'ale_region_na' }
 ]
-const TYPES = ['药店', '诊所', '医院', '医疗器械经销商', '医疗耗材商店']
+const TYPES = [
+  { value: '药店', tkey: 'ale_type_pharmacy' },
+  { value: '诊所', tkey: 'ale_type_clinic' },
+  { value: '医院', tkey: 'ale_type_hospital' },
+  { value: '医疗器械经销商', tkey: 'ale_type_distributor' },
+  { value: '医疗耗材商店', tkey: 'ale_type_supply' }
+]
 const MODES = [
-  { key: 'demo', label: '演示数据（默认）' },
-  { key: 'osm', label: 'OpenStreetMap Overpass（免费真实·无需 Key）' },
-  { key: 'google', label: 'Google Places API（真实·需 Key+代理）' },
-  { key: 'ypk', label: 'BusinessList.pk 黄页（巴基斯坦·真实·无需 Key）' }
+  { key: 'demo', label: '演示数据（默认）', tkey: 'ale_src_demo' },
+  { key: 'osm', label: 'OpenStreetMap Overpass（免费真实·无需 Key）', tkey: 'ale_src_osm' },
+  { key: 'google', label: 'Google Places API（真实·需 Key+代理）', tkey: 'ale_src_google' },
+  { key: 'ypk', label: 'BusinessList.pk 黄页（巴基斯坦·真实·无需 Key）', tkey: 'ale_src_ypk' }
 ]
 
 const cfg = ref({ keyword: 'medical equipment', regions: ['se'], types: ['医疗器械经销商'], mode: 'demo' })
 const template = ref('您好 {name}，我们是扬良贸易有限公司，专注医疗器械与医用产品出口，产品认证齐全、支持 OEM。如您有采购需求，欢迎回复或来电咨询，期待合作！')
 const sendChannel = ref('whatsapp')
-const emailSubject = ref('Development Inquiry from Yangliang Trade Co., Ltd. - Medical Supplies')
+const emailSubject = ref('Development Inquiry from YANGLIANG Technology Co., Ltd Co., Ltd. - Medical Supplies')
 const page = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
@@ -199,9 +206,9 @@ const campaigns = ref([])
 const drawer = ref(false)
 const previewList = ref([])
 
-const MODE_LABEL = { demo: '演示数据', osm: 'OpenStreetMap 真实数据', google: 'Google Places 真实数据', ypk: 'BusinessList.pk 黄页真实数据' }
+const MODE_LABEL = { demo: 'ale_mode_demo', osm: 'ale_mode_osm', google: 'ale_mode_google', ypk: 'ale_mode_ypk' }
 function srcTag(s) { return s === 'google' ? 'primary' : s === 'osm' ? 'success' : s === 'ypk' ? 'danger' : 'warning' }
-function srcLabel(s) { return s === 'google' ? 'Google' : s === 'osm' ? 'OSM' : s === 'ypk' ? '黄页' : '演示' }
+function srcLabel(s) { return s === 'google' ? 'Google' : s === 'osm' ? 'OSM' : s === 'ypk' ? t('ale_src_short_ypk') : t('ale_src_short_demo') }
 
 function headers() {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('yl_admin_token') || ''}` }
@@ -210,7 +217,7 @@ function headers() {
 async function api(path, options = {}) {
   const res = await fetch(`/api/leads${path}`, { headers: headers(), ...options })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.message || '请求失败')
+  if (!res.ok) throw new Error(data.message || t('a_request_failed'))
   return data
 }
 
@@ -271,33 +278,33 @@ async function waitForScrape(id) {
   while (true) {
     const job = await api(`/scrape/${id}`)
     if (job.status === 'success') return job
-    if (job.status === 'failed') throw new Error(job.error || '抓取失败，请稍后重试')
+    if (job.status === 'failed') throw new Error(job.error || t('ale_fetch_failed_retry'))
     await new Promise((resolve) => setTimeout(resolve, 1000))
   }
 }
 
 async function fetchLeads() {
-  if (!cfg.value.regions.length) return ElMessage.warning('请选择目标区域')
+  if (!cfg.value.regions.length) return ElMessage.warning(t('ale_select_region'))
   fetching.value = true
   try {
     const queued = await api('/scrape', { method: 'POST', body: JSON.stringify(cfg.value) })
     const job = await waitForScrape(queued.id)
     page.value = 1
     await loadLeads()
-    ElMessage.success(`抓取完成，新增 ${job.inserted || 0} 条，去重跳过 ${job.skipped || 0} 条（${MODE_LABEL[job.mode] || job.mode || ''}）`)
+    ElMessage.success(t('ale_fetch_done', { inserted: job.inserted || 0, skipped: job.skipped || 0, mode: t(MODE_LABEL[job.mode] || '') || job.mode || '' }))
   } catch (e) { ElMessage.error(e.message) }
   finally { fetching.value = false }
 }
 
 async function clearLeads() {
-  await ElMessageBox.confirm('确定清空全部线索？', '提示', { type: 'warning' })
-  try { await api('', { method: 'DELETE' }); leads.value = []; total.value = 0; page.value = 1; ElMessage.success('已清空') }
+  await ElMessageBox.confirm(t('ale_confirm_clear'), t('a_confirm_title'), { type: 'warning' })
+  try { await api('', { method: 'DELETE' }); leads.value = []; total.value = 0; page.value = 1; ElMessage.success(t('ale_cleared')) }
   catch (e) { ElMessage.error(e.message) }
 }
 
 async function removeLead(row) {
-  await ElMessageBox.confirm(`确定删除“${row.name}”？`, '提示', { type: 'warning' })
-  try { await api(`/${row.id}`, { method: 'DELETE' }); await load(); ElMessage.success('已删除') }
+  await ElMessageBox.confirm(t('ale_confirm_delete', { name: row.name }), t('a_confirm_title'), { type: 'warning' })
+  try { await api(`/${row.id}`, { method: 'DELETE' }); await load(); ElMessage.success(t('a_deleted')) }
   catch (e) { ElMessage.error(e.message) }
 }
 
@@ -319,8 +326,8 @@ function preview() {
   drawer.value = true
 }
 
-async function copyText(t) {
-  try { await navigator.clipboard.writeText(t); ElMessage.success('已复制到剪贴板') } catch { ElMessage.info(t) }
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); ElMessage.success(t('ale_copied')) } catch { ElMessage.info(text) }
 }
 
 async function markSent() {
@@ -329,11 +336,11 @@ async function markSent() {
   try {
     await api('/campaigns', {
       method: 'POST',
-      body: JSON.stringify({ channel: channelName, count, status: '已发送', note: `手动/复制方式发送 ${count} 条（零风险模式）` })
+      body: JSON.stringify({ channel: channelName, count, status: '已发送', note: t('ale_sent_note', { count }) })
     })
     await load()
     drawer.value = false
-    ElMessage.success(`已记录 ${count} 条发送记录`)
+    ElMessage.success(t('ale_recorded', { count }))
   } catch (e) { ElMessage.error(e.message) }
 }
 </script>

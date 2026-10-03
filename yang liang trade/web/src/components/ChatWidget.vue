@@ -71,7 +71,7 @@ async function send() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text, history })
     })
-    if (!res.ok) throw new Error('请求失败')
+    if (!res.ok) throw new Error(t('chat_req_failed'))
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let buf = ''
@@ -94,10 +94,10 @@ async function send() {
       }
     }
     if (streamText.value.trim()) messages.value.push({ role: 'assistant', text: streamText.value })
-    else messages.value.push({ role: 'assistant', text: '（未收到回复，请检查模型配置）' })
+    else messages.value.push({ role: 'assistant', text: t('chat_no_reply') })
   } catch (e) {
-    ElMessage.error(e?.message || 'AI 服务连接失败')
-    messages.value.push({ role: 'assistant', text: `抱歉，AI 服务暂时不可用：${e?.message || ''}` })
+    ElMessage.error(e?.message || t('chat_conn_failed'))
+    messages.value.push({ role: 'assistant', text: t('chat_unavailable', { msg: e?.message || '' }) })
   } finally {
     streaming.value = false
     scrollBottom()

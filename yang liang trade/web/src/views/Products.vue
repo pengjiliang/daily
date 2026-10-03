@@ -31,7 +31,7 @@
           class="sub-chip"
           :class="{ active: activeSub === s }"
           @click="activeSub = s"
-        >{{ s || t('catL_all') }}</button>
+        >{{ s ? subLabel(s) : t('catL_all') }}</button>
       </div>
 
       <div v-if="filtered.length" class="grid">
@@ -49,7 +49,7 @@ import { Search, Grid, FirstAidKit, Monitor, Operation, Aim, MagicStick } from '
 import ProductCard from '@/components/ProductCard.vue'
 import { products, loadProducts } from '@/api/products'
 import { categories } from '@/data/categories'
-import { t } from '@/i18n'
+import { t, subLabel } from '@/i18n'
 
 const route = useRoute()
 const activeCat = ref('all')

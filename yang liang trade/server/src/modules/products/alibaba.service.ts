@@ -11,6 +11,9 @@ export interface AlibabaPreviewItem {
   moq: string
   certs: string[]
   subCategory?: string
+  category?: string
+  categoryLabel?: string
+  hasLogo?: boolean
 }
 
 const UA =
@@ -123,6 +126,17 @@ export class AlibabaService {
     }
     return ''
   }
+
+  // 按产品名称自动识别所属大类（遍历各细类关键词，命中即归入该大类；未命中走兜底分类）
+  inferCategory(name: string): { key: string; label: string } {
+    const text = (name || '').toLowerCase()
+    for (const [key, rules] of Object.entries(SUB_CATEGORY_RULES)) {
+      if (rules.some((r) => r.keywords.some((k) => text.includes(k.toLowerCase())))) {
+        return { key, label: CATEGORY_LABELS[key] || key }
+      }
+    }
+    return DEFAULT_CATEGORY
+  }
 }
 
 // 各产品大类下的细类关键词规则（命中第一个即作为细类）
@@ -179,3 +193,16 @@ const SUB_CATEGORY_RULES: Record<string, { keywords: string[]; label: string }[]
     { keywords: ['洗手液', 'hand sanitiz', 'sanitizer', 'hand wash'], label: '洗手消毒' }
   ]
 }
+
+// 产品大类 key → 中文名（与前端 web/src/data/categories.js 保持一致）
+export const CATEGORY_LABELS: Record<string, string> = {
+  ppe: '防护用品',
+  monitoring: '监测设备',
+  consumables: '耗材器械',
+  rehab: '护理康复',
+  disinfection: '消毒净化'
+}
+
+// 无法自动识别时的兜底分类
+export const DEFAULT_CATEGORY = { key: 'ppe', label: '防护用品' }
+

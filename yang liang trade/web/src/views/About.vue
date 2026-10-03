@@ -4,7 +4,7 @@
       <h2 class="section-title">{{ t('about_title') }}</h2>
       <p class="section-sub">{{ t('about_sub') }}</p>
 
-      <div class="banner"><img src="/images/hero-medical.svg" alt="Yangliang Trade" /></div>
+      <div class="banner"><img src="/images/hero-medical.svg" alt="YANGLIANG Technology Co., Ltd" /></div>
 
       <div class="text-block">
         <h3>{{ t('about_intro_title') }}</h3>

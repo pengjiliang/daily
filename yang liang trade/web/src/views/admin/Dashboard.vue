@@ -1,59 +1,59 @@
 <template>
   <div>
-    <h2 class="page-title">仪表盘</h2>
+    <h2 class="page-title">{{ t('ad_title') }}</h2>
 
     <div class="stats">
       <div class="stat-card">
         <div class="stat-icon" style="background: #ecf5ff; color: #409eff"><el-icon><Goods /></el-icon></div>
-        <div><div class="num">{{ stats.products }}</div><div class="label">产品总数</div></div>
+        <div><div class="num">{{ stats.products }}</div><div class="label">{{ t('ad_stat_products') }}</div></div>
       </div>
       <div class="stat-card">
         <div class="stat-icon" style="background: #f0f9eb; color: #67c23a"><el-icon><Position /></el-icon></div>
-        <div><div class="num">{{ stats.leads }}</div><div class="label">已抓取线索</div></div>
+        <div><div class="num">{{ stats.leads }}</div><div class="label">{{ t('ad_stat_leads') }}</div></div>
       </div>
       <div class="stat-card">
         <div class="stat-icon" style="background: #fdf6ec; color: #e6a23c"><el-icon><Promotion /></el-icon></div>
-        <div><div class="num">{{ stats.campaigns }}</div><div class="label">群发任务</div></div>
+        <div><div class="num">{{ stats.campaigns }}</div><div class="label">{{ t('ad_stat_campaigns') }}</div></div>
       </div>
       <div class="stat-card">
         <div class="stat-icon" style="background: #fef0f0; color: #f56c6c"><el-icon><Message /></el-icon></div>
-        <div><div class="num">{{ stats.messages }}</div><div class="label">已发送消息</div></div>
+        <div><div class="num">{{ stats.messages }}</div><div class="label">{{ t('ad_stat_messages') }}</div></div>
       </div>
     </div>
 
     <div class="chart-grid">
       <el-card shadow="never" class="chart-card">
-        <template #header>线索质量 · WhatsApp 覆盖率</template>
+        <template #header>{{ t('ad_chart_wa') }}</template>
         <div ref="gaugeEl" class="chart" />
       </el-card>
       <el-card shadow="never" class="chart-card">
-        <template #header>线索来源分布</template>
+        <template #header>{{ t('ad_chart_source') }}</template>
         <div ref="sourceEl" class="chart" />
       </el-card>
       <el-card shadow="never" class="chart-card">
-        <template #header>最近 7 天线索趋势</template>
+        <template #header>{{ t('ad_chart_trend7') }}</template>
         <div ref="trendEl" class="chart" />
       </el-card>
       <el-card shadow="never" class="chart-card">
-        <template #header>产品分类分布</template>
+        <template #header>{{ t('ad_chart_category') }}</template>
         <div ref="categoryEl" class="chart" />
       </el-card>
       <el-card shadow="never" class="chart-card">
-        <template #header>线索地区 Top 8</template>
+        <template #header>{{ t('ad_chart_region') }}</template>
         <div ref="regionEl" class="chart" />
       </el-card>
     </div>
 
     <el-card shadow="never" style="margin-top: 24px">
-      <template #header>最近抓取线索</template>
+      <template #header>{{ t('ad_recent_leads') }}</template>
       <el-table :data="recentLeads" size="default" border v-loading="loading">
-        <el-table-column prop="name" label="店铺名称" min-width="140" show-overflow-tooltip />
-        <el-table-column prop="type" label="类别" width="120" show-overflow-tooltip />
-        <el-table-column prop="phone" label="电话" width="140" show-overflow-tooltip />
-        <el-table-column prop="city" label="地区" width="110" show-overflow-tooltip />
+        <el-table-column prop="name" :label="t('ad_col_name')" min-width="140" show-overflow-tooltip />
+        <el-table-column prop="type" :label="t('ad_col_type')" width="120" show-overflow-tooltip />
+        <el-table-column prop="phone" :label="t('ad_col_phone')" width="140" show-overflow-tooltip />
+        <el-table-column prop="city" :label="t('ad_col_city')" width="110" show-overflow-tooltip />
         <el-table-column prop="hasWhatsApp" label="WhatsApp" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.hasWhatsApp ? 'success' : 'info'" size="small">{{ row.hasWhatsApp ? '已识别' : '未知' }}</el-tag>
+            <el-tag :type="row.hasWhatsApp ? 'success' : 'info'" size="small">{{ t(row.hasWhatsApp ? 'ad_recognized' : 'ad_unknown') }}</el-tag>
           </template>
         </el-table-column>
       </el-table>
@@ -80,6 +80,7 @@ import * as echarts from 'echarts/core'
 import { GaugeChart, PieChart, LineChart, BarChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { t } from '@/i18n'
 
 echarts.use([GaugeChart, PieChart, LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
@@ -106,7 +107,7 @@ function headers() {
 async function api(path, options = {}) {
   const res = await fetch(path, { headers: headers(), ...options })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.message || '请求失败')
+  if (!res.ok) throw new Error(data.message || t('a_request_failed'))
   return data
 }
 
@@ -138,7 +139,7 @@ function renderCharts(data) {
       splitLine: { show: false },
       axisLabel: { show: false },
       pointer: { show: false },
-      title: { show: true, offsetCenter: [0, '34%'], fontSize: 14, color: '#909399', formatter: '共 ' + data.whatsappCount + ' 条' },
+      title: { show: true, offsetCenter: [0, '34%'], fontSize: 14, color: '#909399', formatter: t('ad_total_n', { n: data.whatsappCount }) },
       detail: { valueAnimation: true, formatter: (v) => `${v}%`, fontSize: 36, fontWeight: 700, color: '#409eff', offsetCenter: [0, 0] },
       data: [{ value: data.whatsappRate }]
     }]
@@ -153,8 +154,8 @@ function renderCharts(data) {
       radius: ['38%', '66%'],
       center: ['50%', '44%'],
       itemStyle: { borderRadius: 6, borderColor: pieBorder, borderWidth: 2 },
-      label: { formatter: '{b}\n{c} 条' },
-      data: data.sourceDist.length ? data.sourceDist : [{ name: '暂无数据', value: 0 }]
+      label: { formatter: '{b}\n' + t('ad_count_n', { n: '{c}' }) },
+      data: data.sourceDist.length ? data.sourceDist : [{ name: t('ad_no_data'), value: 0 }]
     }]
   })
 
@@ -166,7 +167,7 @@ function renderCharts(data) {
     yAxis: { type: 'value', minInterval: 1, axisLabel: { color: '#909399' }, splitLine: { lineStyle: { color: splitColor } } },
     series: [{
       type: 'line',
-      name: '新线索',
+      name: t('ad_new_leads'),
       data: data.trend7d.values,
       smooth: true,
       symbol: 'circle',

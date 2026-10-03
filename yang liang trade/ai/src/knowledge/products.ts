@@ -75,6 +75,6 @@ function stripHtml(h: string): string {
     .trim()
 }
 
-export const companyIntro = '扬良贸易有限公司（YANGLIANG TRADE CO., LTD.）专注于医疗器械与医用产品进出口贸易，主营防护用品、监测设备、耗材器械、护理康复与消毒净化等品类，支持 OEM 定制，产品远销亚洲、东南亚、南亚、中亚、北非等地区。'
+export const companyIntro = '扬良贸易有限公司（YANGLIANG Technology Co., Ltd CO., LTD.）专注于医疗器械与医用产品进出口贸易，主营防护用品、监测设备、耗材器械、护理康复与消毒净化等品类，支持 OEM 定制，产品远销亚洲、东南亚、南亚、中亚、北非等地区。'
 
 

@@ -4,7 +4,7 @@
     <div class="info">
       <div class="tag">{{ categoryLabel }}</div>
       <div class="name">{{ product.name }}</div>
-      <div class="spec">{{ product.spec }}</div>
+      <div class="spec">{{ markupSpec(product.spec) }}</div>
       <div class="foot"><span class="en">{{ product.nameEn }}</span><span class="more">{{ t('pcard_detail') }} →</span></div>
     </div>
   </div>
@@ -13,6 +13,7 @@
 <script setup>
 import { computed } from 'vue'
 import { t } from '@/i18n'
+import { markupSpec } from '@/utils/price'
 
 const props = defineProps({ product: { type: Object, required: true } })
 const categoryLabel = computed(() => {
