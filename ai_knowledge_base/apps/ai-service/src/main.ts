@@ -16,6 +16,8 @@ async function bootstrap() {
       transform: true, // 按 DTO 类型自动转换入参（如 string → number）
     }),
   );
-  await app.listen(process.env.AI_SERVICE_PORT ?? 3001);
+  const port = Number.parseInt(process.env.AI_SERVICE_PORT ?? '3001', 10);
+  const host = process.env.AI_SERVICE_HOST ?? '127.0.0.1';
+  await app.listen(port, host);
 }
 await bootstrap();

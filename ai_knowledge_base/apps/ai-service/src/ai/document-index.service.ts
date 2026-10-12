@@ -5,10 +5,11 @@
  * .doc 不支持，需用户另存为 .docx。
  */
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { readFile } from 'node:fs/promises';
-import { extname } from 'node:path';
+import { extname, join } from 'node:path';
 import { DataSource, Repository } from 'typeorm';
 import { DocumentChunk } from '../entities/document-chunk.entity.js';
 import { GraphEntity } from '../entities/graph-entity.entity.js';
@@ -20,6 +21,7 @@ import * as iconv from 'iconv-lite';
 import * as XLSX from 'xlsx';
 import * as mammoth from 'mammoth';
 import { createWorker } from 'tesseract.js';
+import { assertPathInsideUploadRoot } from '../auth/upload-path.js';
 
 /** 每个切片的目标字符数 */
 export const CHUNK_SIZE = 1000;
@@ -61,11 +63,17 @@ export class DocumentIndexService {
     private readonly models: ModelProvider,
     private readonly userSettings: UserSettingsService,
     private readonly entityExtraction: EntityExtractionService,
+    private readonly configService: ConfigService,
   ) {}
 
   /** 索引主流程：抽取文本 → 文件名前置一次（支持按文件名检索）→ 切片 → 批量 Embedding → 先删后插覆盖入库 */
   async indexDocument(request: IndexDocumentRequest): Promise<IndexDocumentResult> {
-    let text = await this.extractText(request.filePath, request.originalName);
+    const uploadRoot = this.configService.get<string>(
+      'uploadRoot',
+      join(process.cwd(), '..', 'server', 'uploads'),
+    );
+    const safePath = assertPathInsideUploadRoot(request.filePath, uploadRoot);
+    let text = await this.extractText(safePath, request.originalName);
     // Prepend document filename once before splitting so it gets indexed
     // This enables searching by filename/title, but doesn't repeat filename in every chunk
     text = `文档名称：${request.originalName}\n\n${text}`;

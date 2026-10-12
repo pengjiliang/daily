@@ -16,6 +16,7 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 import { ChatService } from './chat.service.js';
@@ -97,6 +98,7 @@ export class ChatController {
    * POST /chat/conversations/:id/messages：发送消息，SSE 流式返回。
    * 事件协议：sources（来源列表）→ token（逐段答案，多次）→ done（最终结果）；异常发 error。
    */
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('conversations/:id/messages')
   async sendMessage(
     @Req() req: AuthenticatedRequest,

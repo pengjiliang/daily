@@ -46,7 +46,7 @@ const formData = ref({
 });
 
 /** 自定义校验：确认密码必须与密码一致 */
-const validateConfirmPassword = (rule: any, value: any, callback: any) => {
+const validateConfirmPassword = (_rule: any, value: any, callback: any) => {
   if (value !== formData.value.password) {
     callback(new Error('两次输入密码不一致'));
   } else {

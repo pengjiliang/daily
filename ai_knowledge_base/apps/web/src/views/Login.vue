@@ -31,7 +31,6 @@ import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
 import { useUserStore } from '../stores/user';
-import request from '../api/request';
 import { authApi } from '../api/auth';
 
 const formRef = ref<FormInstance>();

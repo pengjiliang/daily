@@ -18,7 +18,9 @@
     "vue-router": "^4.4.0",
     "@vueuse/core": "^10.11.0",
     "echarts": "^5.5.1",
-    "three": "^0.166.1"
+    "mammoth": "^1.12.2",
+    "three": "^0.166.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.5",

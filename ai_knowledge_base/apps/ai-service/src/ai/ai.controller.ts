@@ -1,18 +1,20 @@
 /**
- * AI 服务对外 HTTP 接口（供 server 端内部调用，无用户级鉴权）：
+ * AI 服务对外 HTTP 接口（供 server 端内部调用，须携带 X-Internal-Token）：
  * - POST /ai/index-document：文档抽取文本 → 切片 → 向量化入库
  * - POST /ai/ask：一次性问答（JSON 返回，旧链路保留）
  * - POST /ai/ask/stream：SSE 流式问答（sources / token / done / error 事件）
  * - DELETE /ai/document/:id：删除某文档的全部分块
  */
-import { Body, Controller, Delete, Param, ParseIntPipe, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Param, ParseIntPipe, Post, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AskService, type AskResult } from './ask.service.js';
 import type { RetrieveDebugView } from '@ai-knowledge-base/shared';
 import { DocumentIndexService, type IndexDocumentResult } from './document-index.service.js';
 import { AskDto, IndexDocumentDto } from './dto/ai.dto.js';
+import { InternalTokenGuard } from '../auth/internal-token.guard.js';
 
 @Controller('ai')
+@UseGuards(InternalTokenGuard)
 export class AIController {
   constructor(
     private readonly documentIndexService: DocumentIndexService,

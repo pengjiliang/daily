@@ -114,20 +114,43 @@ export class SettingsService {
 
     const currentEmbeddingKey = `${row.embeddingBaseUrl ?? env.embedding.baseUrl}|${row.embeddingModel ?? env.embedding.model}`;
     if (previousEmbeddingKey !== currentEmbeddingKey) {
-      await this.markReindexPending(userId);
-      // 后台执行，不阻塞保存响应
-      void this.runReindex(userId);
+      // 后台执行，不阻塞保存响应；已在 pending/running 则不重复开任务
+      void this.tryStartReindex(userId);
     }
 
     return this.resolveView(row);
   }
 
-  /** 向量模型变化后：置待重建状态并清空进度 */
-  private async markReindexPending(userId: number): Promise<void> {
-    await this.settingsRepository.update(
-      { userId },
-      { reindexStatus: 'pending', reindexProgress: { total: 0, done: 0, failed: 0 } },
+  /**
+   * 乐观锁领取重建任务：仅当当前不是 pending/running 时写入 pending。
+   * 并发连点保存/重建时只有一次能成功，避免重复消耗 Embedding 额度。
+   */
+  private async tryStartReindex(userId: number): Promise<boolean> {
+    const result: unknown = await this.settingsRepository.query(
+      `UPDATE ai_settings
+          SET "reindexStatus" = 'pending',
+              "reindexProgress" = $2::jsonb
+        WHERE "userId" = $1
+          AND ("reindexStatus" IS NULL OR "reindexStatus" NOT IN ('pending', 'running'))`,
+      [userId, JSON.stringify({ total: 0, done: 0, failed: 0 })],
     );
+    const claimed = this.updateRowCount(result) > 0;
+    if (claimed) {
+      void this.runReindex(userId);
+    }
+    return claimed;
+  }
+
+  /** pg 驱动：query 返回 [rows, rowCount] 或带 rowCount 的 Result */
+  private updateRowCount(result: unknown): number {
+    if (Array.isArray(result) && typeof result[1] === 'number') {
+      return result[1];
+    }
+    if (result && typeof result === 'object' && 'rowCount' in result) {
+      const count = (result as { rowCount?: number }).rowCount;
+      return typeof count === 'number' ? count : 0;
+    }
+    return 0;
   }
 
   /**
@@ -140,13 +163,7 @@ export class SettingsService {
     if (!row) {
       await this.settingsRepository.save(this.settingsRepository.create({ userId }));
     }
-    const status = (row?.reindexStatus ?? 'idle') as ReindexStatus;
-    if (status === 'pending' || status === 'running') {
-      return this.getSettings(userId);
-    }
-    await this.markReindexPending(userId);
-    // 后台执行，不阻塞请求响应
-    void this.runReindex(userId);
+    await this.tryStartReindex(userId);
     return this.getSettings(userId);
   }
 
@@ -156,7 +173,7 @@ export class SettingsService {
    */
   private async runReindex(userId: number): Promise<void> {
     try {
-      const documents = await this.uploadService.listDocuments(userId);
+      const documents = await this.uploadService.listOwnedDocuments(userId);
       const total = documents.length;
       await this.settingsRepository.update(
         { userId },

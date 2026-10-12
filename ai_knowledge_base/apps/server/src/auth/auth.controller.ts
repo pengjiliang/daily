@@ -2,6 +2,7 @@
  * 鉴权控制器：注册、登录（均为 @Public 免登录）与获取当前登录用户资料。
  */
 import { Body, Controller, Get, Post, Req } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { AuthService, PublicUser } from './auth.service.js';
 import { Public } from './decorators/public.decorator.js';
@@ -18,13 +19,15 @@ export class AuthController {
 
   /** POST /auth/register：注册新用户，返回不含密码的用户信息 */
   @Public()
+  @Throttle({ default: { limit: 8, ttl: 60_000 } })
   @Post('register')
   register(@Body() dto: RegisterDto): Promise<PublicUser> {
     return this.authService.register(dto);
   }
 
-  /** POST /auth/login：校验账密并签发 JWT */
+  /** POST /auth/login：校验账密并签发 JWT（按 IP 限流，防爆破；不影响已有账号密码） */
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);

@@ -22,6 +22,7 @@ import { ShareService } from '../share/share.service.js';
 import type { SharePermission } from '../share/share.entity.js';
 import { UploadFile } from './upload-file.entity.js';
 import { DOCUMENTS_DIRECTORY, UPLOAD_ROOT } from './upload.storage.js';
+import { aiServiceHeaders } from '../ai/ai-service-headers.js';
 import { Buffer } from 'node:buffer';
 
 /**
@@ -153,6 +154,14 @@ export class UploadService {
     ];
   }
 
+  /** 仅当前用户自己上传的文档（重建索引用，不含共享给我的） */
+  listOwnedDocuments(userId: number): Promise<UploadFile[]> {
+    return this.uploadFilesRepository.find({
+      where: { uploaderId: userId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   /** 取下载所需的文件流与元信息：校验归属、防路径穿越、文件缺失抛 404 */
   async getDocumentDownload(
     id: number,
@@ -233,6 +242,7 @@ export class UploadService {
       const timeoutId = setTimeout(() => controller.abort(), 30000);
       const response = await fetch(`${aiServiceUrl}/ai/document/${uploadFileId}`, {
         method: 'DELETE',
+        headers: aiServiceHeaders(this.configService),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
@@ -294,7 +304,7 @@ export class UploadService {
 
       const response = await fetch(`${aiServiceUrl}/ai/index-document`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: aiServiceHeaders(this.configService),
         body: JSON.stringify({
           uploadFileId: uploadFile.id,
           filePath: absolutePath,

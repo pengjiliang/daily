@@ -15,10 +15,18 @@ import { AskService } from './ask.service.js';
 import { DocumentIndexService } from './document-index.service.js';
 import { EntityExtractionService } from './entity-extraction.service.js';
 import { ModelProvider } from './openai-model.provider.js';
+import { InternalTokenGuard } from '../auth/internal-token.guard.js';
 
 @Module({
   imports: [TypeOrmModule.forFeature([DocumentChunk, AiSettings, SemanticCache, GraphEntity, GraphRelation])],
   controllers: [AIController],
-  providers: [ModelProvider, UserSettingsService, DocumentIndexService, EntityExtractionService, AskService],
+  providers: [
+    ModelProvider,
+    UserSettingsService,
+    DocumentIndexService,
+    EntityExtractionService,
+    AskService,
+    InternalTokenGuard,
+  ],
 })
 export class AIModule {}

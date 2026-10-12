@@ -4,7 +4,9 @@
  * 用户/鉴权/上传/聊天/共享四个业务模块，以及健康检查控制器。
  */
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { join } from 'node:path';
 import { AppController } from './app.controller.js';
@@ -40,6 +42,9 @@ import { ShareModule } from './share/share.module.js';
         synchronize: configService.getOrThrow<boolean>('database.synchronize'),
       }),
     }),
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: 60_000, limit: 120 }],
+    }),
     UsersModule,
     AuthModule,
     UploadModule,
@@ -49,5 +54,6 @@ import { ShareModule } from './share/share.module.js';
     ShareModule,
   ],
   controllers: [AppController],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

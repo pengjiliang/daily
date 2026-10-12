@@ -17,6 +17,7 @@ import { Repository } from 'typeorm';
 import { Conversation } from './conversation.entity.js';
 import { Message } from './message.entity.js';
 import type { AskResult, RetrieveDebugView, RetrievedChunk } from '@ai-knowledge-base/shared';
+import { aiServiceHeaders } from '../ai/ai-service-headers.js';
 
 // 跨端共享类型：定义见 packages/shared
 export type AskAnswer = AskResult;
@@ -162,12 +163,13 @@ export class ChatService {
     // 刷新会话的 updatedAt：会话列表按此排序并显示更新时间（@UpdateDateColumn 自动写入）
     await this.conversationsRepository.save({ id: conversation.id, updatedAt: new Date() });
 
-    // 读取最近10轮对话历史传给ai-service
-    const history = await this.messagesRepository.find({
+    // 读取最近 10 条消息（含刚写入的本轮提问），再按时间正序交给 ai-service 做指代消解
+    const recent = await this.messagesRepository.find({
       where: { conversationId: conversation.id },
-      order: { id: 'ASC' },
+      order: { id: 'DESC' },
       take: 10,
     });
+    const history = recent.reverse();
 
     let answer = '';
     let sources: RetrievedChunk[] = [];
@@ -249,7 +251,7 @@ export class ChatService {
       resetIdleTimeout();
       response = await fetch(`${aiServiceUrl}/ai/ask/stream`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: aiServiceHeaders(this.configService),
         body: JSON.stringify({
           question,
           conversationId: String(conversationId),
@@ -384,7 +386,7 @@ export class ChatService {
     try {
       response = await fetch(`${aiServiceUrl}/ai/ask`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: aiServiceHeaders(this.configService),
         body: JSON.stringify({
           question,
           conversationId: String(conversationId),
@@ -416,7 +418,7 @@ export class ChatService {
     const aiServiceUrl = this.configService.get<string>('aiService.url', 'http://localhost:3001');
     const response = await fetch(`${aiServiceUrl}/ai/retrieve/debug`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: aiServiceHeaders(this.configService),
       body: JSON.stringify({ question, userId }),
     });
     if (!response.ok) {

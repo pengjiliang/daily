@@ -34,7 +34,7 @@ const router = createRouter({
 });
 
 // 全局登录态守卫
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, _from, next) => {
   const userStore = useUserStore();
 
   if (to.meta.requiresAuth && !userStore.isLoggedIn) {

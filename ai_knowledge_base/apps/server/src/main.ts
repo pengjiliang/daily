@@ -10,7 +10,10 @@ import { join } from 'node:path';
 import { AppModule } from './app.module.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  // 粘贴文本导入上限 20 万字符，需高于 Nest 默认 100kb
+  app.use(express.json({ limit: '2mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '2mb' }));
   // 头像/文档等本地上传文件的静态目录
   app.use('/uploads', express.static(join(process.cwd(), 'uploads')));
   app.useGlobalPipes(

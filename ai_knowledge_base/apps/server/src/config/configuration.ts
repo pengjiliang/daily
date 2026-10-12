@@ -3,6 +3,8 @@
  * 包含服务端口、PostgreSQL 连接（开发环境默认开启 synchronize）、
  * JWT 密钥与有效期、ai-service 的内部调用地址。
  */
+import { assertInternalToken, assertJwtSecret } from '../auth/assert-secrets.js';
+
 export default () => ({
   port: Number.parseInt(process.env.SERVER_PORT ?? '3000', 10),
   database: {
@@ -15,12 +17,13 @@ export default () => ({
     synchronize: process.env.NODE_ENV !== 'production',
   },
   jwt: {
-    secret: process.env.JWT_SECRET ?? 'your_secret_key',
+    secret: assertJwtSecret(process.env.JWT_SECRET),
     expiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
   },
   aiService: {
-    // 文档索引、问答（含 SSE）都转发到该地址
-    url: process.env.AI_SERVICE_URL ?? 'http://localhost:3001',
+    // 文档索引、问答（含 SSE）都转发到该地址（ai-service 默认只绑 127.0.0.1）
+    url: process.env.AI_SERVICE_URL ?? 'http://127.0.0.1:3001',
+    internalToken: assertInternalToken(process.env.INTERNAL_AI_TOKEN),
   },
   // OpenAI 兼容模型默认配置：与 ai-service 保持一致，供「设置页」回显默认值（用户未配置时展示）
   openai: {
