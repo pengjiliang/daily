@@ -16,7 +16,7 @@ import { unlink, writeFile } from 'node:fs/promises';
 import type { ReadStream } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { resolve, sep, join, extname } from 'node:path';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { UsersService } from '../users/users.service.js';
 import { ShareService } from '../share/share.service.js';
 import type { SharePermission } from '../share/share.entity.js';
@@ -72,6 +72,7 @@ export class UploadService {
     private readonly usersService: UsersService,
     private readonly configService: ConfigService,
     private readonly shareService: ShareService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /** 保存头像：把静态访问 URL 更新到用户资料，返回 URL 与脱敏后的用户信息 */
@@ -199,11 +200,7 @@ export class UploadService {
     };
   }
 
-  /**
-   * 重命名文档：仅更新展示名 originalName。
-   * 磁盘文件用独立 uuid 文件名存储，向量索引 metadata 保留索引时的旧名，
-   * 因此重命名不影响磁盘与检索，只影响列表/下载展示。
-   */
+  /** 重命名文档并同步更新检索引用中的展示名。 */
   async renameDocument(id: number, userId: number, originalName: string): Promise<UploadFile> {
     const uploadFile = await this.uploadFilesRepository.findOneBy({ id });
     if (!uploadFile) {
@@ -220,7 +217,16 @@ export class UploadService {
       throw new BadRequestException('文件名过长（最多 255 字符）');
     }
     uploadFile.originalName = name;
-    return this.uploadFilesRepository.save(uploadFile);
+    return this.dataSource.transaction(async (manager) => {
+      const saved = await manager.save(uploadFile);
+      await manager.query(
+        `UPDATE document_chunks
+            SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('originalName', $2)
+          WHERE "uploadFileId" = $1`,
+        [id, name],
+      );
+      return saved;
+    });
   }
 
   /** 删除文档：本地文件（ENOENT 容忍）+ 库记录 + ai-service 向量分块清理 */

@@ -15,9 +15,10 @@ import { SemanticCache } from '../entities/semantic-cache.entity.js';
 import { UsageEvent } from '../entities/usage-event.entity.js';
 import { createRagGraph, type GenerateResult, type RagState, type RetrievedChunk } from './langgraph/rag.graph.js';
 import type { AskResult, RetrieveDebugView, RetrieveLegItem, RetrieveKeywordLeg, UsageKind } from '@ai-knowledge-base/shared';
-import { ModelProvider, type ChatMessage } from './openai-model.provider.js';
-import { UserSettingsService } from '../settings/user-settings.service.js';
+import { ModelProvider, type ChatMessage, type ModelTokenUsage } from './openai-model.provider.js';
+import { UserSettingsService, type EffectiveSettings } from '../settings/user-settings.service.js';
 import type { HistoryMessage } from './dto/ai.dto.js';
+import { modelCostUsd } from './usage-pricing.js';
 
 /** 向量检索候选数默认值（重排前）；用户未配置时回退该值 */
 export const TOP_K = 8;
@@ -148,6 +149,7 @@ export class AskService {
     latencyMs: number;
     promptTokens?: number;
     completionTokens?: number;
+    usageSource?: 'provider' | 'unavailable';
     cached?: boolean;
   }): Promise<void> {
     try {
@@ -163,11 +165,44 @@ export class AskService {
           completionTokens: input.completionTokens ?? 0,
           latencyMs: input.latencyMs,
           cached: input.cached ?? false,
+          usageSource: input.usageSource ?? 'unavailable',
+          costUsd:
+            input.usageSource === 'provider'
+              ? modelCostUsd(input.model, input.promptTokens ?? 0, input.completionTokens ?? 0)
+              : null,
         }),
       );
     } catch (error) {
       this.logger.warn(`Failed to record usage event: ${String(error)}`);
     }
+  }
+
+  private tokenUsage(usage?: ModelTokenUsage) {
+    const promptTokens = usage?.input_tokens;
+    const completionTokens = usage?.output_tokens;
+    return {
+      promptTokens: promptTokens ?? 0,
+      completionTokens: completionTokens ?? 0,
+      usageSource: promptTokens === undefined || completionTokens === undefined ? 'unavailable' as const : 'provider' as const,
+    };
+  }
+
+  private async optionalCallsAllowed(userId: number): Promise<boolean> {
+    const settings = await this.userSettings.getEffectiveSettings(userId);
+    if (!settings.dailyTokenLimit && !settings.monthlyTokenLimit) return true;
+    const now = new Date();
+    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const rows = (await this.usageEventsRepository.query(
+      `SELECT
+         COALESCE(SUM("promptTokens" + "completionTokens") FILTER (WHERE "createdAt" >= $2), 0)::int AS day,
+         COALESCE(SUM("promptTokens" + "completionTokens") FILTER (WHERE "createdAt" >= $3), 0)::int AS month
+       FROM ai_usage_events WHERE "userId" = $1`,
+      [userId, dayStart, monthStart],
+    )) as Array<{ day: number; month: number }>;
+    const row = rows[0] ?? { day: 0, month: 0 };
+    return !(settings.dailyTokenLimit > 0 && row.day >= settings.dailyTokenLimit) &&
+      !(settings.monthlyTokenLimit > 0 && row.month >= settings.monthlyTokenLimit);
   }
 
   /** 旧版一次性问答：走 LangGraph（retrieve → generate），等待完整 JSON 后返回 */
@@ -289,7 +324,7 @@ export class AskService {
     try {
       const embeddingsModel = await this.models.getEmbeddings(request.userId);
       const embedStartedAt = Date.now();
-      const embedding = await embeddingsModel.embedQuery(request.question);
+      const { embedding, promptTokens } = await embeddingsModel.embedQueryWithUsage(request.question);
       // 用量统计：缓存查询向量化（亮点 5）
       const cacheSettings = await this.userSettings.getEffectiveSettings(request.userId);
       await this.recordUsage({
@@ -299,7 +334,8 @@ export class AskService {
         model: cacheSettings.embedding.model,
         kind: 'embedding',
         latencyMs: Date.now() - embedStartedAt,
-        completionTokens: Math.ceil(request.question.length / 4),
+        promptTokens: promptTokens ?? 0,
+        usageSource: promptTokens === undefined ? 'unavailable' : 'provider',
       });
       const rows = (await this.semanticCacheRepository.query(
         `SELECT id, question, answer, sources, "hitCount", "createdAt", "updatedAt",
@@ -339,7 +375,7 @@ export class AskService {
     try {
       const embeddingsModel = await this.models.getEmbeddings(request.userId);
       const embedStartedAt = Date.now();
-      const embedding = await embeddingsModel.embedQuery(request.question);
+      const { embedding, promptTokens } = await embeddingsModel.embedQueryWithUsage(request.question);
       // 用量统计：缓存写入向量化（亮点 5）
       const cacheSettings = await this.userSettings.getEffectiveSettings(request.userId);
       await this.recordUsage({
@@ -349,7 +385,8 @@ export class AskService {
         model: cacheSettings.embedding.model,
         kind: 'embedding',
         latencyMs: Date.now() - embedStartedAt,
-        completionTokens: Math.ceil(request.question.length / 4),
+        promptTokens: promptTokens ?? 0,
+        usageSource: promptTokens === undefined ? 'unavailable' : 'provider',
       });
       const count = await this.semanticCacheRepository.count({ where: { userId: request.userId } });
       if (count >= CACHE_LIMIT) {
@@ -385,10 +422,14 @@ export class AskService {
   ): Promise<string> {
     const startedAt = Date.now();
     let answer = '';
+    let promptTokens: number | undefined;
+    let completionTokens: number | undefined;
     const chatModel = await this.models.getChatModel(userId);
     const settings = await this.userSettings.getEffectiveSettings(userId);
     const stream = await chatModel.stream(messages, { signal });
     for await (const chunk of stream) {
+      if (chunk.usage?.input_tokens !== undefined) promptTokens = chunk.usage.input_tokens;
+      if (chunk.usage?.output_tokens !== undefined) completionTokens = chunk.usage.output_tokens;
       const text = Array.isArray(chunk.content)
         ? chunk.content
             .map((part) => (typeof part === 'string' ? part : ((part as { text?: string }).text ?? '')))
@@ -399,7 +440,7 @@ export class AskService {
         await onToken(text);
       }
     }
-    // 用量统计：答案生成（亮点 5，token 按字符数估算）
+    // 用量统计：答案生成（优先记录模型响应的实际 token 数）
     await this.recordUsage({
       userId,
       provider: settings.chatProvider,
@@ -407,8 +448,9 @@ export class AskService {
         settings.chatProvider === 'anthropic' ? settings.anthropic.chatModel : settings.openai.chatModel,
       kind: 'answer',
       latencyMs: Date.now() - startedAt,
-      promptTokens: 0,
-      completionTokens: Math.ceil(answer.length / 4),
+      promptTokens: promptTokens ?? 0,
+      completionTokens: completionTokens ?? 0,
+      usageSource: promptTokens === undefined || completionTokens === undefined ? 'unavailable' : 'provider',
     });
     return answer;
   }
@@ -420,6 +462,7 @@ export class AskService {
     signal: AbortSignal | undefined,
     userId: number,
   ): Promise<RetrievedChunk[]> {
+    if (!(await this.optionalCallsAllowed(userId))) return [];
     const startedAt = Date.now();
     const chatModel = await this.models.getChatModel(userId);
     const settings = await this.userSettings.getEffectiveSettings(userId);
@@ -438,8 +481,7 @@ export class AskService {
             settings.chatProvider === 'anthropic' ? settings.anthropic.chatModel : settings.openai.chatModel,
           kind: 'external',
           latencyMs: Date.now() - startedAt,
-          promptTokens: 0,
-          completionTokens: Math.ceil(response.text.length / 4),
+          ...this.tokenUsage(response.usage),
         });
         if (sources.length > 0 || attempt === 1) {
           return sources;
@@ -664,6 +706,7 @@ export class AskService {
    * 长查询（超过 QUERY_REWRITE_THRESHOLD 字符）不改写以省一次模型调用；改写失败/空结果回退原查询。
    */
   private async rewriteQuery(question: string, userId: number): Promise<string> {
+    if (!(await this.optionalCallsAllowed(userId))) return question;
     if (question.trim().length > QUERY_REWRITE_THRESHOLD) {
       return question;
     }
@@ -689,7 +732,7 @@ export class AskService {
           settings.chatProvider === 'anthropic' ? settings.anthropic.chatModel : settings.openai.chatModel,
         kind: 'rewrite',
         latencyMs: Date.now() - startedAt,
-        completionTokens: Math.ceil(response.text.length / 4),
+        ...this.tokenUsage(response.usage),
       });
       const rewritten = response.text.trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, '');
       return rewritten && rewritten !== question ? rewritten : question;
@@ -712,6 +755,7 @@ export class AskService {
     if (!history || history.length === 0) {
       return question;
     }
+    if (!(await this.optionalCallsAllowed(userId))) return question;
     try {
       const startedAt = Date.now();
       const chatModel = await this.models.getChatModel(userId);
@@ -738,7 +782,7 @@ export class AskService {
           settings.chatProvider === 'anthropic' ? settings.anthropic.chatModel : settings.openai.chatModel,
         kind: 'contextualize',
         latencyMs: Date.now() - startedAt,
-        completionTokens: Math.ceil(response.text.length / 4),
+        ...this.tokenUsage(response.usage),
       });
       const rewritten = response.text.trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, '');
       return rewritten && rewritten !== question ? rewritten : question;
@@ -753,6 +797,7 @@ export class AskService {
    * 纯增强功能：任何失败仅告警并返回空数组，不影响回答本身。
    */
   private async generateSuggestions(question: string, answer: string, userId: number): Promise<string[]> {
+    if (!(await this.optionalCallsAllowed(userId))) return [];
     try {
       const startedAt = Date.now();
       const chatModel = await this.models.getChatModel(userId);
@@ -774,7 +819,7 @@ export class AskService {
           settings.chatProvider === 'anthropic' ? settings.anthropic.chatModel : settings.openai.chatModel,
         kind: 'suggestions',
         latencyMs: Date.now() - startedAt,
-        completionTokens: Math.ceil(response.text.length / 4),
+        ...this.tokenUsage(response.usage),
       });
       return this.parseSuggestionList(response.text);
     } catch (error) {
@@ -816,8 +861,9 @@ export class AskService {
     userId: number,
     history?: HistoryMessage[],
     trace?: RetrieveTrace,
+    configOverride?: Pick<EffectiveSettings, 'topK' | 'keywordTopK' | 'minScore' | 'rerankTopN'>,
   ): Promise<RetrievedChunk[]> {
-    const settings = await this.userSettings.getEffectiveSettings(userId);
+    const settings = { ...(await this.userSettings.getEffectiveSettings(userId)), ...configOverride };
 
     // ① 多轮记忆增强（方案）：结合最近对话历史把当前问题改写为独立可检索查询，
     //    解决连续追问（如"它的优缺点呢"）缺失上文主题导致检索落空的问题；无历史/失败回退原问题。
@@ -835,7 +881,7 @@ export class AskService {
     // 避免跨用户检索泄漏他人文档
     const embeddingsModel = await this.models.getEmbeddings(userId);
     const embeddingStartedAt = Date.now();
-    const vectorEmbedding = await embeddingsModel.embedQuery(rewritten);
+    const { embedding: vectorEmbedding, promptTokens } = await embeddingsModel.embedQueryWithUsage(rewritten);
     // 用量统计：检索向量化（亮点 5）
     await this.recordUsage({
       userId,
@@ -843,7 +889,7 @@ export class AskService {
       model: settings.embedding.model,
       kind: 'embedding',
       latencyMs: Date.now() - embeddingStartedAt,
-      completionTokens: Math.ceil(rewritten.length / 4),
+      ...this.tokenUsage(promptTokens === undefined ? undefined : { input_tokens: promptTokens, output_tokens: 0 }),
     });
     const vectorRows: SimilarityRow[] = await this.documentChunksRepository.query(
       `SELECT c.id, c."uploadFileId", c.content, c.metadata,
@@ -930,7 +976,7 @@ export class AskService {
       }));
 
     // ⑤ LLM 重排：最终相关性过滤（关键词路可能命中无关文档，由重排剔除），并校准展示分数
-    const kept = await this.rerank(question, candidates, userId);
+    const kept = await this.rerank(question, candidates, userId, settings.rerankTopN);
     if (trace) {
       trace.kept = kept.map((chunk) => ({
         chunkId: chunk.chunkId ?? 0,
@@ -948,7 +994,11 @@ export class AskService {
    * 供 RAG 调试/评估面板展示，帮助定位"为什么检索不到/召回不准"。
    * 注意：链路中的 LLM 重排仍会调用该用户配置的聊天模型（与真实问答保持一致，用于相关性过滤）。
    */
-  async debugRetrieve(question: string, userId: number): Promise<RetrieveDebugView> {
+  async debugRetrieve(
+    question: string,
+    userId: number,
+    configOverride?: Pick<EffectiveSettings, 'topK' | 'keywordTopK' | 'minScore' | 'rerankTopN'>,
+  ): Promise<RetrieveDebugView> {
     const trace: RetrieveTrace = {
       contextualized: question,
       rewritten: question,
@@ -957,7 +1007,7 @@ export class AskService {
       fused: [],
       kept: [],
     };
-    await this.retrieve(question, userId, undefined, trace);
+    await this.retrieve(question, userId, undefined, trace, configOverride);
     return {
       question,
       contextualized: trace.contextualized,
@@ -1136,10 +1186,16 @@ export class AskService {
    * LLM 重排：向量相似度分数区间窄（豆包等 Embedding 常见），绝对值区分度低，
    * 因此交给模型判断候选片段是否与问题真正相关，只保留相关片段。
    */
-  private async rerank(question: string, candidates: Omit<RetrievedChunk, 'similarity'>[], userId: number): Promise<RetrievedChunk[]> {
+  private async rerank(
+    question: string,
+    candidates: Omit<RetrievedChunk, 'similarity'>[],
+    userId: number,
+    rerankTopN?: number,
+  ): Promise<RetrievedChunk[]> {
     const settings = await this.userSettings.getEffectiveSettings(userId);
+    const topN = rerankTopN ?? settings.rerankTopN;
     let kept: Omit<RetrievedChunk, 'similarity'>[];
-    if (candidates.length <= 1) {
+    if (candidates.length <= 1 || !(await this.optionalCallsAllowed(userId))) {
       kept = candidates;
     } else {
       const startedAt = Date.now();
@@ -1163,13 +1219,13 @@ export class AskService {
           settings.chatProvider === 'anthropic' ? settings.anthropic.chatModel : settings.openai.chatModel,
         kind: 'rerank',
         latencyMs: Date.now() - startedAt,
-        completionTokens: Math.ceil(response.text.length / 4),
+        ...this.tokenUsage(response.usage),
       });
 
       const parsed = this.parseIndexList(response.text);
       if (parsed === null) {
         // 解析失败：退回向量排序结果，避免误删候选
-        kept = candidates.slice(0, settings.rerankTopN);
+        kept = candidates.slice(0, topN);
       } else if (parsed.length === 0) {
         // 模型判定无相关片段：返回空，让模型用自身知识回答
         kept = [];
@@ -1177,7 +1233,7 @@ export class AskService {
         kept = parsed
           .map((index) => candidates[index - 1])
           .filter((chunk): chunk is Omit<RetrievedChunk, 'similarity'> => Boolean(chunk))
-          .slice(0, settings.rerankTopN);
+          .slice(0, topN);
       }
     }
 

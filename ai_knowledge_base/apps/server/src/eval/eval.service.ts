@@ -183,7 +183,7 @@ export class EvalService {
    * 计算指标并落库。retrieveSec 用 server 侧计时（debugRetrieve 不返回耗时），
    * answerSec 记为 0（评估只跑检索、不生成答案，符合文档"省钱、秒级"）。
    */
-  async runEval(userId: number, setId: number): Promise<EvalRunViewResult> {
+  async runEval(userId: number, setId: number, configOverride?: EvalRunConfig): Promise<EvalRunViewResult> {
     const set = await this.requireOwnedSet(userId, setId);
     const cases = await this.evalCasesRepository.find({
       where: { evalSetId: setId },
@@ -196,7 +196,7 @@ export class EvalService {
       throw new BadRequestException(`用例数超过上限（${EVAL_MAX_CASES}）`);
     }
 
-    const config = await this.loadRunConfig(userId);
+    const config = configOverride ?? (await this.loadRunConfig(userId));
     const run = await this.evalRunsRepository.save(
       this.evalRunsRepository.create({
         evalSetId: setId,
@@ -219,7 +219,7 @@ export class EvalService {
     let retrieveSecSum = 0;
 
     for (const evalCase of cases) {
-      const { view, retrieveSec } = await this.retrieveForCase(userId, evalCase.question);
+      const { view, retrieveSec } = await this.retrieveForCase(userId, evalCase.question, config);
       const kept = view.kept ?? [];
       const result = this.computeCaseResult(evalCase, kept, retrieveSec);
       results.push(result);
@@ -257,6 +257,17 @@ export class EvalService {
     await this.evalRunsRepository.save(run);
 
     return { run: this.toRunView(run), results };
+  }
+
+  async compareEval(
+    userId: number,
+    setId: number,
+    configA: EvalRunConfig,
+    configB: EvalRunConfig,
+  ): Promise<{ a: EvalRunViewResult; b: EvalRunViewResult }> {
+    const a = await this.runEval(userId, setId, configA);
+    const b = await this.runEval(userId, setId, configB);
+    return { a, b };
   }
 
   /** 历史运行列表（按时间倒序） */
@@ -321,13 +332,14 @@ export class EvalService {
   private async retrieveForCase(
     userId: number,
     question: string,
+    config: EvalRunConfig,
   ): Promise<{ view: RetrieveDebugView; retrieveSec: number }> {
     const aiServiceUrl = this.configService.get<string>('aiService.url', 'http://localhost:3001');
     const startedAt = Date.now();
     const response = await fetch(`${aiServiceUrl}/ai/retrieve/debug`, {
       method: 'POST',
       headers: aiServiceHeaders(this.configService),
-      body: JSON.stringify({ question, userId }),
+      body: JSON.stringify({ question, userId, config }),
     });
     if (!response.ok) {
       let message = `AI service responded with ${response.status}`;

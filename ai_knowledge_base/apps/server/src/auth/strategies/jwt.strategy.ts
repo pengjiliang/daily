@@ -10,13 +10,13 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 /** 签发的 JWT 载荷结构：sub 为用户 ID */
 export interface JwtPayload {
   sub: number;
-  email: string;
+  username: string;
 }
 
 /** 注入 request.user 的登录用户结构 */
 export interface AuthenticatedUser {
   userId: number;
-  email: string;
+  username: string;
 }
 
 @Injectable()
@@ -31,6 +31,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   /** Passport 校验签名/有效期通过后调用：把载荷映射为 request.user */
   validate(payload: JwtPayload): AuthenticatedUser {
-    return { userId: payload.sub, email: payload.email };
+    return { userId: payload.sub, username: payload.username };
   }
 }

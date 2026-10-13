@@ -7,7 +7,7 @@ import type { Request } from 'express';
 import type { AiSettingsView } from '@ai-knowledge-base/shared';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
-import { SaveSettingsDto } from './dto/save-settings.dto.js';
+import { SaveSettingsDto, TestConnectionDto } from './dto/save-settings.dto.js';
 import { SettingsService } from './settings.service.js';
 
 type AuthenticatedRequest = Request & { user: AuthenticatedUser };
@@ -27,6 +27,12 @@ export class SettingsController {
   @Put()
   saveSettings(@Req() request: AuthenticatedRequest, @Body() dto: SaveSettingsDto): Promise<AiSettingsView> {
     return this.settingsService.saveSettings(request.user.userId, dto);
+  }
+
+  /** POST /settings/test-connection：校验当前表单中的对话或向量模型配置，不保存。 */
+  @Post('test-connection')
+  testConnection(@Req() request: AuthenticatedRequest, @Body() dto: TestConnectionDto): Promise<{ message: string }> {
+    return this.settingsService.testConnection(request.user.userId, dto);
   }
 
   /** POST /settings/reindex：手动触发全量重建索引（不改动模型配置） */

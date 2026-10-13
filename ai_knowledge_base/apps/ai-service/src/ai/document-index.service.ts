@@ -14,6 +14,7 @@ import { DataSource, Repository } from 'typeorm';
 import { DocumentChunk } from '../entities/document-chunk.entity.js';
 import { GraphEntity } from '../entities/graph-entity.entity.js';
 import { GraphRelation } from '../entities/graph-relation.entity.js';
+import { UsageEvent } from '../entities/usage-event.entity.js';
 import { UserSettingsService } from '../settings/user-settings.service.js';
 import { EntityExtractionService } from './entity-extraction.service.js';
 import { ModelProvider } from './openai-model.provider.js';
@@ -22,6 +23,7 @@ import * as XLSX from 'xlsx';
 import * as mammoth from 'mammoth';
 import { createWorker } from 'tesseract.js';
 import { assertPathInsideUploadRoot } from '../auth/upload-path.js';
+import { modelCostUsd } from './usage-pricing.js';
 
 /** 每个切片的目标字符数 */
 export const CHUNK_SIZE = 1000;
@@ -64,6 +66,8 @@ export class DocumentIndexService {
     private readonly graphEntityRepository: Repository<GraphEntity>,
     @InjectRepository(GraphRelation)
     private readonly graphRelationRepository: Repository<GraphRelation>,
+    @InjectRepository(UsageEvent)
+    private readonly usageEventsRepository: Repository<UsageEvent>,
     private readonly models: ModelProvider,
     private readonly userSettings: UserSettingsService,
     private readonly entityExtraction: EntityExtractionService,
@@ -95,8 +99,29 @@ export class DocumentIndexService {
     const embeddings: number[][] = [];
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
       const batch = chunks.slice(i, i + BATCH_SIZE);
-      const batchEmbeddings = await embeddingsModel.embedDocuments(batch);
-      embeddings.push(...batchEmbeddings);
+      const startedAt = Date.now();
+      const result = await embeddingsModel.embedDocumentsWithUsage(batch);
+      embeddings.push(...result.embeddings);
+      try {
+        await this.usageEventsRepository.save(
+          this.usageEventsRepository.create({
+          userId: request.uploaderId,
+          conversationId: null,
+          messageId: null,
+          provider: 'embedding',
+          model: embeddingModel,
+          kind: 'embedding',
+          promptTokens: result.promptTokens ?? 0,
+          completionTokens: 0,
+          latencyMs: Date.now() - startedAt,
+          cached: false,
+          usageSource: result.promptTokens === undefined ? 'unavailable' : 'provider',
+          costUsd: result.promptTokens === undefined ? null : modelCostUsd(embeddingModel, result.promptTokens, 0),
+          }),
+        );
+      } catch (error) {
+        this.logger.warn(`Failed to record embedding usage for document ${request.uploadFileId}: ${String(error)}`);
+      }
     }
     const embeddingDim = embeddings[0]?.length ?? 0;
 

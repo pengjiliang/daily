@@ -139,7 +139,6 @@ export const useChatStore = defineStore('chat', () => {
     '.pdf',
     '.txt',
     '.xls',
-    '.xlx',
     '.xlsx',
     '.csv',
     '.md',
@@ -156,7 +155,7 @@ export const useChatStore = defineStore('chat', () => {
   /** 图片类扩展名：objectURL 后用 <img> 直接渲染 */
   const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif']);
   /** 文本/Office 类扩展名：转成 HTML 后渲染（旧版 .doc 二进制无法解析，仅提示下载） */
-  const HTML_EXTENSIONS = new Set(['.txt', '.md', '.docx', '.xlsx', '.xls', '.xlx', '.csv']);
+  const HTML_EXTENSIONS = new Set(['.txt', '.md', '.docx', '.xlsx', '.xls', '.csv']);
   /** 文件夹上传并发数（避免同时发起过多请求） */
   const FOLDER_UPLOAD_CONCURRENCY = 3;
 
@@ -478,11 +477,11 @@ export const useChatStore = defineStore('chat', () => {
 
   // ---- 上传 ----
 
-  /** el-upload 前置钩子：前端先做 10MB 大小限制（服务端另有 20MB 白名单校验） */
+  /** el-upload 前置钩子：与服务端统一为 20 MiB 上限。 */
   const beforeUpload = (file: File) => {
-    const isLt10M = file.size / 1024 / 1024 < 10;
-    if (!isLt10M) {
-      ElMessage.error('文件大小不能超过 10MB');
+    const isWithinLimit = file.size <= 20 * 1024 * 1024;
+    if (!isWithinLimit) {
+      ElMessage.error('文件大小不能超过 20MB');
       return false;
     }
     return true;
@@ -776,7 +775,7 @@ export const useChatStore = defineStore('chat', () => {
         const mammoth = await import('mammoth');
         const result = await mammoth.convertToHtml({ arrayBuffer: await blob.arrayBuffer() });
         previewState.value.html = applyHighlight(result.value, highlight);
-      } else if (ext === '.xlsx' || ext === '.xls' || ext === '.xlx') {
+      } else if (ext === '.xlsx' || ext === '.xls') {
         const XLSX = await import('xlsx');
         const workbook = XLSX.read(await blob.arrayBuffer(), { type: 'array' });
         previewState.value.html = applyHighlight(sheetToHtml(XLSX, workbook), highlight);

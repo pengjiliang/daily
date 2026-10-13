@@ -13,6 +13,7 @@
       <el-button type="primary" :icon="Plus" @click="createSet">新建</el-button>
       <el-button v-if="selectedSetId" type="danger" plain :icon="Delete" @click="deleteSet">删除评估集</el-button>
       <el-button v-if="selectedSetId && setDetail?.cases?.length" type="success" :loading="running" :icon="VideoPlay" @click="runEval">运行评估</el-button>
+      <el-button v-if="selectedSetId && setDetail?.cases?.length" :loading="comparing" @click="openCompare">A/B 参数对比</el-button>
     </div>
     <template v-if="setDetail">
       <div class="eval-cases">
@@ -43,6 +44,24 @@
         </div>
         <div v-if="runs.length === 0" class="section-empty">尚无运行记录</div>
       </div>
+      <div v-if="comparison" class="eval-runs">
+        <div class="section-title">A/B 对比（同一评估集）</div>
+        <table class="compare-table">
+          <thead><tr><th>指标</th><th>A</th><th>B</th></tr></thead>
+          <tbody>
+            <tr><td>Recall@k</td><td>{{ percent(comparison.a.run.recallAtK) }}</td><td>{{ percent(comparison.b.run.recallAtK) }}</td></tr>
+            <tr><td>MRR</td><td>{{ comparison.a.run.mrr.toFixed(3) }}</td><td>{{ comparison.b.run.mrr.toFixed(3) }}</td></tr>
+            <tr><td>空答率</td><td>{{ percent(comparison.a.run.emptyRate) }}</td><td>{{ percent(comparison.b.run.emptyRate) }}</td></tr>
+            <tr><td>引用准确率</td><td>{{ percent(comparison.a.run.citationAccuracy) }}</td><td>{{ percent(comparison.b.run.citationAccuracy) }}</td></tr>
+            <tr><td>平均检索耗时</td><td>{{ comparison.a.run.avgRetrieveSec.toFixed(2) }}s</td><td>{{ comparison.b.run.avgRetrieveSec.toFixed(2) }}s</td></tr>
+          </tbody>
+        </table>
+        <div class="compare-actions">
+          <el-button size="small" @click="runDetail = comparison.a">查看 A 明细</el-button>
+          <el-button size="small" @click="runDetail = comparison.b">查看 B 明细</el-button>
+          <span>A: {{ configLabel(comparison.a.run.config) }}</span><span>B: {{ configLabel(comparison.b.run.config) }}</span>
+        </div>
+      </div>
       <div v-if="runDetail" class="eval-result">
         <div class="section-title">运行明细（{{ runDetail.run.caseCount }} 题）</div>
         <div v-for="result in runDetail.results" :key="result.caseId" class="eval-result-row">
@@ -61,6 +80,20 @@
       </div>
     </template>
     <el-empty v-else description="先选择一个评估集或新建一个" :image-size="90" />
+    <el-dialog v-model="compareDialog" title="A/B 检索参数" width="760px">
+      <div class="compare-configs">
+        <div v-for="(config, key) in compareConfigs" :key="key" class="compare-config">
+          <div class="section-title">参数 {{ key.toUpperCase() }}</div>
+          <el-form label-width="110px">
+            <el-form-item label="向量候选 topK"><el-input-number v-model="config.topK" :min="1" :max="50" /></el-form-item>
+            <el-form-item label="关键词候选数"><el-input-number v-model="config.keywordTopK" :min="1" :max="50" /></el-form-item>
+            <el-form-item label="最低相似度"><el-input-number v-model="config.minScore" :min="0" :max="1" :step="0.05" :precision="2" /></el-form-item>
+            <el-form-item label="重排保留数"><el-input-number v-model="config.rerankTopN" :min="1" :max="30" /></el-form-item>
+          </el-form>
+        </div>
+      </div>
+      <template #footer><el-button @click="compareDialog = false">取消</el-button><el-button type="primary" :loading="comparing" @click="compareEval">开始对比</el-button></template>
+    </el-dialog>
   </div>
 </template>
 <script setup lang="ts">
@@ -68,7 +101,8 @@ import { onMounted, ref } from 'vue';
 import { Plus, Delete, VideoPlay } from '@element-plus/icons-vue';
 import { evalApi } from '@/api/eval';
 import { useChatStore } from '@/stores/chat';
-import type { EvalRun, EvalRunView, EvalSet } from '@ai-knowledge-base/shared';
+import type { EvalComparisonView, EvalRun, EvalRunConfig, EvalRunView, EvalSet } from '@ai-knowledge-base/shared';
+import { settingsApi } from '@/api/settings';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 const chatStore = useChatStore();
@@ -79,8 +113,45 @@ const runs = ref<EvalRun[]>([]);
 const runDetail = ref<EvalRunView | null>(null);
 const newSetName = ref('');
 const running = ref(false);
+const comparing = ref(false);
+const compareDialog = ref(false);
+const comparison = ref<EvalComparisonView | null>(null);
+const compareConfigs = ref<{ a: EvalRunConfig; b: EvalRunConfig }>({
+  a: { topK: 8, keywordTopK: 8, minScore: 0.3, rerankTopN: 5 },
+  b: { topK: 8, keywordTopK: 8, minScore: 0.4, rerankTopN: 5 },
+});
 
 const percent = (v: number) => (v * 100).toFixed(1) + '%';
+const configLabel = (c: EvalRunConfig) => `topK=${c.topK}, keywordTopK=${c.keywordTopK}, minScore=${c.minScore}, rerankTopN=${c.rerankTopN}`;
+
+const openCompare = async () => {
+  try {
+    const settings = await settingsApi.getSettings();
+    const current = { topK: settings.topK, keywordTopK: settings.keywordTopK, minScore: settings.minScore, rerankTopN: settings.rerankTopN };
+    compareConfigs.value = { a: { ...current }, b: { ...current, minScore: Math.min(1, Number((current.minScore + 0.1).toFixed(2))) } };
+    compareDialog.value = true;
+  } catch (error) {
+    console.error(error);
+    ElMessage.error('读取当前检索参数失败');
+  }
+};
+
+const compareEval = async () => {
+  if (!selectedSetId.value) return;
+  comparing.value = true;
+  try {
+    comparison.value = await evalApi.compareEval(selectedSetId.value, compareConfigs.value.a, compareConfigs.value.b);
+    compareDialog.value = false;
+    runDetail.value = comparison.value.a;
+    await loadSetDetail(selectedSetId.value);
+    ElMessage.success('A/B 对比完成');
+  } catch (error) {
+    console.error(error);
+    ElMessage.error('A/B 对比失败：' + (error instanceof Error ? error.message : String(error)));
+  } finally {
+    comparing.value = false;
+  }
+};
 
 const loadSets = async () => {
   try {
@@ -197,5 +268,10 @@ onMounted(() => {
 .eval-result-q { font-size: 13px; color: var(--kb-text-primary); margin-bottom: 4px; }
 .eval-result-metrics { display: flex; align-items: center; gap: 8px; }
 .eval-result-sec { font-size: 12px; color: var(--kb-text-secondary); }
+.compare-configs { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.compare-config { min-width: 0; }
+.compare-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.compare-table th, .compare-table td { text-align: left; padding: 8px; border-bottom: 1px solid var(--kb-border-light); }
+.compare-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; font-size: 12px; color: var(--kb-text-secondary); }
 </style>
 

@@ -10,7 +10,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { GraphEntity } from '../entities/graph-entity.entity.js';
 import { GraphRelation } from '../entities/graph-relation.entity.js';
+import { UsageEvent } from '../entities/usage-event.entity.js';
 import { ModelProvider } from './openai-model.provider.js';
+import { UserSettingsService } from '../settings/user-settings.service.js';
+import { modelCostUsd } from './usage-pricing.js';
 
 /** 抽取文本采样上限：超过只取开头一段（控制单次 LLM 调用成本） */
 const EXTRACT_TEXT_LIMIT = 6000;
@@ -39,7 +42,10 @@ export class EntityExtractionService {
     private readonly entityRepository: Repository<GraphEntity>,
     @InjectRepository(GraphRelation)
     private readonly relationRepository: Repository<GraphRelation>,
+    @InjectRepository(UsageEvent)
+    private readonly usageEventsRepository: Repository<UsageEvent>,
     private readonly models: ModelProvider,
+    private readonly userSettings: UserSettingsService,
   ) {}
 
   /** 重建某文档的实体图谱：删除旧数据 → LLM 抽取 → 入库。任何失败仅告警 */
@@ -82,6 +88,22 @@ export class EntityExtractionService {
 
   /** 调用 LLM 抽取三元组，解析失败返回空数组 */
   private async extractTriples(text: string, userId: number): Promise<EntityTriple[]> {
+    const settings = await this.userSettings.getEffectiveSettings(userId);
+    if (settings.dailyTokenLimit || settings.monthlyTokenLimit) {
+      const now = new Date();
+      const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const rows = (await this.usageEventsRepository.query(
+        `SELECT
+           COALESCE(SUM("promptTokens" + "completionTokens") FILTER (WHERE "createdAt" >= $2), 0)::int AS day,
+           COALESCE(SUM("promptTokens" + "completionTokens") FILTER (WHERE "createdAt" >= $3), 0)::int AS month
+         FROM ai_usage_events WHERE "userId" = $1 AND "usageSource" = 'provider'`,
+        [userId, dayStart, monthStart],
+      )) as Array<{ day: number; month: number }>;
+      const row = rows[0] ?? { day: 0, month: 0 };
+      if ((settings.dailyTokenLimit > 0 && row.day >= settings.dailyTokenLimit) ||
+          (settings.monthlyTokenLimit > 0 && row.month >= settings.monthlyTokenLimit)) return [];
+    }
     const chatModel = await this.models.getChatModel(userId);
     const sample = text.slice(0, EXTRACT_TEXT_LIMIT);
     const systemPrompt = [
@@ -91,10 +113,32 @@ export class EntityExtractionService {
       '[{"entityA":"实体名","typeA":"人物","relation":"关系动词短语","entityB":"实体名","typeB":"组织"}]',
       `要求：实体名精简完整、不带多余修饰；关系用动词短语；只抽取文档中明确出现的关系；至少 3 条、最多 ${TRIPLE_LIMIT} 条，宁缺毋滥。`,
     ].join('\n');
+    const startedAt = Date.now();
     const response = await chatModel.invoke([
       { role: 'system', content: systemPrompt },
       { role: 'user', content: `文档内容：\n\n${sample}` },
     ]);
+    const model = settings.chatProvider === 'anthropic' ? settings.anthropic.chatModel : settings.openai.chatModel;
+    const inputTokens = response.usage?.input_tokens;
+    const outputTokens = response.usage?.output_tokens;
+    try {
+      await this.usageEventsRepository.save(this.usageEventsRepository.create({
+        userId,
+        conversationId: null,
+        messageId: null,
+        provider: settings.chatProvider,
+        model,
+        kind: 'extraction',
+        promptTokens: inputTokens ?? 0,
+        completionTokens: outputTokens ?? 0,
+        latencyMs: Date.now() - startedAt,
+        cached: false,
+        usageSource: inputTokens === undefined || outputTokens === undefined ? 'unavailable' : 'provider',
+        costUsd: inputTokens === undefined || outputTokens === undefined ? null : modelCostUsd(model, inputTokens, outputTokens),
+      }));
+    } catch (error) {
+      this.logger.warn(`Failed to record extraction usage: ${String(error)}`);
+    }
     return this.parseTriples(response.text);
   }
 

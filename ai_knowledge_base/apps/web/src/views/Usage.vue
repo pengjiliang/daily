@@ -24,24 +24,32 @@
         <div class="usage-card"><div class="usage-card-label">调用次数</div><div class="usage-card-value">{{ dashboard.total.calls }}</div></div>
         <div class="usage-card"><div class="usage-card-label">缓存命中率</div><div class="usage-card-value">{{ percent(dashboard.cacheHitRate) }}</div></div>
         <div class="usage-card"><div class="usage-card-label">缓存命中数</div><div class="usage-card-value">{{ dashboard.total.cacheHits }}</div></div>
+        <div class="usage-card"><div class="usage-card-label">估算费用（USD）</div><div class="usage-card-value">${{ dashboard.costUsd.toFixed(6) }}</div></div>
+        <div class="usage-card"><div class="usage-card-label">今日配额</div><div class="usage-card-value">{{ quotaText(dashboard.dailyQuota) }}</div></div>
+        <div class="usage-card"><div class="usage-card-label">本月配额</div><div class="usage-card-value">{{ quotaText(dashboard.monthlyQuota) }}</div></div>
       </div>
+      <el-alert v-if="dashboard.unpricedCalls || dashboard.unmeteredCalls || dashboard.estimatedCalls" type="warning" :closable="false" show-icon>
+        <template #title>
+          {{ dashboard.unpricedCalls }} 次调用未配置模型单价；{{ dashboard.unmeteredCalls }} 次调用未返回 Token 用量；{{ dashboard.estimatedCalls }} 条历史记录使用旧版估算 Token。费用根据 AI_MODEL_PRICING 配置估算，不等同于供应商账单。
+        </template>
+      </el-alert>
       <div class="usage-panels">
         <div class="usage-panel">
           <div class="section-title">按天趋势</div>
-          <table class="usage-table"><thead><tr><th>日期</th><th>调用</th><th>输入 Token</th><th>输出 Token</th></tr></thead><tbody>
-            <tr v-for="d in dashboard.daily" :key="d.date"><td>{{ d.date }}</td><td>{{ d.calls }}</td><td>{{ d.promptTokens }}</td><td>{{ d.completionTokens }}</td></tr>
+          <table class="usage-table"><thead><tr><th>日期</th><th>调用</th><th>输入 Token</th><th>输出 Token</th><th>费用 USD</th></tr></thead><tbody>
+            <tr v-for="d in dashboard.daily" :key="d.date"><td>{{ d.date }}</td><td>{{ d.calls }}</td><td>{{ d.promptTokens }}</td><td>{{ d.completionTokens }}</td><td>${{ d.costUsd.toFixed(6) }}</td></tr>
           </tbody></table>
         </div>
         <div class="usage-panel">
           <div class="section-title">按类型排行（哪一步最烧钱）</div>
-          <table class="usage-table"><thead><tr><th>类型</th><th>调用</th><th>合计 Token</th></tr></thead><tbody>
-            <tr v-for="k in dashboard.byKind" :key="k.kind"><td>{{ k.kind }}</td><td>{{ k.calls }}</td><td>{{ k.promptTokens + k.completionTokens }}</td></tr>
+          <table class="usage-table"><thead><tr><th>类型</th><th>调用</th><th>合计 Token</th><th>费用 USD</th></tr></thead><tbody>
+            <tr v-for="k in dashboard.byKind" :key="k.kind"><td>{{ k.kind }}</td><td>{{ k.calls }}</td><td>{{ k.promptTokens + k.completionTokens }}</td><td>${{ k.costUsd.toFixed(6) }}</td></tr>
           </tbody></table>
         </div>
         <div class="usage-panel">
           <div class="section-title">按模型排行</div>
-          <table class="usage-table"><thead><tr><th>模型</th><th>调用</th><th>合计 Token</th></tr></thead><tbody>
-            <tr v-for="m in dashboard.byModel" :key="m.model"><td>{{ m.model }}</td><td>{{ m.calls }}</td><td>{{ m.promptTokens + m.completionTokens }}</td></tr>
+          <table class="usage-table"><thead><tr><th>模型</th><th>调用</th><th>合计 Token</th><th>费用 USD</th></tr></thead><tbody>
+            <tr v-for="m in dashboard.byModel" :key="m.model"><td>{{ m.model }}</td><td>{{ m.calls }}</td><td>{{ m.promptTokens + m.completionTokens }}</td><td>${{ m.costUsd.toFixed(6) }}</td></tr>
           </tbody></table>
         </div>
       </div>
@@ -60,6 +68,7 @@ const dashboard = ref<UsageDashboard | null>(null);
 const range = ref<[string, string] | null>(null);
 
 const percent = (v: number) => (v * 100).toFixed(1) + '%';
+const quotaText = (quota: { limit: number; used: number }) => quota.limit ? `${quota.used} / ${quota.limit}` : `${quota.used} / 不限`;
 
 const loadDashboard = async () => {
   try {

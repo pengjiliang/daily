@@ -5,6 +5,7 @@
  */
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { encryptLegacyApiKeys } from '../settings/secret-crypto.js';
 
 @Injectable()
 export class DatabaseInitializationService implements OnModuleInit {
@@ -17,6 +18,7 @@ export class DatabaseInitializationService implements OnModuleInit {
     // pg_trgm：混合检索的关键词（字面子串）召回依赖的 trigram 扩展
     await this.dataSource.query('CREATE EXTENSION IF NOT EXISTS pg_trgm');
     await this.dataSource.synchronize();
+    await encryptLegacyApiKeys((sql, parameters) => this.dataSource.query(sql, parameters));
     // trigram GIN 索引加速 content ILIKE '%term%' 子串查询（需在表同步之后创建）
     await this.dataSource.query(
       'CREATE INDEX IF NOT EXISTS idx_document_chunks_content_trgm ON document_chunks USING GIN (content gin_trgm_ops)',

@@ -95,6 +95,11 @@
             </el-form-item>
           </template>
 
+          <el-form-item label="对话连接测试">
+            <el-button :loading="chatTesting" @click="testConnection('chat')">测试对话模型</el-button>
+            <div class="field-tip">测试当前表单配置，不会保存；会实际调用模型，可能产生少量费用。</div>
+          </el-form-item>
+
           <el-divider content-position="left">向量模型（Embedding）</el-divider>
           <el-alert
             type="warning"
@@ -117,6 +122,11 @@
               autocomplete="new-password"
               :placeholder="view.embedding.hasApiKey ? '已配置（留空则不修改）' : '请输入 API Key'"
             />
+          </el-form-item>
+
+          <el-form-item label="向量连接测试">
+            <el-button :loading="embeddingTesting" @click="testConnection('embedding')">测试向量模型</el-button>
+            <div class="field-tip">测试当前表单配置，不会保存；会实际调用模型，可能产生少量费用。</div>
           </el-form-item>
 
           <el-divider content-position="left">生成参数</el-divider>
@@ -145,6 +155,15 @@
             <el-input-number v-model="form.rerankTopN" :min="1" :max="20" />
             <div class="field-tip">LLM 重排后最多保留的引用片段数</div>
           </el-form-item>
+          <el-divider content-position="left">可选模型调用配额</el-divider>
+          <el-form-item label="每日 Token 上限">
+            <el-input-number v-model="form.dailyTokenLimit" :min="0" :step="1000" :max="100000000" />
+            <div class="field-tip">达到后暂停改写、重排、外部资料和追问建议；0 表示不限，核心问答继续。</div>
+          </el-form-item>
+          <el-form-item label="每月 Token 上限">
+            <el-input-number v-model="form.monthlyTokenLimit" :min="0" :step="10000" :max="1000000000" />
+            <div class="field-tip">按服务端记录到的真实 Token 统计；0 表示不限。</div>
+          </el-form-item>
         </el-form>
       </el-tab-pane>
     </el-tabs>
@@ -164,6 +183,8 @@ import { settingsApi, type SaveSettingsPayload } from '@/api/settings';
 
 const activeTab = ref('model');
 const saving = ref(false);
+const chatTesting = ref(false);
+const embeddingTesting = ref(false);
 
 /** 设置表单（apiKey 留空表示不修改） */
 const form = reactive({
@@ -176,6 +197,8 @@ const form = reactive({
   keywordTopK: 8,
   minScore: 0.3,
   rerankTopN: 5,
+  dailyTokenLimit: 0,
+  monthlyTokenLimit: 0,
 });
 
 /** 服务端回显视图（用于 apiKey 是否已配置的占位提示） */
@@ -189,6 +212,8 @@ const view = reactive<AiSettingsView>({
   keywordTopK: 8,
   minScore: 0.3,
   rerankTopN: 5,
+  dailyTokenLimit: 0,
+  monthlyTokenLimit: 0,
   reindex: { status: 'idle', progress: null },
 });
 
@@ -210,6 +235,8 @@ const applyView = (data: AiSettingsView) => {
   view.keywordTopK = data.keywordTopK;
   view.minScore = data.minScore;
   view.rerankTopN = data.rerankTopN;
+  view.dailyTokenLimit = data.dailyTokenLimit;
+  view.monthlyTokenLimit = data.monthlyTokenLimit;
   view.reindex = data.reindex;
 
   form.chatProvider = data.chatProvider;
@@ -224,6 +251,8 @@ const applyView = (data: AiSettingsView) => {
   form.keywordTopK = data.keywordTopK;
   form.minScore = data.minScore;
   form.rerankTopN = data.rerankTopN;
+  form.dailyTokenLimit = data.dailyTokenLimit;
+  form.monthlyTokenLimit = data.monthlyTokenLimit;
 
   reindex.value = {
     status: data.reindex.status,
@@ -244,6 +273,8 @@ const buildPayload = (): SaveSettingsPayload => ({
   keywordTopK: form.keywordTopK,
   minScore: form.minScore,
   rerankTopN: form.rerankTopN,
+  dailyTokenLimit: form.dailyTokenLimit,
+  monthlyTokenLimit: form.monthlyTokenLimit,
   openai: { baseUrl: form.openai.baseUrl, model: form.openai.model, apiKey: form.openai.apiKey || undefined },
   anthropic: {
     baseUrl: form.anthropic.baseUrl,
@@ -270,6 +301,27 @@ const saveAll = async () => {
     ElMessage.error('保存失败');
   } finally {
     saving.value = false;
+  }
+};
+
+const testConnection = async (kind: 'chat' | 'embedding') => {
+  const loading = kind === 'chat' ? chatTesting : embeddingTesting;
+  loading.value = true;
+  try {
+    const payload = kind === 'chat'
+      ? {
+          kind,
+          chatProvider: form.chatProvider,
+          temperature: form.temperature,
+          ...(form.chatProvider === 'openai' ? { openai: form.openai } : { anthropic: form.anthropic }),
+        }
+      : { kind, embedding: form.embedding };
+    const result = await settingsApi.testConnection(payload);
+    ElMessage.success(result.message);
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '连接失败，请检查 API 地址、模型名和 API Key');
+  } finally {
+    loading.value = false;
   }
 };
 

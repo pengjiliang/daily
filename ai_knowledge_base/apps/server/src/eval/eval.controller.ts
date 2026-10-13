@@ -20,6 +20,7 @@ import type { EvalRun as EvalRunRecord, EvalSet, EvalCase as EvalCaseView } from
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 import { EvalService } from './eval.service.js';
+import { EvalCompareDto } from './dto/eval-compare.dto.js';
 
 type AuthenticatedRequest = Request & { user: AuthenticatedUser };
 
@@ -86,6 +87,16 @@ export class EvalController {
   @Post('sets/:id/run')
   runEval(@Req() request: AuthenticatedRequest, @Param('id', ParseIntPipe) id: number) {
     return this.evalService.runEval(request.user.userId, id);
+  }
+
+  /** POST /eval/sets/:id/compare：同一评估集依次运行两套参数并返回 A/B 结果。 */
+  @Post('sets/:id/compare')
+  compareEval(
+    @Req() request: AuthenticatedRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: EvalCompareDto,
+  ) {
+    return this.evalService.compareEval(request.user.userId, id, body.a, body.b);
   }
 
   /** GET /eval/runs?setId=：某评估集的历史运行列表 */

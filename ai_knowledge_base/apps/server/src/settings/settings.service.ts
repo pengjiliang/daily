@@ -4,14 +4,16 @@
  * PUT：保存用户配置；若向量模型（baseUrl/model）发生变化，标记重建索引（pending）
  *      并在后台逐文件通知 ai-service 重索引，进度实时写回 reindexProgress 供前端轮询。
  */
-import { Injectable, Logger } from '@nestjs/common';
+import { BadGatewayException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
+import { encryptLegacyApiKeys } from './secret-crypto.js';
 import type { AiSettingsView, ChatProvider, ReindexProgress, ReindexStatus } from '@ai-knowledge-base/shared';
 import { UploadService } from '../upload/upload.service.js';
 import { AiSettings } from './ai-settings.entity.js';
-import { SaveSettingsDto } from './dto/save-settings.dto.js';
+import { SaveSettingsDto, TestConnectionDto } from './dto/save-settings.dto.js';
+import { aiServiceHeaders } from '../ai/ai-service-headers.js';
 
 /** .env 层默认设置（与 ai-service 的 configuration.ts 保持一致） */
 interface EnvDefaults {
@@ -27,7 +29,7 @@ interface EnvDefaults {
 }
 
 @Injectable()
-export class SettingsService {
+export class SettingsService implements OnModuleInit {
   private readonly logger = new Logger(SettingsService.name);
 
   constructor(
@@ -35,7 +37,12 @@ export class SettingsService {
     private readonly settingsRepository: Repository<AiSettings>,
     private readonly configService: ConfigService,
     private readonly uploadService: UploadService,
+    private readonly dataSource: DataSource,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    await encryptLegacyApiKeys((sql, parameters) => this.dataSource.query(sql, parameters));
+  }
 
   /** GET：合并用户行与 .env 默认值，返回回显视图（不返回 apiKey 明文） */
   async getSettings(userId: number): Promise<AiSettingsView> {
@@ -75,6 +82,8 @@ export class SettingsService {
     if (dto.rerankTopN !== undefined) {
       row.rerankTopN = dto.rerankTopN;
     }
+    if (dto.dailyTokenLimit !== undefined) row.dailyTokenLimit = dto.dailyTokenLimit;
+    if (dto.monthlyTokenLimit !== undefined) row.monthlyTokenLimit = dto.monthlyTokenLimit;
 
     if (dto.openai) {
       if (dto.openai.baseUrl !== undefined) {
@@ -119,6 +128,32 @@ export class SettingsService {
     }
 
     return this.resolveView(row);
+  }
+
+  /** 调用 ai-service 验证未保存的模型配置；API Key 不写入数据库，也不回显。 */
+  async testConnection(userId: number, dto: TestConnectionDto): Promise<{ message: string }> {
+    const aiServiceUrl = this.configService.get<string>('aiService.url', 'http://127.0.0.1:3001');
+    const { kind, ...settings } = dto;
+    let response: Response;
+    try {
+      response = await fetch(`${aiServiceUrl}/ai/test-connection`, {
+        method: 'POST',
+        headers: aiServiceHeaders(this.configService),
+        body: JSON.stringify({ ...settings, kind, userId }),
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch {
+      throw new BadGatewayException('无法连接 AI 服务，请稍后重试');
+    }
+    const result = (await response.json().catch(() => ({}))) as { message?: string | string[] };
+    if (!response.ok) {
+      const message = Array.isArray(result.message) ? result.message.join('；') : result.message;
+      const safeMessage = [dto.openai?.apiKey, dto.anthropic?.apiKey, dto.embedding?.apiKey]
+        .filter((key): key is string => Boolean(key?.trim()))
+        .reduce((text, key) => text.replaceAll(key, '[已隐藏]'), message || '连接失败，请检查 API 地址、模型名和 API Key');
+      throw new BadGatewayException(safeMessage);
+    }
+    return { message: '连接成功，配置有效' };
   }
 
   /**
@@ -234,6 +269,8 @@ export class SettingsService {
       keywordTopK: row?.keywordTopK ?? env.keywordTopK,
       minScore: row?.minScore ?? env.minScore,
       rerankTopN: row?.rerankTopN ?? env.rerankTopN,
+      dailyTokenLimit: row?.dailyTokenLimit ?? 0,
+      monthlyTokenLimit: row?.monthlyTokenLimit ?? 0,
       reindex: {
         status: (row?.reindexStatus ?? 'idle') as ReindexStatus,
         progress: row?.reindexProgress ?? null,

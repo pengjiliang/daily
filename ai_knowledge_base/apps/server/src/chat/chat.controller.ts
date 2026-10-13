@@ -118,6 +118,8 @@ export class ChatController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CreateMessageDto,
   ): Promise<void> {
+    await this.chatService.assertOwnedConversation(id, req.user.userId);
+
     // SSE 响应头：no-transform/X-Accel-Buffering 防止中间代理缓冲导致流式失效
     response.set({
       'Content-Type': 'text/event-stream; charset=utf-8',

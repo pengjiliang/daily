@@ -40,6 +40,12 @@ export class UsageEvent {
   @Column({ type: 'boolean', default: false })
   cached: boolean;
 
+  @Column({ type: 'varchar', default: 'legacy_estimate' })
+  usageSource: 'provider' | 'unavailable' | 'legacy_estimate';
+
+  @Column({ type: 'numeric', precision: 14, scale: 8, nullable: true })
+  costUsd: number | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }

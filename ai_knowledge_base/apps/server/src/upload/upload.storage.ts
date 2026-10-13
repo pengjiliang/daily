@@ -22,7 +22,6 @@ const documentExtensions = new Set([
   '.pdf',
   '.txt',
   '.xls',
-  '.xlx',
   '.xlsx',
   '.csv',
   '.md',

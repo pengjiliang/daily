@@ -72,6 +72,16 @@ export class SaveSettingsDto {
   rerankTopN?: number;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  dailyTokenLimit?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  monthlyTokenLimit?: number;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => ProviderSettingsDto)
   openai?: ProviderSettingsDto;
@@ -85,4 +95,10 @@ export class SaveSettingsDto {
   @ValidateNested()
   @Type(() => ProviderSettingsDto)
   embedding?: ProviderSettingsDto;
+}
+
+/** POST /settings/test-connection：测试当前表单配置，不保存。 */
+export class TestConnectionDto extends SaveSettingsDto {
+  @IsIn(['chat', 'embedding'])
+  kind: 'chat' | 'embedding';
 }

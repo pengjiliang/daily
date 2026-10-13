@@ -112,6 +112,8 @@ export interface AiSettingsView {
   keywordTopK: number;
   minScore: number;
   rerankTopN: number;
+  dailyTokenLimit: number;
+  monthlyTokenLimit: number;
   reindex: {
     status: ReindexStatus;
     progress: ReindexProgress | null;
@@ -319,6 +321,12 @@ export interface EvalRunView {
   results: EvalCaseResult[];
 }
 
+/** 同一问题集的两套检索参数 A/B 对比结果。 */
+export interface EvalComparisonView {
+  a: EvalRunView;
+  b: EvalRunView;
+}
+
 // ==================== 成本与用量看板（亮点 5）====================
 
 /** 用量事件类型：对应问答链路各模型调用点 */
@@ -331,6 +339,7 @@ export type UsageKind =
   | 'suggestions'
   | 'embedding'
   | 'extraction'
+  | 'connection_test'
   | 'cache_hit';
 
 /** 单条用量事件（ai_usage_events 表） */
@@ -348,6 +357,8 @@ export interface UsageEvent {
   latencyMs: number;
   /** 是否缓存命中（kind=cache_hit 时为 true） */
   cached: boolean;
+  usageSource: 'provider' | 'unavailable' | 'legacy_estimate';
+  costUsd: number | null;
   createdAt: string;
 }
 
@@ -357,6 +368,7 @@ export interface UsageDailyPoint {
   promptTokens: number;
   completionTokens: number;
   calls: number;
+  costUsd: number;
 }
 
 /** 成本与用量看板聚合载荷 */
@@ -365,12 +377,18 @@ export interface UsageDashboard {
   total: { promptTokens: number; completionTokens: number; calls: number; cacheHits: number };
   /** 缓存命中率（0~1） */
   cacheHitRate: number;
+  costUsd: number;
+  unpricedCalls: number;
+  unmeteredCalls: number;
+  dailyQuota: { limit: number; used: number };
+  monthlyQuota: { limit: number; used: number };
+  estimatedCalls: number;
   /** 按天趋势 */
   daily: UsageDailyPoint[];
   /** 按类型（kind）聚合 */
-  byKind: { kind: UsageKind | string; calls: number; promptTokens: number; completionTokens: number }[];
+  byKind: { kind: UsageKind | string; calls: number; promptTokens: number; completionTokens: number; costUsd: number }[];
   /** 按模型聚合 */
-  byModel: { model: string; calls: number; promptTokens: number; completionTokens: number }[];
+  byModel: { model: string; calls: number; promptTokens: number; completionTokens: number; costUsd: number }[];
 }
 
 // ==================== 反馈闭环（亮点 4）====================

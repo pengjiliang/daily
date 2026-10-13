@@ -4,7 +4,8 @@
  * AskDto：问答请求体（一次性 / SSE 流式共用）；
  * HistoryMessage 为跨端共享类型，定义在 packages/shared。
  */
-import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import type { HistoryMessage } from '@ai-knowledge-base/shared';
 
 // 跨端共享类型：定义见 packages/shared，此处仅转发
@@ -56,4 +57,86 @@ export class AskDto {
   @IsOptional()
   @IsBoolean()
   graphEnabled?: boolean;
+}
+
+/** 评估 A/B 检索参数覆盖值（只用于内部检索调试请求）。 */
+export class RetrieveConfigDto {
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  topK: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  keywordTopK: number;
+
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  minScore: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(30)
+  rerankTopN: number;
+}
+
+export class RetrieveDebugDto extends AskDto {
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RetrieveConfigDto)
+  config?: RetrieveConfigDto;
+}
+
+/** 单个模型配置（连接测试时可选，缺省沿用该用户已保存/环境默认配置）。 */
+export class ModelConnectionConfigDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  baseUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  apiKey?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  model?: string;
+}
+
+/** 仅供 server 内部调用的连接测试参数；userId 由 server 从登录态注入。 */
+export class TestConnectionDto {
+  @IsInt()
+  userId: number;
+
+  @IsIn(['chat', 'embedding'])
+  kind: 'chat' | 'embedding';
+
+  @IsOptional()
+  @IsIn(['openai', 'anthropic'])
+  chatProvider?: 'openai' | 'anthropic';
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(2)
+  temperature?: number;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ModelConnectionConfigDto)
+  openai?: ModelConnectionConfigDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ModelConnectionConfigDto)
+  anthropic?: ModelConnectionConfigDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ModelConnectionConfigDto)
+  embedding?: ModelConnectionConfigDto;
 }

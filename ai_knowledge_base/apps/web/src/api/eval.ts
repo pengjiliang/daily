@@ -2,7 +2,7 @@
  * 评估看板接口（亮点 3：RAG 评估与回归看板）。
  */
 import request from './request';
-import type { EvalCase, EvalRun, EvalRunView, EvalSet } from '@ai-knowledge-base/shared';
+import type { EvalCase, EvalComparisonView, EvalRun, EvalRunConfig, EvalRunView, EvalSet } from '@ai-knowledge-base/shared';
 
 export const evalApi = {
   listSets() {
@@ -34,6 +34,9 @@ export const evalApi = {
   },
   runEval(setId: number) {
     return request.post<EvalRunView>('/eval/sets/' + setId + '/run');
+  },
+  compareEval(setId: number, a: EvalRunConfig, b: EvalRunConfig) {
+    return request.post<EvalComparisonView>('/eval/sets/' + setId + '/compare', { a, b });
   },
   listRuns(setId: number) {
     return request.get<EvalRun[]>('/eval/runs', { params: { setId } });

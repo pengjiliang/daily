@@ -22,6 +22,8 @@ export interface EffectiveSettings {
   keywordTopK: number;
   minScore: number;
   rerankTopN: number;
+  dailyTokenLimit: number;
+  monthlyTokenLimit: number;
 }
 
 @Injectable()
@@ -58,6 +60,8 @@ export class UserSettingsService {
       keywordTopK: row?.keywordTopK ?? env.ai.keywordTopK,
       minScore: row?.minScore ?? env.ai.minScore,
       rerankTopN: row?.rerankTopN ?? env.ai.rerankTopN,
+      dailyTokenLimit: row?.dailyTokenLimit ?? 0,
+      monthlyTokenLimit: row?.monthlyTokenLimit ?? 0,
     };
   }
 

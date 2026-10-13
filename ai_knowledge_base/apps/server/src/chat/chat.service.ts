@@ -56,6 +56,11 @@ export class ChatService {
     return this.conversationsRepository.save(this.conversationsRepository.create({ userId }));
   }
 
+  /** 校验会话归属，供 SSE 控制器在发送响应头前调用。 */
+  async assertOwnedConversation(id: number, userId: number): Promise<void> {
+    await this.findOwnedConversation(id, userId);
+  }
+
   /** 当前用户的会话列表（按最近更新时间倒序），每条附带主题描述 title：手动重命名优先，否则取首条用户消息前 20 字 */
   async listConversations(userId: number): Promise<(Conversation & { title: string })[]> {
     const conversations = await this.conversationsRepository.find({

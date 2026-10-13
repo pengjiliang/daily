@@ -6,6 +6,7 @@
  */
 import { Column, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import type { ChatProvider, ReindexProgress, ReindexStatus } from '@ai-knowledge-base/shared';
+import { secretTransformer } from './secret-crypto.js';
 
 @Entity('ai_settings')
 export class AiSettings {
@@ -24,7 +25,7 @@ export class AiSettings {
   @Column({ type: 'varchar', nullable: true })
   openaiBaseUrl: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ type: 'varchar', nullable: true, transformer: secretTransformer })
   openaiApiKey: string | null;
 
   @Column({ type: 'varchar', nullable: true })
@@ -34,7 +35,7 @@ export class AiSettings {
   @Column({ type: 'varchar', nullable: true })
   anthropicBaseUrl: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ type: 'varchar', nullable: true, transformer: secretTransformer })
   anthropicApiKey: string | null;
 
   @Column({ type: 'varchar', nullable: true })
@@ -44,7 +45,7 @@ export class AiSettings {
   @Column({ type: 'varchar', nullable: true })
   embeddingBaseUrl: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ type: 'varchar', nullable: true, transformer: secretTransformer })
   embeddingApiKey: string | null;
 
   @Column({ type: 'varchar', nullable: true })
@@ -69,6 +70,12 @@ export class AiSettings {
   /** 重排后保留片段数 */
   @Column({ type: 'int', default: 5 })
   rerankTopN: number;
+
+  @Column({ type: 'int', default: 0 })
+  dailyTokenLimit: number;
+
+  @Column({ type: 'int', default: 0 })
+  monthlyTokenLimit: number;
 
   /** 重建索引状态：idle/pending/running/done/failed */
   @Column({ type: 'varchar', default: 'idle' })
