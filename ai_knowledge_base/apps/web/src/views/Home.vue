@@ -29,6 +29,15 @@
       <el-main v-else-if="uiStore.mainView === 'settings'" class="content-panel">
         <SettingsPanel />
       </el-main>
+      <el-main v-else-if="uiStore.mainView === 'eval'" class="content-panel">
+        <EvalPanel />
+      </el-main>
+      <el-main v-else-if="uiStore.mainView === 'usage'" class="content-panel">
+        <UsagePanel />
+      </el-main>
+      <el-main v-else-if="uiStore.mainView === 'feedback'" class="content-panel">
+        <FeedbackPanel />
+      </el-main>
     </el-container>
 
     <!-- 删除确认对话框（文档/文件夹/会话共用） -->
@@ -151,6 +160,9 @@ import StatsPanel from '@/views/Stats.vue';
 import GraphPanel from '@/views/Graph.vue';
 import DebugPanel from '@/views/Debug.vue';
 import SettingsPanel from '@/views/Settings.vue';
+import EvalPanel from '@/views/Eval.vue';
+import UsagePanel from '@/views/Usage.vue';
+import FeedbackPanel from '@/views/Feedback.vue';
 import { useChatStore } from '@/stores/chat';
 import { useUiStore } from '@/stores/ui';
 

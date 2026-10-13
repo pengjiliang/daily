@@ -9,6 +9,7 @@ import { AiSettings } from '../entities/ai-settings.entity.js';
 import { GraphEntity } from '../entities/graph-entity.entity.js';
 import { GraphRelation } from '../entities/graph-relation.entity.js';
 import { SemanticCache } from '../entities/semantic-cache.entity.js';
+import { UsageEvent } from '../entities/usage-event.entity.js';
 import { UserSettingsService } from '../settings/user-settings.service.js';
 import { AIController } from './ai.controller.js';
 import { AskService } from './ask.service.js';
@@ -18,7 +19,7 @@ import { ModelProvider } from './openai-model.provider.js';
 import { InternalTokenGuard } from '../auth/internal-token.guard.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([DocumentChunk, AiSettings, SemanticCache, GraphEntity, GraphRelation])],
+  imports: [TypeOrmModule.forFeature([DocumentChunk, AiSettings, SemanticCache, GraphEntity, GraphRelation, UsageEvent])],
   controllers: [AIController],
   providers: [
     ModelProvider,

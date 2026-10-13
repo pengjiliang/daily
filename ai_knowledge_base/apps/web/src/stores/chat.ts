@@ -508,7 +508,9 @@ export const useChatStore = defineStore('chat', () => {
     try {
       await uploadApi.uploadDocument(options.file);
       ElMessage.success('上传成功，正在索引文档');
-      loadDocuments();
+      await loadDocuments();
+      // 亮点 1：上传后轮询索引状态，直到没有 pending/running 为止
+      pollIndexStatus();
     } catch (error) {
       console.error(error);
       ElMessage.error('上传失败');
@@ -539,7 +541,8 @@ export const useChatStore = defineStore('chat', () => {
       await uploadApi.importTextDocument(title, content);
       ElMessage.success('导入成功，正在索引文档');
       pasteDialogVisible.value = false;
-      loadDocuments();
+      await loadDocuments();
+      pollIndexStatus();
     } catch (error) {
       console.error(error);
       ElMessage.error('导入失败');
@@ -645,8 +648,46 @@ export const useChatStore = defineStore('chat', () => {
     };
     await Promise.all(Array.from({ length: Math.min(FOLDER_UPLOAD_CONCURRENCY, toUpload.length) }, () => worker()));
     uploadingFolder.value = false;
-    loadDocuments();
+    await loadDocuments();
+    pollIndexStatus();
     ElMessage.success(`文件夹上传完成：成功 ${success} 个，跳过 ${skipped} 个，失败 ${failed} 个`);
+  };
+
+  /**
+   * 亮点 1：上传后轮询文档列表，实时展示索引状态变化（pending/running → done/failed）。
+   * 每 3s 刷新一次，直到没有 pending/running 的文档或超过 2 分钟上限。
+   */
+  let indexPollTimer: ReturnType<typeof setInterval> | null = null;
+  const pollIndexStatus = () => {
+    if (indexPollTimer) clearInterval(indexPollTimer);
+    let elapsed = 0;
+    indexPollTimer = setInterval(async () => {
+      elapsed += 3000;
+      const hasActive = documents.value.some(
+        (doc) => doc.indexStatus === 'pending' || doc.indexStatus === 'running',
+      );
+      if (!hasActive || elapsed >= 120000) {
+        if (indexPollTimer) {
+          clearInterval(indexPollTimer);
+          indexPollTimer = null;
+        }
+        return;
+      }
+      await loadDocuments();
+    }, 3000);
+  };
+
+  /** 手动重试索引失败的文档（亮点 1 自愈）：成功后刷新列表并继续轮询 */
+  const retryDocumentIndex = async (doc: UploadDocument) => {
+    try {
+      await uploadApi.reindexDocument(doc.id);
+      ElMessage.success('已重新提交索引');
+      await loadDocuments();
+      pollIndexStatus();
+    } catch (error) {
+      console.error(error);
+      ElMessage.error('重试索引失败');
+    }
   };
 
   /** 回退方案（webkitdirectory）：webkitRelativePath 缺失时 folderName 为空（按单文件上传） */
@@ -925,6 +966,7 @@ export const useChatStore = defineStore('chat', () => {
     handleUpload,
     openPasteDialog,
     importText,
+    retryDocumentIndex,
     pickFolderWithPicker,
     uploadFolderFiles,
     handleFolderChange,

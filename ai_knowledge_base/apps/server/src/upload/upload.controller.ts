@@ -112,6 +112,12 @@ export class UploadController {
     return this.uploadService.renameDocument(id, request.user.userId, body.originalName);
   }
 
+  /** POST /upload/document/:id/reindex：手动重试索引失败的文档（仅所有者，重置 pending 后重跑流水线） */
+  @Post('document/:id/reindex')
+  async reindexDocument(@Req() request: AuthenticatedRequest, @Param('id', ParseIntPipe) id: number) {
+    return this.uploadService.retryIndexDocument(id, request.user.userId);
+  }
+
   /** DELETE /upload/document/:id：删本地文件 + 删库记录 + 通知 ai-service 清向量分块 */
   @Delete('document/:id')
   async deleteDocument(@Req() request: AuthenticatedRequest, @Param('id', ParseIntPipe) id: number) {

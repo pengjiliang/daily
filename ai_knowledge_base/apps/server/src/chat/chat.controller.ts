@@ -25,6 +25,7 @@ import { Conversation } from './conversation.entity.js';
 import { CreateMessageDto } from './dto/create-message.dto.js';
 import { RetrieveDebugDto } from './dto/retrieve-debug.dto.js';
 import { Message } from './message.entity.js';
+import type { FeedbackReason } from '@ai-knowledge-base/shared';
 
 /** 带登录用户信息的请求类型（request.user 由 JWT 守卫注入） */
 type AuthenticatedRequest = Request & { user: AuthenticatedUser };
@@ -85,13 +86,24 @@ export class ChatController {
   async setMessageFeedback(
     @Req() request: AuthenticatedRequest,
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { feedback?: 'like' | 'dislike' | null },
+    @Body() body: { feedback?: 'like' | 'dislike' | null; reason?: string | null; sourceIndex?: number | null },
   ): Promise<Message> {
     const feedback = body.feedback ?? null;
     if (feedback !== null && feedback !== 'like' && feedback !== 'dislike') {
       throw new BadRequestException('无效的反馈类型');
     }
-    return this.chatService.setMessageFeedback(id, request.user.userId, feedback);
+    const reason = this.isFeedbackReason(body.reason) ? body.reason : null;
+    return this.chatService.setMessageFeedback(id, request.user.userId, feedback, reason, body.sourceIndex ?? null);
+  }
+
+  private isFeedbackReason(value: unknown): value is FeedbackReason {
+    return (
+      value === 'irrelevant_sources' ||
+      value === 'incomplete_answer' ||
+      value === 'kb_not_used' ||
+      value === 'off_topic' ||
+      value === 'other'
+    );
   }
 
   /**

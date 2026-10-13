@@ -3,6 +3,7 @@
  * ai-service 的 document_chunks 通过 uploadFileId 关联到本表（两个服务共享同一个库）。
  */
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import type { IndexErrorKind, IndexStatus } from '@ai-knowledge-base/shared';
 
 @Entity('upload_files')
 export class UploadFile {
@@ -38,6 +39,38 @@ export class UploadFile {
   /** 上传者用户 ID，所有访问都校验归属 */
   @Column()
   uploaderId: number;
+
+  /** 索引状态：pending 排队中 / running 索引中 / done 成功 / failed 失败 / skipped 跳过 */
+  @Column({ type: 'varchar', default: 'pending' })
+  indexStatus: IndexStatus;
+
+  /** 成功索引的分块数 */
+  @Column({ type: 'int', nullable: true })
+  chunkCount: number | null;
+
+  /** 索引完成时间 */
+  @Column({ type: 'timestamptz', nullable: true })
+  indexedAt: Date | null;
+
+  /** 索引失败原因（仅 failed/skipped 有值） */
+  @Column({ type: 'text', nullable: true })
+  indexError: string | null;
+
+  /** 失败原因分类（供前端提示） */
+  @Column({ type: 'varchar', nullable: true })
+  errorKind: IndexErrorKind | null;
+
+  /** 已尝试次数 */
+  @Column({ type: 'int', default: 0 })
+  indexAttempts: number;
+
+  /** 索引所用向量模型（done 后有值） */
+  @Column({ type: 'varchar', nullable: true })
+  embeddingModel: string | null;
+
+  /** 向量维度（done 后有值） */
+  @Column({ type: 'int', nullable: true })
+  embeddingDim: number | null;
 
   @CreateDateColumn()
   createdAt: Date;

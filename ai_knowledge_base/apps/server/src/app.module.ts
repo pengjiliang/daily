@@ -18,6 +18,9 @@ import { UsersModule } from './users/users.module.js';
 import { UploadModule } from './upload/upload.module.js';
 import { ChatModule } from './chat/chat.module.js';
 import { ShareModule } from './share/share.module.js';
+import { EvalModule } from './eval/eval.module.js';
+import { UsageModule } from './usage/usage.module.js';
+import { FeedbackModule } from './feedback/feedback.module.js';
 
 @Module({
   imports: [
@@ -52,6 +55,9 @@ import { ShareModule } from './share/share.module.js';
     SettingsModule,
     StatsModule,
     ShareModule,
+    EvalModule,
+    UsageModule,
+    FeedbackModule,
   ],
   controllers: [AppController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

@@ -42,6 +42,10 @@ export interface IndexDocumentRequest {
 export interface IndexDocumentResult {
   uploadFileId: number;
   chunks: number;
+  /** 本次索引所用向量模型（写回 upload_files 供状态展示） */
+  embeddingModel?: string;
+  /** 向量维度 */
+  embeddingDim?: number;
 }
 
 @Injectable()
@@ -85,6 +89,7 @@ export class DocumentIndexService {
     // 使用该用户配置的向量模型（设置页可改，改后触发重建索引）
     const embeddingsModel = await this.models.getEmbeddings(request.uploaderId);
     const settings = await this.userSettings.getEffectiveSettings(request.uploaderId);
+    const embeddingModel = settings.embedding.model;
 
     // Batch embeddings to respect doubao-embedding limit per request
     const embeddings: number[][] = [];
@@ -93,6 +98,7 @@ export class DocumentIndexService {
       const batchEmbeddings = await embeddingsModel.embedDocuments(batch);
       embeddings.push(...batchEmbeddings);
     }
+    const embeddingDim = embeddings[0]?.length ?? 0;
 
     // 写库前校验文档仍存在：索引是后台任务（OCR/embedding 耗时较长），期间用户可能已删除该文档。
     // 若 upload_files 中已无此记录，说明文档已删除，放弃写回，避免残留孤儿分块/实体。
@@ -128,7 +134,7 @@ export class DocumentIndexService {
     });
 
     this.logger.log(`Indexed ${chunks.length} chunks for upload file ${request.uploadFileId}`);
-    return { uploadFileId: request.uploadFileId, chunks: chunks.length };
+    return { uploadFileId: request.uploadFileId, chunks: chunks.length, embeddingModel, embeddingDim };
   }
 
   /** 删除某上传文件的全部向量分块（文档删除时由 server 调用，避免孤儿分块残留被检索命中） */

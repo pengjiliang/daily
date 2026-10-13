@@ -25,6 +25,10 @@ export interface Message {
   sources?: Source[] | null;
   /** 用户对 AI 回答的反馈：like / dislike，未评价为 null */
   feedback?: 'like' | 'dislike' | null;
+  /** 点踩原因（亮点 4 反馈闭环）：引用无关/答案不全/未用知识库/答非所问/其他 */
+  feedbackReason?: string | null;
+  /** 点赞时记录"哪条引用有用"：知识库来源序号（1 起） */
+  feedbackSourceIndex?: number | null;
   createdAt: string;
   /** 仅前端使用：AI 思考中占位 */
   loading?: boolean;
@@ -82,8 +86,8 @@ export const chatApi = {
   },
 
   /** 设置消息反馈（点赞/点踩/取消）：再次点击同一项即取消 */
-  setMessageFeedback(messageId: number, feedback: 'like' | 'dislike' | null) {
-    return request.patch<Message>(`/chat/messages/${messageId}/feedback`, { feedback });
+  setMessageFeedback(messageId: number, feedback: 'like' | 'dislike' | null, reason?: string, sourceIndex?: number) {
+	return request.patch<Message>(`/chat/messages/${messageId}/feedback`, { feedback, reason, sourceIndex });
   },
 
   /**

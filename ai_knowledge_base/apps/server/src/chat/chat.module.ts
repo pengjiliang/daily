@@ -8,10 +8,12 @@ import { ChatController } from './chat.controller.js';
 import { ChatService } from './chat.service.js';
 import { Conversation } from './conversation.entity.js';
 import { Message } from './message.entity.js';
+import { EvalModule } from '../eval/eval.module.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Conversation, Message])],
+  imports: [TypeOrmModule.forFeature([Conversation, Message]), EvalModule],
   controllers: [ChatController],
   providers: [ChatService],
+  exports: [ChatService],
 })
 export class ChatModule {}

@@ -56,6 +56,36 @@ export type ChatProvider = 'openai' | 'anthropic';
 /** 文档索引重建状态：idle 空闲 / pending 待重建 / running 重建中 / done 完成 / failed 失败 */
 export type ReindexStatus = 'idle' | 'pending' | 'running' | 'done' | 'failed';
 
+/** 单文档索引状态：pending 排队中 / running 索引中 / done 成功 / failed 失败 / skipped 跳过 */
+export type IndexStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
+
+/** 索引失败原因分类（供前端提示） */
+export type IndexErrorKind =
+  | 'unsupported_format'
+  | 'empty_content'
+  | 'embedding_failed'
+  | 'document_deleted'
+  | 'unknown';
+
+/** 单文档索引状态视图（文档列表返回项中的索引信息） */
+export interface IndexStatusView {
+  status: IndexStatus;
+  /** 成功索引的分块数 */
+  chunkCount: number | null;
+  /** 索引完成时间 */
+  indexedAt: string | null;
+  /** 索引失败原因（仅 failed/skipped 有值） */
+  indexError: string | null;
+  /** 失败原因分类（仅 failed/skipped 有值） */
+  errorKind: IndexErrorKind | null;
+  /** 已尝试次数 */
+  indexAttempts: number;
+  /** 索引所用向量模型（done 后有值） */
+  embeddingModel: string | null;
+  /** 向量维度（done 后有值） */
+  embeddingDim: number | null;
+}
+
 /** 重建进度：按用户全部文档逐文件重索引的计数与当前文件名 */
 export interface ReindexProgress {
   total: number;
@@ -203,3 +233,163 @@ export interface RetrieveDebugView {
   /** LLM 重排后最终保留（用于回答，similarity 为校准后的真实相似度） */
   kept: (RetrieveLegItem & { similarity: number })[];
 }
+
+// ==================== RAG 评估（亮点 3）====================
+
+/** 评估问题集：一组有标准答案的评测问题（用户私有） */
+export interface EvalSet {
+  id: number;
+  userId: number;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  /** 该问题集包含的用例数（列表聚合） */
+  caseCount?: number;
+}
+
+/** 单条评估用例：问题 + 期望命中的文档 / 关键片段关键词 / 期望答案要点 */
+export interface EvalCase {
+  id: number;
+  evalSetId: number;
+  question: string;
+  /** 期望命中的文档 id（检索 kept 中应出现该文件） */
+  expectedFileId: number | null;
+  /** 期望命中的关键片段关键词（引用片段内容应包含其中至少一个） */
+  expectedKeywords: string[];
+  /** 期望答案要点（备注用） */
+  note: string | null;
+}
+
+/** 一次评估运行的参数快照（用于 A/B 对比不同检索参数） */
+export interface EvalRunConfig {
+  topK: number;
+  keywordTopK: number;
+  minScore: number;
+  rerankTopN: number;
+}
+
+/** 一次评估运行：运行参数快照 + 聚合指标（RAG 回归看板核心数据） */
+export interface EvalRun {
+  id: number;
+  evalSetId: number;
+  config: EvalRunConfig;
+  caseCount: number;
+  /** 期望文档进 kept 的用例占比（0~1） */
+  recallAtK: number;
+  /** 平均倒数排名（期望文档在 kept 中的名次倒数，未命中记 0） */
+  mrr: number;
+  /** 空答率：检索 kept 为空的用例占比（0~1） */
+  emptyRate: number;
+  /** 引用准确率：kept 片段内容命中任一期望关键词的用例占比（0~1） */
+  citationAccuracy: number;
+  /** 平均检索耗时（秒） */
+  avgRetrieveSec: number;
+  /** 平均生成耗时（秒） */
+  avgAnswerSec: number;
+  createdAt: string;
+}
+
+/** 单条用例的评估结果（逐题明细） */
+export interface EvalCaseResult {
+  caseId: number;
+  question: string;
+  expectedFileId: number | null;
+  expectedKeywords: string[];
+  /** 期望文档是否进入 kept */
+  hitExpectedFile: boolean;
+  /** 期望文档在 kept 中的名次（1 起，未命中为 null） */
+  expectedFileRank: number | null;
+  /** 该题对 MRR 的贡献（1/rank 或 0） */
+  mrrContribution: number;
+  /** 是否空答（kept 为空） */
+  empty: boolean;
+  /** 引用是否命中任一期望关键词 */
+  citationHit: boolean;
+  /** 检索耗时（秒） */
+  retrieveSec: number;
+  /** 生成耗时（秒） */
+  answerSec: number;
+  /** 本次检索 kept 片段（供逐题排查） */
+  kept: (RetrieveLegItem & { similarity: number })[];
+}
+
+/** 评估运行 + 逐题明细（POST run / GET run 详情返回） */
+export interface EvalRunView {
+  run: EvalRun;
+  results: EvalCaseResult[];
+}
+
+// ==================== 成本与用量看板（亮点 5）====================
+
+/** 用量事件类型：对应问答链路各模型调用点 */
+export type UsageKind =
+  | 'contextualize'
+  | 'rewrite'
+  | 'rerank'
+  | 'answer'
+  | 'external'
+  | 'suggestions'
+  | 'embedding'
+  | 'extraction'
+  | 'cache_hit';
+
+/** 单条用量事件（ai_usage_events 表） */
+export interface UsageEvent {
+  id: number;
+  userId: number;
+  conversationId: number | null;
+  messageId: number | null;
+  provider: string;
+  model: string;
+  kind: UsageKind;
+  promptTokens: number;
+  completionTokens: number;
+  /** 调用耗时 ms */
+  latencyMs: number;
+  /** 是否缓存命中（kind=cache_hit 时为 true） */
+  cached: boolean;
+  createdAt: string;
+}
+
+/** 按天聚合的用量点（趋势图） */
+export interface UsageDailyPoint {
+  date: string;
+  promptTokens: number;
+  completionTokens: number;
+  calls: number;
+}
+
+/** 成本与用量看板聚合载荷 */
+export interface UsageDashboard {
+  /** 时间范围内总 token 与调用数 */
+  total: { promptTokens: number; completionTokens: number; calls: number; cacheHits: number };
+  /** 缓存命中率（0~1） */
+  cacheHitRate: number;
+  /** 按天趋势 */
+  daily: UsageDailyPoint[];
+  /** 按类型（kind）聚合 */
+  byKind: { kind: UsageKind | string; calls: number; promptTokens: number; completionTokens: number }[];
+  /** 按模型聚合 */
+  byModel: { model: string; calls: number; promptTokens: number; completionTokens: number }[];
+}
+
+// ==================== 反馈闭环（亮点 4）====================
+
+/** 点踩原因（前端弹窗选项） */
+export type FeedbackReason =
+  | 'irrelevant_sources'
+  | 'incomplete_answer'
+  | 'kb_not_used'
+  | 'off_topic'
+  | 'other';
+
+/** 反馈看板聚合载荷（热门点踩问题 Top10 + 按文档统计点踩引用） */
+export interface FeedbackDashboard {
+  /** 热门点踩问题（按正文聚合） */
+  topDislikedQuestions: { content: string; count: number }[];
+  /** 按文档统计的点踩引用来源（sources 中 uploadFileId 聚合） */
+  topDislikedSources: { uploadFileId: number; originalName: string; count: number }[];
+  /** 点踩原因分布 */
+  reasonBreakdown: { reason: FeedbackReason | string; count: number }[];
+}
+

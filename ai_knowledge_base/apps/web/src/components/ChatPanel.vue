@@ -246,6 +246,41 @@
         </div>
       </div>
     </div>
+    <!-- 反馈对话框（亮点 4）：点踩选原因 / 点赞选有用来源 -->
+    <el-dialog
+      v-model="feedbackDialogVisible"
+      :title="feedbackDialog?.mode === 'dislike' ? '反馈：哪里不对？' : '反馈：哪条引用有用？'"
+      width="420px"
+      :close-on-click-modal="false"
+      append-to-body
+    >
+      <template v-if="feedbackDialog?.mode === 'dislike'">
+        <el-radio-group v-model="feedbackDialog.reason" class="feedback-reason-group">
+          <el-radio value="irrelevant_sources">引用无关</el-radio>
+          <el-radio value="incomplete_answer">答案不全</el-radio>
+          <el-radio value="kb_not_used">未用知识库</el-radio>
+          <el-radio value="off_topic">答非所问</el-radio>
+          <el-radio value="other">其他</el-radio>
+        </el-radio-group>
+      </template>
+      <template v-else-if="feedbackDialog?.mode === 'like'">
+        <div class="feedback-source-list">
+          <div
+            v-for="(source, index) in knowledgeBaseSources(feedbackDialog.msg)"
+            :key="index"
+            :class="['feedback-source-item', { active: feedbackDialog.sourceIndex === index + 1 }]"
+            @click="feedbackDialog.sourceIndex = index + 1"
+          >
+            <span class="feedback-source-num">{{ index + 1 }}</span>
+            <span class="feedback-source-name">{{ sourceFileName(source) }}</span>
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <el-button @click="cancelFeedbackDialog">取消</el-button>
+        <el-button type="primary" @click="confirmFeedbackDialog">提交</el-button>
+      </template>
+    </el-dialog>
   </el-main>
 </template>
 
@@ -525,17 +560,60 @@ const setFeedback = async (msg: any, feedback: 'like' | 'dislike') => {
   if (msg.loading || typeof msg.id !== 'number') {
     return;
   }
-  const next = msg.feedback === feedback ? null : feedback;
+  // 再次点击同一项 = 取消反馈
+  if (msg.feedback === feedback) {
+    await saveFeedback(msg, null);
+    return;
+  }
+  // 点踩：先选原因（亮点 4 反馈闭环）
+  if (feedback === 'dislike') {
+    feedbackDialog.value = { msg, mode: 'dislike', reason: '' };
+    return;
+  }
+  // 点赞：有多条知识库来源时可选"哪条引用有用"，否则直接提交
+  const kbSources = knowledgeBaseSources(msg);
+  if (kbSources.length > 1) {
+    feedbackDialog.value = { msg, mode: 'like', sourceIndex: 1 };
+    return;
+  }
+  await saveFeedback(msg, 'like', undefined, kbSources.length === 1 ? 1 : undefined);
+};
+
+/** 反馈原因/来源选择对话框状态（亮点 4） */
+const feedbackDialog = ref<{ msg: any; mode: 'like' | 'dislike'; reason?: string; sourceIndex?: number } | null>(null);
+/** 反馈对话框显隐（模板用） */
+const feedbackDialogVisible = computed(() => feedbackDialog.value !== null);
+/** 提交反馈到服务端（乐观更新，失败回滚） */
+const saveFeedback = async (msg: any, feedback: 'like' | 'dislike' | null, reason?: string, sourceIndex?: number) => {
   const previous = msg.feedback;
-  msg.feedback = next;
+  msg.feedback = feedback;
   try {
-    const updated = await chatApi.setMessageFeedback(msg.id, next);
+    const updated = await chatApi.setMessageFeedback(msg.id, feedback, reason, sourceIndex);
     msg.feedback = updated.feedback ?? null;
+    msg.feedbackReason = updated.feedbackReason ?? null;
   } catch (error) {
     console.error(error);
     msg.feedback = previous;
     ElMessage.error('反馈保存失败');
   }
+};
+
+/** 对话框确认：点踩带原因，点赞带选中来源序号 */
+const confirmFeedbackDialog = async () => {
+  const dialog = feedbackDialog.value;
+  if (!dialog) return;
+  const { msg, mode } = dialog;
+  if (mode === 'dislike') {
+    await saveFeedback(msg, 'dislike', dialog.reason || 'other');
+  } else {
+    await saveFeedback(msg, 'like', undefined, dialog.sourceIndex ?? 1);
+  }
+  feedbackDialog.value = null;
+};
+
+/** 取消反馈对话框 */
+const cancelFeedbackDialog = () => {
+  feedbackDialog.value = null;
 };
 
 // 来源处理工具函数

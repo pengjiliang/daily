@@ -2,7 +2,7 @@
  * 消息实体（messages 表）：会话内的一轮用户提问或 AI 回答，按 id 正序即为对话时间线。
  */
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
-import type { RetrievedChunk } from '@ai-knowledge-base/shared';
+import type { FeedbackReason, RetrievedChunk } from '@ai-knowledge-base/shared';
 
 /** 消息角色：用户提问 / AI 回答 */
 export type MessageRole = 'user' | 'assistant';
@@ -30,6 +30,14 @@ export class Message {
   /** 用户对 AI 回答的反馈：like（点赞）/ dislike（点踩），未评价为 null */
   @Column({ type: 'varchar', nullable: true })
   feedback: 'like' | 'dislike' | null;
+
+  /** 点踩原因（亮点 4）：引用无关/答案不全/未用知识库/答非所问/其他 */
+  @Column({ type: 'varchar', nullable: true })
+  feedbackReason: FeedbackReason | null;
+
+  /** 点赞时记录"哪条引用有用"：知识库来源的序号（1 起），仅 like 时有值 */
+  @Column({ type: 'int', nullable: true })
+  feedbackSourceIndex: number | null;
 
   @CreateDateColumn()
   createdAt: Date;

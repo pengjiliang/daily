@@ -174,6 +174,12 @@
                   <!-- 我的文档：分"文件夹列表"和"文件列表"两个区域；文件夹点击内联展开内部文件 -->
                   <div class="file-list-section">
                     <div class="section-title">文档列表</div>
+                    <!-- 亮点 1：索引失败聚合条：一键重试全部失败文档 -->
+                    <div v-if="failedDocuments.length > 0" class="index-failed-banner">
+                      <el-icon class="warning-icon"><WarningFilled /></el-icon>
+                      <span>{{ failedDocuments.length }} 个文档索引失败</span>
+                      <el-button text size="small" type="primary" @click="retryAllFailed">全部重试</el-button>
+                    </div>
                     <!-- 文档搜索：按文件名/文件夹名过滤（所见即所得，影响分组与删除范围） -->
                     <div class="doc-search-wrapper">
                       <el-input
@@ -239,6 +245,7 @@
                             <el-tooltip :content="displayFolderFileName(group.name, doc)" placement="top-start">
                               <span class="document-name">{{ displayFolderFileName(group.name, doc) }}</span>
                             </el-tooltip>
+                        <IndexBadge :doc="doc" />
                             <span v-if="doc.sharedByUsername" class="shared-tag">来自 {{ doc.sharedByUsername }}</span>
                             <div class="doc-actions">
                               <el-tooltip content="预览" placement="top">
@@ -294,6 +301,7 @@
                         <el-tooltip :content="doc.originalName" placement="top-start">
                           <span class="document-name">{{ doc.originalName }}</span>
                         </el-tooltip>
+                        <IndexBadge :doc="doc" />
                         <span v-if="doc.sharedByUsername" class="shared-tag">来自 {{ doc.sharedByUsername }}</span>
                         <div class="doc-actions">
                           <el-tooltip content="预览" placement="top">
@@ -342,6 +350,18 @@
             <div class="sub-menu plain" :class="{ active: isSubActive('debug') }" @click="openView('debug', 'data')">
               <el-icon class="sub-icon"><Search /></el-icon>
               <span class="sub-label">检索调试</span>
+            </div>
+            <div class="sub-menu plain" :class="{ active: isSubActive('eval') }" @click="openView('eval', 'data')">
+              <el-icon class="sub-icon"><DataAnalysis /></el-icon>
+              <span class="sub-label">评估看板</span>
+            </div>
+            <div class="sub-menu plain" :class="{ active: isSubActive('usage') }" @click="openView('usage', 'data')">
+              <el-icon class="sub-icon"><TrendCharts /></el-icon>
+              <span class="sub-label">用量看板</span>
+            </div>
+            <div class="sub-menu plain" :class="{ active: isSubActive('feedback') }" @click="openView('feedback', 'data')">
+              <el-icon class="sub-icon"><ChatDotRound /></el-icon>
+              <span class="sub-label">反馈看板</span>
             </div>
           </div>
         </el-collapse-transition>
@@ -394,10 +414,12 @@ import {
   TrendCharts,
   UploadFilled,
   View,
+  WarningFilled,
 } from '@element-plus/icons-vue';
 import { useChatStore } from '@/stores/chat';
 import { useUiStore, type MainView, type SidebarMenuKey } from '@/stores/ui';
 import type { UploadDocument } from '@/api/upload';
+import IndexBadge from './IndexBadge.vue';
 
 const chatStore = useChatStore();
 const uiStore = useUiStore();
@@ -418,12 +440,20 @@ const openView = (view: MainView, menu: SidebarMenuKey) => {
 const isTopActive = (key: SidebarMenuKey) => {
   if (uiStore.expandedMenu !== key) return false;
   if (key === 'ai') return chatStore.activeTab === '';
-  if (key === 'data') return uiStore.mainView !== 'stats' && uiStore.mainView !== 'graph' && uiStore.mainView !== 'debug';
+  if (key === 'data')
+    return (
+      uiStore.mainView !== 'stats' &&
+      uiStore.mainView !== 'graph' &&
+      uiStore.mainView !== 'debug' &&
+      uiStore.mainView !== 'eval' &&
+      uiStore.mainView !== 'usage' &&
+      uiStore.mainView !== 'feedback'
+    );
   return uiStore.mainView !== 'settings';
 };
 
 /** 二级菜单高亮：AI 组仅在 tab 展开且无三级选中时点亮；数据中心/系统设置为最深层，按 mainView 点亮 */
-const isSubActive = (key: 'conversations' | 'documents' | 'stats' | 'graph' | 'debug' | 'settings') => {
+const isSubActive = (key: 'conversations' | 'documents' | 'stats' | 'graph' | 'debug' | 'settings' | 'eval' | 'usage' | 'feedback') => {
   if (key === 'conversations') {
     return chatStore.activeTab === 'conversations' && !chatStore.currentConversation?.id;
   }
@@ -433,6 +463,9 @@ const isSubActive = (key: 'conversations' | 'documents' | 'stats' | 'graph' | 'd
   if (key === 'stats') return uiStore.mainView === 'stats';
   if (key === 'graph') return uiStore.mainView === 'graph';
   if (key === 'debug') return uiStore.mainView === 'debug';
+  if (key === 'eval') return uiStore.mainView === 'eval';
+  if (key === 'usage') return uiStore.mainView === 'usage';
+  if (key === 'feedback') return uiStore.mainView === 'feedback';
   return uiStore.mainView === 'settings';
 };
 
@@ -478,6 +511,16 @@ const filteredDocuments = computed(() => {
     return name.includes(q) || folder.includes(q);
   });
 });
+
+/** 索引失败的文档（自己上传的，共享来的由所有者负责重试） */
+const failedDocuments = computed(() =>
+  chatStore.documents.filter((doc) => doc.indexStatus === 'failed' && !doc.sharedByUsername),
+);
+
+/** 一键重试全部失败文档 */
+const retryAllFailed = () => {
+  failedDocuments.value.forEach((doc) => chatStore.retryDocumentIndex(doc));
+};
 
 /** 按主题过滤后的会话列表（空关键字返回全部） */
 const filteredConversations = computed(() => {
@@ -585,6 +628,7 @@ const confirmDeleteFolder = (name: string) => {
     },
   );
 };
+
 </script>
 
 <style scoped>
@@ -1057,6 +1101,49 @@ const confirmDeleteFolder = (name: string) => {
   border-color: var(--kb-item-active-border);
   background-color: var(--kb-doc-highlight);
   box-shadow: inset 3px 0 0 var(--el-color-primary);
+}
+
+/* 亮点 1：索引状态徽标 */
+.index-badge {
+  flex-shrink: 0;
+  font-size: 15px;
+  cursor: default;
+}
+.index-badge.index-loading {
+  color: var(--el-color-info);
+  animation: rotating 1.2s linear infinite;
+}
+.index-badge.index-done {
+  color: var(--el-color-success);
+}
+.index-badge.index-failed {
+  color: var(--el-color-danger);
+  cursor: pointer;
+}
+@keyframes rotating {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 索引失败聚合条 */
+.index-failed-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin-bottom: 10px;
+  border: 1px solid var(--el-color-danger-light-5);
+  border-radius: 8px;
+  background: var(--el-color-danger-light-9);
+  color: var(--el-color-danger);
+  font-size: 12px;
+}
+.index-failed-banner .warning-icon {
+  font-size: 15px;
 }
 </style>
 

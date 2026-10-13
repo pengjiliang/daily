@@ -9,11 +9,12 @@
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { DocumentChunk } from '../entities/document-chunk.entity.js';
 import { SemanticCache } from '../entities/semantic-cache.entity.js';
+import { UsageEvent } from '../entities/usage-event.entity.js';
 import { createRagGraph, type GenerateResult, type RagState, type RetrievedChunk } from './langgraph/rag.graph.js';
-import type { AskResult, RetrieveDebugView, RetrieveLegItem, RetrieveKeywordLeg } from '@ai-knowledge-base/shared';
+import type { AskResult, RetrieveDebugView, RetrieveLegItem, RetrieveKeywordLeg, UsageKind } from '@ai-knowledge-base/shared';
 import { ModelProvider, type ChatMessage } from './openai-model.provider.js';
 import { UserSettingsService } from '../settings/user-settings.service.js';
 import type { HistoryMessage } from './dto/ai.dto.js';
@@ -131,9 +132,43 @@ export class AskService {
     private readonly documentChunksRepository: Repository<DocumentChunk>,
     @InjectRepository(SemanticCache)
     private readonly semanticCacheRepository: Repository<SemanticCache>,
+    @InjectRepository(UsageEvent)
+    private readonly usageEventsRepository: Repository<UsageEvent>,
     private readonly models: ModelProvider,
     private readonly userSettings: UserSettingsService,
   ) {}
+
+  /** 记录一次用量事件（亮点 5）：任何失败仅告警，不影响问答主流程 */
+  private async recordUsage(input: {
+    userId: number;
+    conversationId?: string;
+    provider: string;
+    model: string;
+    kind: UsageKind;
+    latencyMs: number;
+    promptTokens?: number;
+    completionTokens?: number;
+    cached?: boolean;
+  }): Promise<void> {
+    try {
+      await this.usageEventsRepository.save(
+        this.usageEventsRepository.create({
+          userId: input.userId,
+          conversationId: input.conversationId ? Number(input.conversationId) : null,
+          messageId: null,
+          provider: input.provider,
+          model: input.model,
+          kind: input.kind,
+          promptTokens: input.promptTokens ?? 0,
+          completionTokens: input.completionTokens ?? 0,
+          latencyMs: input.latencyMs,
+          cached: input.cached ?? false,
+        }),
+      );
+    } catch (error) {
+      this.logger.warn(`Failed to record usage event: ${String(error)}`);
+    }
+  }
 
   /** 旧版一次性问答：走 LangGraph（retrieve → generate），等待完整 JSON 后返回 */
   async ask(request: AskRequest): Promise<AskResult> {
@@ -174,6 +209,16 @@ export class AskService {
       this.logger.log(
         `Semantic cache hit (${(similarity * 100).toFixed(1)}%) for userId=${request.userId}: ${request.question}`,
       );
+      // 用量统计：缓存命中（亮点 5）
+      await this.recordUsage({
+        userId: request.userId,
+        conversationId: request.conversationId,
+        provider: 'cache',
+        model: 'semantic-cache',
+        kind: 'cache_hit',
+        latencyMs: Date.now() - startedAt,
+        cached: true,
+      });
       // 命中次数 +1（仅统计，失败不阻塞）
       await this.semanticCacheRepository
         .increment({ id: cache.id }, 'hitCount', 1)
@@ -243,7 +288,19 @@ export class AskService {
   ): Promise<{ cache: SemanticCache; similarity: number } | null> {
     try {
       const embeddingsModel = await this.models.getEmbeddings(request.userId);
+      const embedStartedAt = Date.now();
       const embedding = await embeddingsModel.embedQuery(request.question);
+      // 用量统计：缓存查询向量化（亮点 5）
+      const cacheSettings = await this.userSettings.getEffectiveSettings(request.userId);
+      await this.recordUsage({
+        userId: request.userId,
+        conversationId: request.conversationId,
+        provider: 'embedding',
+        model: cacheSettings.embedding.model,
+        kind: 'embedding',
+        latencyMs: Date.now() - embedStartedAt,
+        completionTokens: Math.ceil(request.question.length / 4),
+      });
       const rows = (await this.semanticCacheRepository.query(
         `SELECT id, question, answer, sources, "hitCount", "createdAt", "updatedAt",
                 ("questionEmbedding"::vector <=> $1::vector) AS distance
@@ -281,7 +338,19 @@ export class AskService {
     }
     try {
       const embeddingsModel = await this.models.getEmbeddings(request.userId);
+      const embedStartedAt = Date.now();
       const embedding = await embeddingsModel.embedQuery(request.question);
+      // 用量统计：缓存写入向量化（亮点 5）
+      const cacheSettings = await this.userSettings.getEffectiveSettings(request.userId);
+      await this.recordUsage({
+        userId: request.userId,
+        conversationId: request.conversationId,
+        provider: 'embedding',
+        model: cacheSettings.embedding.model,
+        kind: 'embedding',
+        latencyMs: Date.now() - embedStartedAt,
+        completionTokens: Math.ceil(request.question.length / 4),
+      });
       const count = await this.semanticCacheRepository.count({ where: { userId: request.userId } });
       if (count >= CACHE_LIMIT) {
         const oldest = await this.semanticCacheRepository.find({
@@ -314,8 +383,10 @@ export class AskService {
     signal: AbortSignal | undefined,
     userId: number,
   ): Promise<string> {
+    const startedAt = Date.now();
     let answer = '';
     const chatModel = await this.models.getChatModel(userId);
+    const settings = await this.userSettings.getEffectiveSettings(userId);
     const stream = await chatModel.stream(messages, { signal });
     for await (const chunk of stream) {
       const text = Array.isArray(chunk.content)
@@ -328,6 +399,17 @@ export class AskService {
         await onToken(text);
       }
     }
+    // 用量统计：答案生成（亮点 5，token 按字符数估算）
+    await this.recordUsage({
+      userId,
+      provider: settings.chatProvider,
+      model:
+        settings.chatProvider === 'anthropic' ? settings.anthropic.chatModel : settings.openai.chatModel,
+      kind: 'answer',
+      latencyMs: Date.now() - startedAt,
+      promptTokens: 0,
+      completionTokens: Math.ceil(answer.length / 4),
+    });
     return answer;
   }
 
@@ -338,7 +420,9 @@ export class AskService {
     signal: AbortSignal | undefined,
     userId: number,
   ): Promise<RetrievedChunk[]> {
+    const startedAt = Date.now();
     const chatModel = await this.models.getChatModel(userId);
+    const settings = await this.userSettings.getEffectiveSettings(userId);
     for (let attempt = 0; attempt < 2; attempt += 1) {
       if (signal?.aborted) {
         return [];
@@ -346,6 +430,17 @@ export class AskService {
       try {
         const response = await chatModel.invoke(messages, { signal });
         const sources = this.parseExternalSourcesResponse(response.text, externalLimit);
+        // 用量统计：外部资料生成（亮点 5）
+        await this.recordUsage({
+          userId,
+          provider: settings.chatProvider,
+          model:
+            settings.chatProvider === 'anthropic' ? settings.anthropic.chatModel : settings.openai.chatModel,
+          kind: 'external',
+          latencyMs: Date.now() - startedAt,
+          promptTokens: 0,
+          completionTokens: Math.ceil(response.text.length / 4),
+        });
         if (sources.length > 0 || attempt === 1) {
           return sources;
         }
@@ -573,7 +668,9 @@ export class AskService {
       return question;
     }
     try {
+      const startedAt = Date.now();
       const chatModel = await this.models.getChatModel(userId);
+      const settings = await this.userSettings.getEffectiveSettings(userId);
       const response = await chatModel.invoke([
         {
           role: 'system',
@@ -584,6 +681,16 @@ export class AskService {
         },
         { role: 'user', content: `原始查询：${question}\n改写为：` },
       ]);
+      // 用量统计：短查询改写（亮点 5）
+      await this.recordUsage({
+        userId,
+        provider: settings.chatProvider,
+        model:
+          settings.chatProvider === 'anthropic' ? settings.anthropic.chatModel : settings.openai.chatModel,
+        kind: 'rewrite',
+        latencyMs: Date.now() - startedAt,
+        completionTokens: Math.ceil(response.text.length / 4),
+      });
       const rewritten = response.text.trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, '');
       return rewritten && rewritten !== question ? rewritten : question;
     } catch (error) {
@@ -606,7 +713,9 @@ export class AskService {
       return question;
     }
     try {
+      const startedAt = Date.now();
       const chatModel = await this.models.getChatModel(userId);
+      const settings = await this.userSettings.getEffectiveSettings(userId);
       const historyText = history
         .slice(-6)
         .map((msg) => `${msg.role === 'user' ? '用户' : '助手'}：${msg.content.slice(0, 200)}`)
@@ -621,6 +730,16 @@ export class AskService {
         },
         { role: 'user', content: `对话历史：\n${historyText}\n\n最后一个问题：${question}\n改写为：` },
       ]);
+      // 用量统计：多轮记忆增强（亮点 5）
+      await this.recordUsage({
+        userId,
+        provider: settings.chatProvider,
+        model:
+          settings.chatProvider === 'anthropic' ? settings.anthropic.chatModel : settings.openai.chatModel,
+        kind: 'contextualize',
+        latencyMs: Date.now() - startedAt,
+        completionTokens: Math.ceil(response.text.length / 4),
+      });
       const rewritten = response.text.trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, '');
       return rewritten && rewritten !== question ? rewritten : question;
     } catch (error) {
@@ -635,7 +754,9 @@ export class AskService {
    */
   private async generateSuggestions(question: string, answer: string, userId: number): Promise<string[]> {
     try {
+      const startedAt = Date.now();
       const chatModel = await this.models.getChatModel(userId);
+      const settings = await this.userSettings.getEffectiveSettings(userId);
       const response = await chatModel.invoke([
         {
           role: 'system',
@@ -645,6 +766,16 @@ export class AskService {
         },
         { role: 'user', content: `问题：${question}\n\n回答：${answer.slice(0, 800)}` },
       ]);
+      // 用量统计：追问建议（亮点 5）
+      await this.recordUsage({
+        userId,
+        provider: settings.chatProvider,
+        model:
+          settings.chatProvider === 'anthropic' ? settings.anthropic.chatModel : settings.openai.chatModel,
+        kind: 'suggestions',
+        latencyMs: Date.now() - startedAt,
+        completionTokens: Math.ceil(response.text.length / 4),
+      });
       return this.parseSuggestionList(response.text);
     } catch (error) {
       this.logger.warn(`Suggestions generation failed: ${String(error)}`);
@@ -703,7 +834,17 @@ export class AskService {
     // 只检索当前登录用户上传的文档（server 与 ai-service 共用同一数据库，upload_files 由 server 维护），
     // 避免跨用户检索泄漏他人文档
     const embeddingsModel = await this.models.getEmbeddings(userId);
+    const embeddingStartedAt = Date.now();
     const vectorEmbedding = await embeddingsModel.embedQuery(rewritten);
+    // 用量统计：检索向量化（亮点 5）
+    await this.recordUsage({
+      userId,
+      provider: 'embedding',
+      model: settings.embedding.model,
+      kind: 'embedding',
+      latencyMs: Date.now() - embeddingStartedAt,
+      completionTokens: Math.ceil(rewritten.length / 4),
+    });
     const vectorRows: SimilarityRow[] = await this.documentChunksRepository.query(
       `SELECT c.id, c."uploadFileId", c.content, c.metadata,
               c.embedding::vector <=> $1::vector AS distance
@@ -1001,6 +1142,7 @@ export class AskService {
     if (candidates.length <= 1) {
       kept = candidates;
     } else {
+      const startedAt = Date.now();
       const list = candidates
         .map((chunk, index) => `[${index + 1}]：${chunk.content.slice(0, 400)}`)
         .join('\n\n');
@@ -1013,6 +1155,16 @@ export class AskService {
           content: `问题：${question}\n\n候选片段：\n\n${list}\n\n只输出相关片段编号的 JSON 数组，例如 [1,3]；都不相关则输出 []。`,
         },
       ]);
+      // 用量统计：LLM 重排（亮点 5）
+      await this.recordUsage({
+        userId,
+        provider: settings.chatProvider,
+        model:
+          settings.chatProvider === 'anthropic' ? settings.anthropic.chatModel : settings.openai.chatModel,
+        kind: 'rerank',
+        latencyMs: Date.now() - startedAt,
+        completionTokens: Math.ceil(response.text.length / 4),
+      });
 
       const parsed = this.parseIndexList(response.text);
       if (parsed === null) {

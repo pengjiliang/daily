@@ -6,6 +6,7 @@ import request from './request';
 import axios from 'axios';
 import { useUserStore } from '../stores/user';
 import { ElMessage } from 'element-plus';
+import type { IndexErrorKind, IndexStatus } from '@ai-knowledge-base/shared';
 
 export interface UploadDocument {
   id: number;
@@ -13,7 +14,22 @@ export interface UploadDocument {
   size: number;
   mimeType: string;
   createdAt: string;
-  indexed: boolean;
+  /** 索引状态：pending 排队中 / running 索引中 / done 成功 / failed 失败 / skipped 跳过 */
+  indexStatus?: IndexStatus;
+  /** 成功索引的分块数 */
+  chunkCount?: number | null;
+  /** 索引完成时间 */
+  indexedAt?: string | null;
+  /** 索引失败原因（仅 failed/skipped 有值） */
+  indexError?: string | null;
+  /** 失败原因分类（供前端提示） */
+  errorKind?: IndexErrorKind | null;
+  /** 已尝试次数 */
+  indexAttempts?: number;
+  /** 索引所用向量模型（done 后有值） */
+  embeddingModel?: string | null;
+  /** 向量维度（done 后有值） */
+  embeddingDim?: number | null;
   /** 所属文件夹相对路径（如 `2026/文档`）；单文件上传为 null/undefined */
   folderName?: string | null;
   /** 共享来源：null=自己上传；非空=他人共享给我的文档（值为共享者用户名） */
@@ -73,6 +89,11 @@ export const uploadApi = {
   /** 重命名文档（仅改展示名，不影响磁盘文件与向量索引） */
   renameDocument(id: number, originalName: string) {
     return request.patch<UploadDocument>(`/upload/document/${id}`, { originalName });
+  },
+
+  /** 手动重试索引失败的文档（仅所有者）：重置为 pending 后重新建索引 */
+  reindexDocument(id: number) {
+    return request.post<UploadDocument>(`/upload/document/${id}/reindex`);
   },
 
   /**

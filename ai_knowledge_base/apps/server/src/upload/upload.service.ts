@@ -15,7 +15,7 @@ import { createReadStream, existsSync, mkdirSync } from 'node:fs';
 import { unlink, writeFile } from 'node:fs/promises';
 import type { ReadStream } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { resolve, sep, join } from 'node:path';
+import { resolve, sep, join, extname } from 'node:path';
 import { Repository } from 'typeorm';
 import { UsersService } from '../users/users.service.js';
 import { ShareService } from '../share/share.service.js';
@@ -23,7 +23,13 @@ import type { SharePermission } from '../share/share.entity.js';
 import { UploadFile } from './upload-file.entity.js';
 import { DOCUMENTS_DIRECTORY, UPLOAD_ROOT } from './upload.storage.js';
 import { aiServiceHeaders } from '../ai/ai-service-headers.js';
+import type { IndexErrorKind } from '@ai-knowledge-base/shared';
 import { Buffer } from 'node:buffer';
+
+/** 索引自愈：失败后指数退避最多重试次数（超过则标记 failed，由用户手动重试） */
+const INDEX_MAX_ATTEMPTS = 3;
+/** 指数退避基准间隔（秒）：第 n 次重试等待 base * 2^(n-1)（10s → 30s → 60s） */
+const INDEX_RETRY_BASE_SECONDS = 10;
 
 /**
  * 兼容多种编码的原始文件名解码：
@@ -83,6 +89,10 @@ export class UploadService {
     folderName?: string,
   ): Promise<UploadFile> {
     const originalName = decodeFileName(file.originalname);
+    // 前置拦截必然失败的输入（亮点 1）：.doc 无法解析，直接提示用户另存为 .docx，避免落入索引流水线
+    if (extname(originalName).toLowerCase() === '.doc') {
+      throw new BadRequestException('.doc 格式不支持，请将文件另存为 .docx 格式后重新上传');
+    }
     const uploadFile = await this.uploadFilesRepository.save(
       this.uploadFilesRepository.create({
         filename: file.filename,
@@ -93,12 +103,13 @@ export class UploadService {
         path: `documents/${file.filename}`,
         size: file.size,
         uploaderId: userId,
+        indexStatus: 'pending',
       }),
     );
 
     // 异步后台处理，不阻塞响应
     setImmediate(() => {
-      this.requestDocumentIndexing(uploadFile, file.path);
+      this.runIndexPipeline(uploadFile, file.path);
     });
     return uploadFile;
   }
@@ -127,12 +138,13 @@ export class UploadService {
         path: `documents/${filename}`,
         size: Buffer.byteLength(content, 'utf8'),
         uploaderId: userId,
+        indexStatus: 'pending',
       }),
     );
 
     // 异步后台索引，不阻塞响应
     setImmediate(() => {
-      this.requestDocumentIndexing(uploadFile, absolutePath);
+      this.runIndexPipeline(uploadFile, absolutePath);
     });
     return uploadFile;
   }
@@ -294,14 +306,68 @@ export class UploadService {
     return filePath;
   }
 
-  /** 通知 ai-service 对新文档解析切片并建向量索引；失败仅告警（不回滚上传，120s 超时） */
-  private async requestDocumentIndexing(uploadFile: UploadFile, absolutePath: string): Promise<void> {
-    const aiServiceUrl = this.configService.get<string>('aiService.url', 'http://localhost:3001');
+  /**
+   * 索引流水线入口（亮点 1 自愈）：置 running → 请求 ai-service 建索引 →
+   * 成功写回 done（chunkCount/embeddingModel/embeddingDim）；
+   * 失败按指数退避自动重试（上限 INDEX_MAX_ATTEMPTS），仍失败标记 failed 并分类错误原因。
+   */
+  private async runIndexPipeline(uploadFile: UploadFile, absolutePath: string): Promise<void> {
+    for (let attempt = 0; attempt < INDEX_MAX_ATTEMPTS; attempt += 1) {
+      // 每次尝试前检查文档是否仍存在（期间可能已被删除）
+      const exists = await this.uploadFilesRepository.findOneBy({ id: uploadFile.id });
+      if (!exists) {
+        this.logger.log(`Document ${uploadFile.id} was deleted, skip indexing`);
+        return;
+      }
+      await this.uploadFilesRepository.update(uploadFile.id, {
+        indexStatus: 'running',
+        indexAttempts: attempt + 1,
+        indexError: null,
+        errorKind: null,
+      });
 
+      const result = await this.requestDocumentIndexing(uploadFile, absolutePath);
+      if (result.ok) {
+        await this.uploadFilesRepository.update(uploadFile.id, {
+          indexStatus: 'done',
+          chunkCount: result.chunks,
+          indexedAt: new Date(),
+          embeddingModel: result.embeddingModel ?? null,
+          embeddingDim: result.embeddingDim ?? null,
+          indexError: null,
+          errorKind: null,
+        });
+        this.logger.log(`Indexing complete for document ${uploadFile.id} (${result.chunks} chunks)`);
+        return;
+      }
+
+      this.logger.warn(`Indexing attempt ${attempt + 1} for document ${uploadFile.id} failed: ${result.error}`);
+      // 未达重试上限：指数退避（10s/30s/60s）后重试
+      if (attempt < INDEX_MAX_ATTEMPTS - 1) {
+        await new Promise((resolveDelay) => {
+          setTimeout(resolveDelay, INDEX_RETRY_BASE_SECONDS * 1000 * 2 ** attempt);
+        });
+        continue;
+      }
+      // 重试耗尽：标记 failed 并分类错误原因
+      await this.uploadFilesRepository.update(uploadFile.id, {
+        indexStatus: 'failed',
+        indexError: result.error ?? 'unknown error',
+        errorKind: classifyIndexError(result.error ?? '', absolutePath),
+        indexedAt: new Date(),
+      });
+    }
+  }
+
+  /** 调用 ai-service 建索引一次，返回成功与否及信息 */
+  private async requestDocumentIndexing(
+    uploadFile: UploadFile,
+    absolutePath: string,
+  ): Promise<{ ok: boolean; chunks: number; embeddingModel?: string; embeddingDim?: number; error?: string }> {
+    const aiServiceUrl = this.configService.get<string>('aiService.url', 'http://localhost:3001');
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes timeout
-
       const response = await fetch(`${aiServiceUrl}/ai/index-document`, {
         method: 'POST',
         headers: aiServiceHeaders(this.configService),
@@ -315,16 +381,35 @@ export class UploadService {
         }),
         signal: controller.signal,
       });
-
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        this.logger.warn(`AI indexing request for document ${uploadFile.id} failed with ${response.status}`);
-      } else {
-        this.logger.log(`AI indexing complete for document ${uploadFile.id}`);
+        // Nest 错误响应体含 message 字段（如 .doc 不支持 / 空内容）
+        let message = `HTTP ${response.status}`;
+        try {
+          const body = (await response.json()) as { message?: string | string[] };
+          if (body?.message) {
+            message = Array.isArray(body.message) ? body.message.join('；') : body.message;
+          }
+        } catch {
+          // 忽略解析失败
+        }
+        return { ok: false, chunks: 0, error: message };
       }
+      const data = (await response.json()) as {
+        uploadFileId: number;
+        chunks: number;
+        embeddingModel?: string;
+        embeddingDim?: number;
+      };
+      return {
+        ok: true,
+        chunks: data.chunks,
+        embeddingModel: data.embeddingModel,
+        embeddingDim: data.embeddingDim,
+      };
     } catch (error) {
-      this.logger.warn(`AI indexing request for document ${uploadFile.id} could not be delivered: ${String(error)}`);
+      return { ok: false, chunks: 0, error: String(error) };
     }
   }
 
@@ -334,8 +419,44 @@ export class UploadService {
    */
   async reindexDocument(uploadFile: UploadFile): Promise<void> {
     const filePath = this.resolveSafeDocumentPath(uploadFile.path);
-    await this.requestDocumentIndexing(uploadFile, filePath);
+    await this.runIndexPipeline(uploadFile, filePath);
   }
+
+  /**
+   * 手动重试失败文档的索引（亮点 1 自愈）：重置为 pending 后走完整流水线。
+   * 仅允许文档所有者重试（共享给我的文档由所有者负责）。
+   */
+  async retryIndexDocument(id: number, userId: number): Promise<UploadFile> {
+    const uploadFile = await this.findOwnedDocument(id, userId);
+    if (uploadFile.indexStatus === 'running' || uploadFile.indexStatus === 'pending') {
+      throw new BadRequestException('文档正在索引中，请稍后再试');
+    }
+    // 重置计数并置 pending：索引流水线会再次置 running 并执行
+    uploadFile.indexStatus = 'pending';
+    uploadFile.indexAttempts = 0;
+    uploadFile.indexError = null;
+    uploadFile.errorKind = null;
+    const reset = await this.uploadFilesRepository.save(uploadFile);
+    setImmediate(() => {
+      this.runIndexPipeline(reset, this.resolveSafeDocumentPath(reset.path));
+    });
+    return reset;
+  }
+}
+
+/**
+ * 把索引失败原因分类为前端可提示的错误类型：
+ * .doc 不支持 → unsupported_format；空内容 → empty_content；
+ * 网络/超时/其它未知 → unknown。
+ */
+function classifyIndexError(error: string, filePath: string): IndexErrorKind {
+  if (extname(filePath).toLowerCase() === '.doc') {
+    return 'unsupported_format';
+  }
+  if (error.includes('不包含可索引内容') || error.includes('empty')) {
+    return 'empty_content';
+  }
+  return 'unknown';
 }
 
 /** 文档列表返回项：自己上传（shared 字段为 null）或共享给我的（带来源用户名与权限） */

@@ -9,6 +9,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -18,6 +19,9 @@ import { Conversation } from './conversation.entity.js';
 import { Message } from './message.entity.js';
 import type { AskResult, RetrieveDebugView, RetrievedChunk } from '@ai-knowledge-base/shared';
 import { aiServiceHeaders } from '../ai/ai-service-headers.js';
+import type { FeedbackReason } from '@ai-knowledge-base/shared';
+import type { EvalSet } from '@ai-knowledge-base/shared';
+import { EvalService } from '../eval/eval.service.js';
 
 // 跨端共享类型：定义见 packages/shared
 export type AskAnswer = AskResult;
@@ -36,12 +40,15 @@ function buildConversationTitle(content: string): string {
 
 @Injectable()
 export class ChatService {
+  private readonly logger = new Logger(ChatService.name);
+
   constructor(
     @InjectRepository(Conversation)
     private readonly conversationsRepository: Repository<Conversation>,
     @InjectRepository(Message)
     private readonly messagesRepository: Repository<Message>,
     private readonly configService: ConfigService,
+    private readonly evalService: EvalService,
   ) {}
 
   /** 创建一个默认标题的空会话 */
@@ -116,7 +123,13 @@ export class ChatService {
   }
 
   /** 设置消息反馈（like/dislike，传 null 取消）：先按会话归属校验，再更新目标消息 */
-  async setMessageFeedback(messageId: number, userId: number, feedback: 'like' | 'dislike' | null): Promise<Message> {
+  async setMessageFeedback(
+    messageId: number,
+    userId: number,
+    feedback: 'like' | 'dislike' | null,
+    reason?: FeedbackReason | null,
+    sourceIndex?: number | null,
+  ): Promise<Message> {
     const message = await this.messagesRepository.findOneBy({ id: messageId });
     if (!message) {
       throw new NotFoundException('Message not found');
@@ -124,7 +137,54 @@ export class ChatService {
     // 校验消息归属（存在则属于当前用户；否则按他人会话抛 403）
     await this.findOwnedConversation(message.conversationId, userId);
     message.feedback = feedback;
+    message.feedbackReason = feedback === 'dislike' ? (reason ?? null) : null;
+    message.feedbackSourceIndex = feedback === 'like' ? (sourceIndex ?? null) : null;
+    // 亮点 4：点踩自动生成 badcase 入库（复用评估问题集，与亮点 3 打通）——失败不阻塞反馈本身
+    if (feedback === 'dislike' && message.role === 'assistant' && message.content) {
+      await this.captureDislikeBadcase(userId, message).catch((error) => {
+        this.logger.warn(`Failed to capture badcase: ${String(error)}`);
+      });
+    }
     return this.messagesRepository.save(message);
+  }
+
+  /**
+   * 点踩自动入 badcase 库（亮点 4）：把「点踩的问题 + 期望关键词（从点踩引用的知识库片段抽取）」
+   * 写入名为"自动收集的 Badcase"的评估集，与亮点 3 评估看板打通。
+   * 期望文件 = 点踩消息中第一条知识库来源（若来源有 uploadFileId）。
+   */
+  private async captureDislikeBadcase(userId: number, message: Message): Promise<void> {
+    // 找到该回答对应的用户提问（会话内该回答之前最近的 user 消息）
+    const prevUser = await this.messagesRepository
+      .createQueryBuilder('m')
+      .where('m."conversationId" = :conversationId', { conversationId: message.conversationId })
+      .andWhere('m.role = :role', { role: 'user' })
+      .andWhere('m.id < :id', { id: message.id })
+      .orderBy('m.id', 'DESC')
+      .take(1)
+      .getOne();
+    const question = prevUser?.content ?? '';
+    if (!question.trim()) {
+      return;
+    }
+    // 期望关键词：点踩引用的第一条知识库来源内容里，取问题中的关键词（连续中文/英文词，去重取前 5）
+    const sources = Array.isArray(message.sources) ? message.sources : [];
+    const kbSource = sources.find((s) => s.sourceType === 'knowledge_base' && s.uploadFileId != null);
+    const words = question.match(/[一-鿿]+|[a-zA-Z0-9_]{2,}/g) ?? [];
+    const keywords = Array.from(new Set(words)).slice(0, 5);
+
+    // 找到或创建"自动收集的 Badcase"评估集
+    const sets = await this.evalService.listSets(userId);
+    let badcaseSet: EvalSet | undefined = sets.find((s) => s.name === '自动收集的 Badcase');
+    if (!badcaseSet) {
+      badcaseSet = await this.evalService.createSet(userId, '自动收集的 Badcase', '点踩回答自动生成的评估问题（与评估看板打通）');
+    }
+    await this.evalService.addCase(userId, badcaseSet!.id, {
+      question: question.slice(0, 2000),
+      expectedFileId: kbSource?.uploadFileId ?? null,
+      expectedKeywords: keywords,
+      note: `来源消息 #${message.id} 点踩（${message.feedbackReason ?? '未填原因'}）`,
+    });
   }
 
   /**
