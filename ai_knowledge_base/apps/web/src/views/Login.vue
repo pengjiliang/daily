@@ -1,6 +1,6 @@
 ﻿<!--
-  登录页：用户名/密码表单（Element Plus 校验），登录成功后把 JWT 与用户信息
-  写入 Pinia（并持久化到 localStorage），随后跳转主页。
+  登录页：用户名/密码表单（Element Plus 校验），登录成功后服务端写入
+  HttpOnly Cookie，前端把用户信息写入 Pinia 后跳转主页。
 -->
 <template>
   <div class="login-container">
@@ -25,7 +25,7 @@
 </template>
 
 <script setup lang="ts">
-// 登录页逻辑：表单校验 → 调登录接口 → 保存登录态 → 跳转主页
+// 登录页逻辑：表单校验 → 调登录接口 → 保存用户信息 → 跳转主页
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
@@ -59,7 +59,7 @@ const rules = ref<FormRules>({
   ],
 });
 
-/** 提交登录：先做前端表单校验，通过后请求接口并保存 token/用户信息 */
+/** 提交登录：先做前端表单校验，通过后请求接口并保存用户信息 */
 async function handleLogin() {
   if (!formRef.value) return;
   await formRef.value.validate(async (valid) => {
@@ -67,11 +67,10 @@ async function handleLogin() {
       loading.value = true;
       try {
         const res: any = await authApi.login(formData.value);
-        userStore.setToken(res.access_token);
         userStore.setUserInfo({
-          id: res.user.id,
-          username: res.user.username,
-          avatarUrl: res.user.avatarUrl,
+          id: res.id,
+          username: res.username,
+          avatarUrl: res.avatarUrl,
         });
         ElMessage.success('登录成功');
         router.push('/home');

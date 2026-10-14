@@ -89,6 +89,12 @@ export class RetrieveDebugDto extends AskDto {
   config?: RetrieveConfigDto;
 }
 
+/** 清空某用户语义缓存的请求体（文档变更后由 server 调用） */
+export class InvalidateCacheDto {
+  @IsInt()
+  userId: number;
+}
+
 /** 单个模型配置（连接测试时可选，缺省沿用该用户已保存/环境默认配置）。 */
 export class ModelConnectionConfigDto {
   @IsOptional()

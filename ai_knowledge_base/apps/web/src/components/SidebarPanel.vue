@@ -251,6 +251,9 @@
                               <el-tooltip content="预览" placement="top">
                                 <el-button :icon="View" text size="small" style="color: #909399" @click.stop="chatStore.previewDocument(doc)" />
                               </el-tooltip>
+                              <el-tooltip v-if="!doc.sharedByUsername && doc.indexStatus === 'done'" content="重新索引" placement="top">
+                                <el-button :icon="RefreshRight" text size="small" style="color: #909399" @click.stop="chatStore.reindexDocument(doc)" />
+                              </el-tooltip>
                               <el-tooltip v-if="!doc.sharedByUsername" content="共享" placement="top">
                                 <el-button :icon="Share" text size="small" style="color: #909399" @click.stop="chatStore.openShareDialog(doc)" />
                               </el-tooltip>
@@ -306,6 +309,9 @@
                         <div class="doc-actions">
                           <el-tooltip content="预览" placement="top">
                             <el-button :icon="View" text size="small" style="color: #909399" @click.stop="chatStore.previewDocument(doc)" />
+                          </el-tooltip>
+                          <el-tooltip v-if="!doc.sharedByUsername && doc.indexStatus === 'done'" content="重新索引" placement="top">
+                            <el-button :icon="RefreshRight" text size="small" style="color: #909399" @click.stop="chatStore.reindexDocument(doc)" />
                           </el-tooltip>
                           <el-tooltip v-if="!doc.sharedByUsername" content="共享" placement="top">
                             <el-button :icon="Share" text size="small" style="color: #909399" @click.stop="chatStore.openShareDialog(doc)" />
@@ -408,6 +414,7 @@ import {
   Operation,
   Plus,
   QuestionFilled,
+  RefreshRight,
   Search,
   Setting,
   Share,
@@ -519,7 +526,7 @@ const failedDocuments = computed(() =>
 
 /** 一键重试全部失败文档 */
 const retryAllFailed = () => {
-  failedDocuments.value.forEach((doc) => chatStore.retryDocumentIndex(doc));
+  failedDocuments.value.forEach((doc) => chatStore.reindexDocument(doc));
 };
 
 /** 按主题过滤后的会话列表（空关键字返回全部） */

@@ -12,7 +12,7 @@ import { Repository } from 'typeorm';
 import { AskService, type AskResult } from './ask.service.js';
 import type { RetrieveDebugView } from '@ai-knowledge-base/shared';
 import { DocumentIndexService, type IndexDocumentResult } from './document-index.service.js';
-import { AskDto, IndexDocumentDto, RetrieveDebugDto, TestConnectionDto } from './dto/ai.dto.js';
+import { AskDto, IndexDocumentDto, InvalidateCacheDto, RetrieveDebugDto, TestConnectionDto } from './dto/ai.dto.js';
 import { InternalTokenGuard } from '../auth/internal-token.guard.js';
 import { ModelProvider } from './openai-model.provider.js';
 import { UserSettingsService } from '../settings/user-settings.service.js';
@@ -122,6 +122,12 @@ export class AIController {
   @Post('ask')
   async ask(@Body() dto: AskDto): Promise<AskResult> {
     return this.askService.ask(dto);
+  }
+
+  /** 文档索引完成/删除后由 server 调用：清空该用户语义缓存，避免命中过期答案 */
+  @Post('cache/invalidate')
+  async invalidateCache(@Body() dto: InvalidateCacheDto): Promise<{ deleted: number }> {
+    return this.askService.invalidateCacheForUser(dto.userId);
   }
 
   /** 检索调试：只跑检索、不生成回答，返回完整检索链路（供 RAG 调试/评估面板使用） */

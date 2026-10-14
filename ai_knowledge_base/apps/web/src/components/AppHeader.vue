@@ -5,7 +5,22 @@
 <template>
   <el-header class="header">
     <div class="title">
-      <span class="app-logo"><el-icon :size="15"><Collection /></el-icon></span>
+      <span class="app-logo" aria-hidden="true">
+        <svg viewBox="0 0 48 48" width="26" height="26">
+          <defs>
+            <linearGradient id="app-logo-gradient" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#409eff" />
+              <stop offset="1" stop-color="#7c5cff" />
+            </linearGradient>
+          </defs>
+          <rect width="48" height="48" rx="12" fill="url(#app-logo-gradient)" />
+          <path d="M12 34c4-2.2 8-2.2 12 0v-2c-4-2.2-8-2.2-12 0v2z" fill="#fff" opacity=".9" />
+          <path d="M12 30.5c4-2.2 8-2.2 12 0V20c-4-2.2-8-2.2-12 0v10.5z" fill="#fff" opacity=".95" />
+          <path d="M36 34c-4-2.2-8-2.2-12 0v-2c4-2.2 8-2.2 12 0v2z" fill="#fff" opacity=".75" />
+          <path d="M36 30.5c-4-2.2-8-2.2-12 0V20c4-2.2 8-2.2 12 0v10.5z" fill="#fff" opacity=".8" />
+          <path d="M24 9l1.5 4.5L30 15l-4.5 1.5L24 21l-1.5-4.5L18 15l4.5-1.5L24 9z" fill="#fff" />
+        </svg>
+      </span>
       AI 知识库
     </div>
     <div class="user-info">
@@ -74,7 +89,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { ElMessage } from 'element-plus';
-import { UserFilled, Sunny, Moon, Collection } from '@element-plus/icons-vue';
+import { UserFilled, Sunny, Moon } from '@element-plus/icons-vue';
 import { useUserStore } from '@/stores/user';
 import { useUiStore } from '@/stores/ui';
 import { uploadApi } from '@/api/upload';
@@ -137,11 +152,12 @@ const submitAvatar = async () => {
 };
 
 /** 顶部用户下拉命令：打开换头像弹窗 或 登出回登录页 */
-const handleCommand = (command: string) => {
+const handleCommand = async (command: string) => {
   if (command === 'uploadAvatar') {
     avatarDialogVisible.value = true;
     avatarPreview.value = fullAvatarUrl.value || '';
   } else if (command === 'logout') {
+    await authApi.logout();
     userStore.logout();
     window.location.href = '/login';
   }
@@ -166,7 +182,7 @@ const handleCommand = (command: string) => {
   color: var(--el-text-color-primary);
 }
 
-/* 品牌小 logo：渐变圆角块，与 AI 助手头像同色系 */
+/* 品牌小 logo：书页 + AI 星火，渐变圆角块与整体品牌一致 */
 .app-logo {
   display: inline-flex;
   align-items: center;

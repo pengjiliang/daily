@@ -1,11 +1,12 @@
 /**
  * 路由配置：登录、注册、主页，均懒加载。
  * 模型配置 / 使用统计 / 知识图谱 作为主页右侧内容页展示（见 stores/ui.ts + views/Home.vue），不走路由。
- * 全局前置守卫：未登录访问需鉴权页面（meta.requiresAuth）跳登录；
- * 已登录访问登录/注册页则直接回主页。
+ * 全局前置守卫：登录态在 HttpOnly Cookie 中，前端通过 /auth/profile 校验恢复；
+ * 未登录访问需鉴权页面（meta.requiresAuth）跳登录，已登录访问登录/注册页回主页。
  */
 import { createRouter, createWebHistory } from 'vue-router';
 import { useUserStore } from '../stores/user';
+import { authApi } from '../api/auth';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -34,8 +35,18 @@ const router = createRouter({
 });
 
 // 全局登录态守卫
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   const userStore = useUserStore();
+
+  // 尚未完成过登录态校验时先请求 profile（Cookie 自动携带）
+  if (!userStore.authChecked) {
+    try {
+      const profile = await authApi.getProfile();
+      userStore.setUserInfo(profile);
+    } catch {
+      userStore.logout();
+    }
+  }
 
   if (to.meta.requiresAuth && !userStore.isLoggedIn) {
     next('/login');

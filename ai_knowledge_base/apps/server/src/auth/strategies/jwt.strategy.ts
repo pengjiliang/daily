@@ -6,11 +6,22 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
+import type { Request } from 'express';
+import { AUTH_COOKIE_NAME } from '../auth.service.js';
 
 /** 签发的 JWT 载荷结构：sub 为用户 ID */
 export interface JwtPayload {
   sub: number;
   username: string;
+}
+
+/** 从 HttpOnly Cookie 提取 JWT；无 Cookie 时回退 Authorization: Bearer（兼容过渡） */
+function extractJwtFromRequest(request: Request): string | null {
+    const fromCookie = request.cookies?.[AUTH_COOKIE_NAME];
+    if (typeof fromCookie === 'string' && fromCookie) {
+        return fromCookie;
+    }
+    return ExtractJwt.fromAuthHeaderAsBearerToken()(request);
 }
 
 /** 注入 request.user 的登录用户结构 */
@@ -23,7 +34,7 @@ export interface AuthenticatedUser {
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(configService: ConfigService) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: extractJwtFromRequest,
       ignoreExpiration: false, // 过期令牌直接校验失败
       secretOrKey: configService.getOrThrow<string>('jwt.secret'),
     });

@@ -4,18 +4,18 @@ AI 知识库的问答与文档向量化服务，基于 NestJS + LangChain（Lang
 
 ## 功能
 
-- 文档解析：支持 PDF、DOCX、XLSX/XLS、CSV、MD、TXT 及常见图片（OCR）等格式，自动处理 UTF-8/GBK 等中文编码
+- 文档解析：支持 PDF、DOCX、XLSX/XLS、CSV、MD、TXT 及常见图片（OCR）等格式，自动处理 UTF-8/GBK 等中文编码；图片 OCR 使用稀疏文本分页模式 + 300 DPI，并合并中文姓名间的多余空格，提升表格/成绩单类图片的识别质量
 - 文档向量化：文本分块后调用 Embedding 模型生成向量，存入 PostgreSQL（pgvector）的 `document_chunks` 表
 - 智能问答：基于 LangGraph 的 RAG 流程（检索 → 生成），优先使用知识库内容回答，并补充模型自身知识
 - 混合检索：多轮记忆增强（结合最近对话历史把含指代的问题改写为独立查询）→ 向量语义召回（pgvector cosine）+ 关键词字面子串召回（pg_trgm `ILIKE`）→ RRF 排名融合 → LLM 重排（`RERANK_TOP_N`）；短碎片查询（≤4 字符，如"彭"）先由 LLM 改写扩展（如"彭基良"）再检索
-- 相关度重排：多路召回候选片段由 LLM 二次判断相关性，只保留真正相关的片段，关键词路的无关命中在此剔除
+- 相关度重排：多路召回候选片段由 LLM 二次判断相关性，只保留真正相关的片段（每个候选截取前 1200 字符供模型判断，长表格不再被截断丢关键内容）；模型判定全部不相关时保留最优候选兜底，避免检索结果全空
 - 分数校准：原始 Embedding 相似度区间窄（豆包约 0.30~0.40）且绝对分数易误导，按本次检索的最强匹配归一化（`relativeSimilarity`）得到直观的“真实相似度”，最强匹配显示 90%，其余平滑缩放，两个分数一并返回给前端展示
 - 引用溯源：回答附带回源片段（内部知识库 + 外部资料），便于前端展示引用来源
 - 相关追问建议：基于「问题 + 回答」生成 2~3 条用户可能继续追问的问题（`suggestions`，纯增强、失败静默返回空）
 - 性能统计：返回 `stats`（检索/生成/总耗时 ms），缓存命中时各阶段为 0，供前端展示回答耗时
-- 用户隔离：检索 SQL 按 `uploaderId` 过滤，每个用户只能检索到自己上传的文档（`userId` 由 server 端从 JWT 透传）
+- 用户隔离：检索 SQL 按 `uploaderId` 过滤，每个用户只能检索到自己上传的文档（`userId` 由 server 端从 JWT 透传）；`ai_settings` 表由 server 端实体单独管理，本服务只读（原生 SQL + 手动解密 API Key），不再注册实体、不参与建表
 - 文档生命周期：删除文档时由 server 调用清理向量分块（`DELETE /ai/document/:uploadFileId`），检索 SQL 亦会过滤已删除文件的孤儿分块
-- 语义缓存（同类问题去重）：新增 `semantic_cache` 表，按用户缓存「问题 + 问题向量 + 答案 + 引用来源」；新问题先与近期缓存做余弦相似度比较，达到 `CACHE_HIT_THRESHOLD`(0.95) 即直接复用上次结果（每用户上限 `CACHE_LIMIT`=200，超出删最旧），命中时 `AskResult.cached=true` 供前端提示，跳过检索与模型调用、节省成本
+- 语义缓存（同类问题去重）：新增 `semantic_cache` 表，按用户缓存「问题 + 问题向量 + 答案 + 引用来源」；新问题先与近期缓存做余弦相似度比较，达到 `CACHE_HIT_THRESHOLD`(0.95) 即直接复用上次结果（每用户上限 `CACHE_LIMIT`=200，超出删最旧），命中时 `AskResult.cached=true` 供前端提示，跳过检索与模型调用、节省成本；文档索引完成或删除后，server 调用 `POST /ai/cache/invalidate` 清空该用户缓存，保证缓存不返回过期答案
 - 实体级知识图谱：文档索引完成后由 `EntityExtractionService` 调用该用户 LLM 后台抽取「实体—关系—实体」三元组，写入 `graph_entities` / `graph_relations` 表（先删后插、支持重复索引与重建），删除文档时同步清理；抽取全程容错，异常仅告警、不影响索引主流程
 
 ## 技术栈
@@ -70,6 +70,7 @@ pnpm start:prod # 生产模式（需先 pnpm build）
 | `POST` | `/ai/index-document` | 文档向量化入库（body：`uploadFileId`、`filePath`、`originalName`、`mimeType`） |
 | `POST` | `/ai/ask` | 知识库问答（body：`question`、`userId`、可选 `conversationId`、`history`） |
 | `POST` | `/ai/ask/stream` | SSE 流式问答（body：`question`、`userId`、可选 `conversationId`、`history`；事件：`sources`、`token`、`done`、`error`；`done` 的 `AskResult` 含 `cached`（语义缓存命中）、`stats`（检索/生成/总耗时 ms）、`suggestions`（追问建议）） |
+| `POST` | `/ai/cache/invalidate` | 清空某用户语义缓存（body：`userId`；文档变更后由 server 调用） |
 
 ## 常用脚本
 
@@ -103,6 +104,6 @@ src/
 │   ├── document-chunk.entity.ts  # 向量分块
 │   ├── semantic-cache.entity.ts  # 语义缓存
 │   ├── graph-entity.entity.ts    # 实体图谱节点
-│   └── graph-relation.entity.ts  # 实体图谱关系连线
+│   └── graph-relation.entity.ts  # 实体图谱关系连线（ai_settings 表由 server 端管理，本服务不维护实体）
 └── services/database-initialization.service.ts
 ```

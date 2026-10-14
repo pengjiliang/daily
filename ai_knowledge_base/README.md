@@ -1,6 +1,6 @@
 # AI 知识库（RAG）— ai_knowledge_base
 
-基于 Vue3 + NestJS + pgvector + LangChain 的 RAG 知识库项目（pnpm monorepo），支持单个文档与整个文件夹上传（保留相对路径，自动过滤白名单格式）、SSE 流式问答、混合检索（向量 + pg_trgm 关键词 + RRF 融合）、语义缓存（同类问题去重）、多轮对话记忆增强、相关追问建议，以及文档/实体双模式 3D 知识图谱。
+基于 Vue3 + NestJS + pgvector + LangChain 的 RAG 知识库项目（pnpm monorepo），支持单个文档与整个文件夹上传（保留相对路径，自动过滤白名单格式）、SSE 流式问答、混合检索（向量 + pg_trgm 关键词 + RRF 融合）、语义缓存（同类问题去重，知识库变更自动失效）、多轮对话记忆增强、相关追问建议、RAG 评估与回归看板，以及文档/实体双模式 3D 知识图谱。
 
 ## 环境要求
 
@@ -31,6 +31,8 @@ pnpm dev
 | 后端 API | http://localhost:3000 |
 | AI 服务 | http://localhost:3001 |
 
+> 登录态：JWT 存放在服务端下发的 HttpOnly Cookie 中（`kb_access_token`），前端不可读取，刷新页面通过 `/auth/profile` 恢复登录态。
+
 ## 目录结构
 
 - `apps/web`：前端（Vue3 + Vite + Element Plus）
@@ -42,7 +44,7 @@ pnpm dev
 
 知识库问答的检索分 7 步（`apps/ai-service/src/ai/ask.service.ts`）：
 
-1. **语义缓存**（同类问题去重）：新问题先与近期缓存做余弦相似度比较，≥ `CACHE_HIT_THRESHOLD`(0.95) 直接复用上次结果（跳过检索与模型调用），命中时 `AskResult.cached=true` 供前端提示；
+1. **语义缓存**（同类问题去重）：新问题先与近期缓存做余弦相似度比较，≥ `CACHE_HIT_THRESHOLD`(0.95) 直接复用上次结果（跳过检索与模型调用），命中时 `AskResult.cached=true` 供前端提示；上传、删除或重新索引文档时服务端会清空该用户缓存，避免命中过期答案；
 2. **多轮记忆增强**（`contextualizeQuery`）：结合最近对话历史把含指代的问题（如"它的优缺点呢"）改写为不依赖上下文的独立查询；无历史/改写失败回退原问题；
 3. **查询改写**（短查询 ≤ `QUERY_REWRITE_THRESHOLD`=4 字符时）：如"彭"→"彭基良"，由 LLM 扩展为完整表达——碎片/简称查询直接做 embedding 是语义噪声；
 4. **多路召回**：
@@ -50,7 +52,7 @@ pnpm dev
    - 关键词字面路：pg_trgm 子串匹配（`ILIKE '%term%'`），原始查询、记忆增强查询与改写查询各一路、各取 `KEYWORD_TOP_K`=8——保证"彭/彭基/基良"这类碎片能命中含"彭基良"的文档（纯向量检索只认语义、不认字，这是它补的短板）；
    - 两路均 `LEFT JOIN upload_files` 排除已删除文档遗留的孤儿分块（server 与 ai-service 共用同一数据库）；文档删除时 server 会同步调用 ai-service 清理分块；
 5. **RRF 融合**：各路结果按排名融合（`1/(k+rank+1)`，k=`RRF_K`=60），不做分数阈值（两种分数不可比），每文件保留最优片段；
-6. **LLM 重排**：只保留与问题真正相关的片段（`RERANK_TOP_N`=5），关键词路的无关命中在此剔除；
+6. **LLM 重排**：只保留与问题真正相关的片段（`RERANK_TOP_N`=5，每个候选片段截取前 1200 字符供模型判断），关键词路的无关命中在此剔除；模型判定全部不相关时保留最优候选兜底，避免检索结果全空；
 7. **分数校准**：`relativeSimilarity` 按最强匹配归一化后展示（`score` 原始 / `similarity` 相关度）。
 
 回答生成完成后额外生成**相关追问建议**（2~3 条，纯增强、失败静默）并记录**性能指标** `stats`（检索/生成/总耗时 ms，缓存命中时各阶段为 0），随 `done` 事件一并返回前端。
@@ -72,9 +74,11 @@ pnpm dev
 
 - 数据库（PostgreSQL/pgvector）：`DATABASE_*`
 - 鉴权（server 端）：`JWT_SECRET`、`JWT_EXPIRES_IN`
+- 内部调用（server → ai-service）：`INTERNAL_AI_TOKEN`（共享密钥，请求头 `X-Internal-Token`）
 - 服务端口：`SERVER_PORT`（后端，默认 `3000`）、`AI_SERVICE_PORT`（AI 服务，默认 `3001`）
 - AI 服务地址（server 端调用）：`AI_SERVICE_URL`
 - OpenAI 兼容 API（豆包/火山方舟）：`OPENAI_*`
 - 检索/生成参数：`AI_TEMPERATURE`、`AI_TOP_K`、`AI_KEYWORD_TOP_K`、`AI_MIN_SCORE`、`AI_RERANK_TOP_N`
 
 > 提示：`.env` 已在 `.gitignore` 中忽略，请勿提交到仓库；修改后需重启 `pnpm dev` 生效。
+

@@ -1,17 +1,18 @@
 # 前端（web）
 
-AI 知识库的 Web 前端，基于 Vue3 + Vite + Element Plus + Pinia，负责登录鉴权、文档管理、SSE 流式问答、模型配置、使用统计与 3D 知识图谱等全部交互界面。
+AI 知识库的 Web 前端，基于 Vue3 + Vite + Element Plus + Pinia，负责登录鉴权、文档管理、SSE 流式问答、模型配置、使用统计、RAG 评估看板与 3D 知识图谱等全部交互界面。
 
 ## 功能
 
-- 用户认证：注册 / 登录，JWT 持久化到 `localStorage`，刷新自动恢复登录态；401 自动登出
+- 用户认证：注册 / 登录，登录态 JWT 由服务端写入 HttpOnly Cookie（`kb_access_token`），刷新通过 `/auth/profile` 恢复；401 自动登出（同时清除 Cookie）
 - 文档管理：单文件/文件夹上传（保留相对路径）、列表、下载、删除、重命名；来源引用可点击定位到左侧文档
-- 文档预览：图片 / PDF / Word / Excel / CSV / Markdown / TXT 在右侧内容区直接预览，无法解析的格式提示下载
+- 文档预览：图片 / PDF / Word / Excel / CSV / Markdown / TXT 在右侧内容区直接预览；TXT 按 UTF-8 → GBK 自动探测解码，中文不乱码；无法解析的格式提示下载
 - 智能问答：基于 SSE 的流式问答，支持停止生成、引用来源展示（内部知识库 + 外部资料）、一键继续追问建议；同类问题命中语义缓存时提示「已从缓存返回同类问题的回答」，并展示检索/生成耗时
 - 消息反馈：AI 回答支持点赞 / 点踩，再次点击同一项取消（乐观更新，失败回滚）
 - 搜索与查重：左侧面板按主题 / 文件名 / 文件夹实时过滤（所见即所得），过滤结果支持一键删除；上传时对已有同名文件查重，确认后跳过或继续
 - 模型配置（右侧主区内容页）：对话提供方（OpenAI 兼容 / Anthropic）、向量模型、温度与检索参数，用户级保存
 - 使用统计（右侧主区内容页）：KPI 总览 + 近 14 天提问趋势（ECharts）+ 热门问题 Top10
+- 评估看板（右侧主区内容页）：评估集 / 用例管理（新建、添加、删除）、运行评估、A/B 参数对比、历史运行与逐题明细
 - 知识图谱（右侧主区内容页）：基于 three.js 的 3D 可视化，支持文档图谱 / 实体图谱双模式切换（实体类型图例、关系连线、关联度筛选），拖拽/缩放/聚焦，刷新按钮强制重新拉取数据；实体节点可双击或点击列表按钮打开来源文档预览
 
 ## 技术栈
@@ -20,12 +21,12 @@ AI 知识库的 Web 前端，基于 Vue3 + Vite + Element Plus + Pinia，负责�
 - Element Plus（中文语言包）+ Element Plus 图标
 - Pinia 状态管理（`stores/user`、`stores/chat`、`stores/ui`）
 - Vue Router 路由（登录 / 注册 / 主页）
-- axios 全局封装 + 原生 `fetch` 读取 SSE 流
+- axios 全局封装（`withCredentials` 携带登录 Cookie）+ 原生 `fetch` 读取 SSE 流（`credentials: include`）
 - ECharts（统计图表）、three.js（3D 知识图谱）
 
 ## 环境变量
 
-前端开发时通过 Vite 直接访问后端接口，接口地址硬编码在 `src/api/request.ts`（`http://localhost:3000`），无需 `.env`。若后端端口变更，需同步修改该地址。
+前端开发时通过 Vite 直接访问后端接口，接口地址硬编码在 `src/api/request.ts`（`http://localhost:3000`），无需 `.env`。若后端端口变更，需同步修改该地址。登录接口由服务端写 HttpOnly Cookie，跨域访问需后端 CORS 开启 `credentials`。
 
 ## 启动
 
@@ -65,7 +66,7 @@ src/
 ├── components/             # AppHeader / SidebarPanel / ChatPanel / DocumentPreview
 ├── router/index.ts         # 路由与登录态守卫
 ├── stores/                 # Pinia：user（登录态）/ chat（工作台状态）/ ui（主区视图 + 侧栏菜单）
-└── views/                  # Home / Login / Register / Graph / Settings / Stats
+└── views/                  # Home / Login / Register / Graph / Settings / Stats / Debug / Eval / Usage / Feedback
 ```
 
 ## 常用脚本
@@ -75,3 +76,4 @@ pnpm dev       # 开发模式
 pnpm build     # 类型检查（vue-tsc）+ 生产构建
 pnpm preview   # 预览构建产物
 ```
+

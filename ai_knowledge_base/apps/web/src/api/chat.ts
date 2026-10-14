@@ -1,6 +1,7 @@
 /**
  * 聊天相关接口与会话/消息类型定义。
  * 会话与消息的普通 CRUD 走全局 axios；发送消息使用原生 fetch 读取 SSE 流（见 sendMessage）。
+ * 登录态在 HttpOnly Cookie 中，SSE fetch 用 credentials: 'include' 携带。
  */
 import request from './request';
 import { useUserStore } from '../stores/user';
@@ -101,13 +102,12 @@ export const chatApi = {
     graphEnabled?: boolean,
     signal?: AbortSignal,
   ): Promise<StreamDoneResult> {
-    const userStore = useUserStore();
     const response = await fetch(`${API_BASE}/chat/conversations/${id}/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(userStore.token ? { Authorization: `Bearer ${userStore.token}` } : {}),
       },
+      credentials: 'include',
       body: JSON.stringify({ content, graphEnabled }),
       signal,
     });
@@ -124,7 +124,7 @@ export const chatApi = {
         // 忽略 JSON 解析失败
       }
       if (response.status === 401) {
-        userStore.logout();
+          useUserStore().logout();
         window.location.href = '/login';
       }
       throw new Error(message);

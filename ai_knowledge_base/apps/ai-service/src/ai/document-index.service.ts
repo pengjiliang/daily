@@ -21,7 +21,7 @@ import { ModelProvider } from './openai-model.provider.js';
 import * as iconv from 'iconv-lite';
 import * as XLSX from 'xlsx';
 import * as mammoth from 'mammoth';
-import { createWorker } from 'tesseract.js';
+import { createWorker, PSM } from 'tesseract.js';
 import { assertPathInsideUploadRoot } from '../auth/upload-path.js';
 import { modelCostUsd } from './usage-pricing.js';
 
@@ -84,7 +84,7 @@ export class DocumentIndexService {
     let text = await this.extractText(safePath, request.originalName);
     // Prepend document filename once before splitting so it gets indexed
     // This enables searching by filename/title, but doesn't repeat filename in every chunk
-    text = `文档名称：${request.originalName}\n\n${text}`;
+    text = `文档名称：${request.originalName}\n${text}`;
     const chunks = await this.splitter.splitText(text);
     if (chunks.length === 0) {
       throw new BadRequestException('文档不包含可索引内容');
@@ -307,15 +307,16 @@ export class DocumentIndexService {
     return texts.join('\n\n');
   }
 
-  /** OCR 解析图片：tesseract 中英文模型识别，用完即销毁 worker 释放资源 */
+  /** OCR 解析图片：使用适合稀疏排版的模式，保留表格中的文字与数字。 */
   private async extractImageText(filePath: string): Promise<string> {
     const buffer = await readFile(filePath);
     const worker = await createWorker('chi_sim+eng');
     try {
+      await worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT, user_defined_dpi: '300' });
       const {
         data: { text },
       } = await worker.recognize(buffer);
-      return text;
+      return text.replace(/(?<=[\u4e00-\u9fff])[ \t]+(?=[\u4e00-\u9fff])/g, '');
     } finally {
       await worker.terminate();
     }

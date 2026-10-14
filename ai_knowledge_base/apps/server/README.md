@@ -4,12 +4,14 @@ AI 知识库的后端 API 服务，基于 NestJS + TypeORM + PostgreSQL，负责
 
 ## 功能
 
-- 用户认证：注册 / 登录 / 个人资料，JWT 鉴权
-- 文档管理：单文件/文件夹上传、列表、下载、删除、重命名；上传后自动异步调用 AI 服务进行向量化入库
+- 用户认证：注册 / 登录 / 个人资料 / 注销，JWT 鉴权；登录后 JWT 写入 HttpOnly Cookie（`kb_access_token`），刷新由前端 `/auth/profile` 校验恢复
+- 文档管理：单文件/文件夹上传、列表、下载、删除、重命名、手动重新索引（已完成文档也可触发）；上传后自动异步调用 AI 服务进行向量化入库
 - 会话消息：创建 / 重命名 / 删除会话，发送消息时自动调用 AI 服务问答（SSE 流式返回），并携带最近 10 轮对话历史
 - 消息反馈：AI 回答支持点赞 / 点踩（`Message.feedback` 字段），再次点击同一项可取消；接口 `PATCH /chat/messages/:id/feedback`
 - 模型配置：GET/PUT 用户级 AI 设置（对话 / 向量模型、检索参数），向量模型变更时自动后台重建索引
 - 全量重建索引：`POST /settings/reindex` 手动触发（不改动任何模型配置；向量模型变更时仍自动触发）
+- 语义缓存失效：文档索引成功或删除后，通知 ai-service 清空该用户的语义缓存，避免同类问题命中过期答案
+- 评估看板：评估集 / 用例 CRUD、运行评估、A/B 参数对比、历史运行与逐题明细（`/eval/*`，登录后可用）
 - 使用统计与知识图谱：`GET /stats` 返回统计面板数据（KPI、趋势、热门问题），`GET /stats/graph` 返回 3D 图谱的文档节点与相似度连线，`GET /stats/graph/entities` 返回实体级图谱的实体节点与关系连线（数据由 ai-service 索引后写入）
 - 静态资源：`/uploads` 托管头像与文档文件
 
@@ -73,13 +75,14 @@ pnpm start:prod # 生产模式（需先 pnpm build）
 
 ## 接口
 
-除健康检查外，接口均需在请求头携带 `Authorization: Bearer <token>`：
+除健康检查外，接口均需登录。登录态默认通过 HttpOnly Cookie（`kb_access_token`）自动携带，兼容请求头 `Authorization: Bearer <token>`：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/health` | 健康检查（公开） |
 | `POST` | `/auth/register` | 注册（公开） |
-| `POST` | `/auth/login` | 登录，返回 `access_token`（公开） |
+| `POST` | `/auth/login` | 登录，写 HttpOnly Cookie（公开） |
+| `POST` | `/auth/logout` | 注销，清除登录 Cookie |
 | `GET` | `/auth/profile` | 当前用户信息 |
 | `POST` | `/upload/avatar` | 上传头像（图片，≤5MB） |
 | `POST` | `/upload/document` | 上传文档（≤20MB，自动触发向量化） |
@@ -87,6 +90,7 @@ pnpm start:prod # 生产模式（需先 pnpm build）
 | `GET` | `/upload/document/:id/download` | 下载文档 |
 | `PATCH` | `/upload/document/:id` | 重命名文档 |
 | `DELETE` | `/upload/document/:id` | 删除文档 |
+| `POST` | `/upload/document/:id/reindex` | 手动重新索引文档 |
 | `POST` | `/chat/conversations` | 创建会话 |
 | `GET` | `/chat/conversations` | 会话列表 |
 | `PATCH` | `/chat/conversations/:id` | 重命名会话 |
@@ -100,6 +104,17 @@ pnpm start:prod # 生产模式（需先 pnpm build）
 | `GET` | `/stats` | 使用统计（KPI、近 14 天趋势、热门问题 Top10） |
 | `GET` | `/stats/graph` | 知识图谱数据（文档节点 + 相似度连线） |
 | `GET` | `/stats/graph/entities` | 实体级知识图谱数据（实体节点 + 关系连线） |
+| `GET` | `/eval/sets` | 评估集列表 |
+| `POST` | `/eval/sets` | 新建评估集 |
+| `GET` | `/eval/sets/:id` | 评估集详情（含用例） |
+| `DELETE` | `/eval/sets/:id` | 删除评估集 |
+| `POST` | `/eval/sets/:id/cases` | 添加用例 |
+| `PATCH` | `/eval/cases/:id` | 编辑用例 |
+| `DELETE` | `/eval/cases/:id` | 删除用例 |
+| `POST` | `/eval/sets/:id/run` | 运行评估 |
+| `POST` | `/eval/sets/:id/compare` | A/B 参数对比 |
+| `GET` | `/eval/runs?setId=` | 历史运行列表 |
+| `GET` | `/eval/runs/:id` | 运行明细 |
 
 ## 常用脚本
 

@@ -5,12 +5,15 @@
  */
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import * as express from 'express';
 import { join } from 'node:path';
 import { AppModule } from './app.module.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
+  // 解析 Cookie：登录态 JWT 存放在 HttpOnly Cookie 中
+  app.use(cookieParser());
   // 粘贴文本导入上限 20 万字符，需高于 Nest 默认 100kb
   app.use(express.json({ limit: '2mb' }));
   app.use(express.urlencoded({ extended: true, limit: '2mb' }));
@@ -25,7 +28,7 @@ async function bootstrap() {
   );
   app.enableCors({
     origin: 'http://localhost:5173',
-    credentials: true,
+    credentials: true, // 前端跨源携带登录态 Cookie
   });
   await app.listen(process.env.SERVER_PORT ?? 3000);
 }

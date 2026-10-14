@@ -26,6 +26,15 @@ function decrypt(value: string | null): string | null {
 
 export const secretTransformer = { to: encrypt, from: decrypt };
 
+/** 解密单个密文字段（原生 SQL 读取场景使用）；明文/空值原样返回，解密失败返回 null */
+export function decryptSecret(value: string | null): string | null {
+  try {
+    return decrypt(value);
+  } catch {
+    return null;
+  }
+}
+
 export async function encryptLegacyApiKeys(query: (sql: string, parameters?: unknown[]) => Promise<unknown>): Promise<void> {
   const rows = (await query('SELECT id, "openaiApiKey", "anthropicApiKey", "embeddingApiKey" FROM ai_settings')) as Array<{
     id: number;

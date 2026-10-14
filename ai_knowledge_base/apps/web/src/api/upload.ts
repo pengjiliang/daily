@@ -4,7 +4,6 @@
  */
 import request from './request';
 import axios from 'axios';
-import { useUserStore } from '../stores/user';
 import { ElMessage } from 'element-plus';
 import type { IndexErrorKind, IndexStatus } from '@ai-knowledge-base/shared';
 
@@ -75,13 +74,12 @@ export const uploadApi = {
   },
 
   /**
-   * 获取文档原始 blob（带 JWT 认证），供在线预览等场景使用
+   * 获取文档原始 blob（Cookie 认证），供在线预览等场景使用
    */
   async fetchDocumentBlob(id: number): Promise<Blob> {
-    const userStore = useUserStore();
     const response = await axios.get(`${API_BASE}/upload/document/${id}/download`, {
       responseType: 'blob',
-      headers: userStore.token ? { Authorization: `Bearer ${userStore.token}` } : undefined,
+      withCredentials: true,
     });
     return response.data;
   },
@@ -101,11 +99,10 @@ export const uploadApi = {
    * 文件名优先取 Content-Disposition 中的 filename*（UTF-8 编码中文），其次普通 filename，最后兜底。
    */
   async downloadDocument(id: number, fallbackName?: string) {
-    const userStore = useUserStore();
     try {
       const response = await axios.get(`${API_BASE}/upload/document/${id}/download`, {
         responseType: 'blob',
-        headers: userStore.token ? { Authorization: `Bearer ${userStore.token}` } : undefined,
+        withCredentials: true,
       });
 
       const disposition = response.headers['content-disposition'] as string | undefined;

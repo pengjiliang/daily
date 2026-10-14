@@ -1,5 +1,5 @@
 /**
- * 鉴权相关接口：注册、登录（拿 JWT）、获取当前用户资料。
+ * 鉴权相关接口：注册、登录（服务端写 HttpOnly Cookie）、获取当前用户资料、注销。
  */
 import request from './request';
 
@@ -19,18 +19,18 @@ export interface UserInfo {
   avatarUrl?: string;
 }
 
-export interface LoginResult {
-  access_token: string;
-  user: UserInfo;
-}
-
 export const authApi = {
   register(data: RegisterData) {
     return request.post('/auth/register', data);
   },
 
   login(data: LoginData) {
-    return request.post<LoginResult>('/auth/login', data);
+    return request.post<UserInfo>('/auth/login', data);
+  },
+
+  /** 注销：服务端清除登录态 Cookie */
+  logout() {
+    return request.post<{ loggedOut: boolean }>('/auth/logout');
   },
 
   getProfile() {

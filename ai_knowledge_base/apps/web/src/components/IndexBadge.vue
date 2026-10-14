@@ -62,7 +62,7 @@ const badgeClass = computed(() => {
 
 const onClick = () => {
   if (status.value === 'failed' && !props.doc.sharedByUsername) {
-    chatStore.retryDocumentIndex(props.doc);
+    chatStore.reindexDocument(props.doc);
   }
 };
 </script>

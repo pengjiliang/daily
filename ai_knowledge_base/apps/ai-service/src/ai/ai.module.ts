@@ -5,7 +5,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DocumentChunk } from '../entities/document-chunk.entity.js';
-import { AiSettings } from '../entities/ai-settings.entity.js';
 import { GraphEntity } from '../entities/graph-entity.entity.js';
 import { GraphRelation } from '../entities/graph-relation.entity.js';
 import { SemanticCache } from '../entities/semantic-cache.entity.js';
@@ -19,7 +18,7 @@ import { ModelProvider } from './openai-model.provider.js';
 import { InternalTokenGuard } from '../auth/internal-token.guard.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([DocumentChunk, AiSettings, SemanticCache, GraphEntity, GraphRelation, UsageEvent])],
+  imports: [TypeOrmModule.forFeature([DocumentChunk, SemanticCache, GraphEntity, GraphRelation, UsageEvent])],
   controllers: [AIController],
   providers: [
     ModelProvider,

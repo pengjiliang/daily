@@ -32,6 +32,8 @@ export const RERANK_TOP_N = 5;
 export const RRF_K = 60;
 /** 短查询改写阈值：查询字符数不超过该值（如人名碎片“彭”“彭基”“基良”）时，先由 LLM 扩展为完整查询再检索 */
 export const QUERY_REWRITE_THRESHOLD = 4;
+/** LLM 重排时每个候选片段参与判断的最大字符数（过小会让模型看不到表格/长文关键内容） */
+export const RERANK_SNIPPET_LIMIT = 1200;
 
 /**
  * 相关度校准：把本次检索保留的片段按最强匹配归一化，映射为直观的“真实相似度”（0~1）。
@@ -413,6 +415,16 @@ export class AskService {
     }
   }
 
+  /**
+   * 按用户清空语义缓存：文档索引完成或删除后由 server 调用，
+   * 保证缓存命中时知识库内容与本轮一致，避免同类问题拿到过期答案。
+   */
+  async invalidateCacheForUser(userId: number): Promise<{ deleted: number }> {
+    const result = await this.semanticCacheRepository.delete({ userId });
+    this.logger.log(`Invalidated semantic cache for userId=${userId}: ${result.affected ?? 0} entries`);
+    return { deleted: result.affected ?? 0 };
+  }
+
   /** 逐 token 调用模型，累积并回调每个增量片段（兼容 content 为字符串或片段数组） */
   private async streamAnswer(
     messages: ChatMessage[],
@@ -649,8 +661,10 @@ export class AskService {
           '你是知识库问答助手。请优先使用知识库片段回答，再补充你自身已有的相关知识。',
           '回答要求：',
           '1. 先写「【知识库】」部分：仅基于提供的知识库片段作答，并用 [知识库1]、[知识库2] 标注引用。',
-          '2. 再写「【补充知识】」部分：补充你自身具备的相关知识（不要重复知识库已写内容）。',
-          '3. 直接输出回答正文，使用中文纯文本与换行排版，不要输出任何 JSON 或代码块包裹。',
+          '2. 对姓名、成绩等具体数据，只能复述片段中明确出现的内容，不得根据文件名或常识猜测、补全。',
+          '3. 如果片段只有文件名、OCR内容不清或没有足够依据，明确说明无法从当前片段确认，不要编造。',
+          '4. 再写「【补充知识】」部分：补充你自身具备的相关知识（不要重复知识库已写内容）。',
+          '5. 直接输出回答正文，使用中文纯文本与换行排版，不要输出任何 JSON 或代码块包裹。',
         ].join('\n')
       : [
           '你是知识库问答助手。当前知识库没有相关内容，请仅使用你自身已有知识回答。',
@@ -1200,7 +1214,7 @@ export class AskService {
     } else {
       const startedAt = Date.now();
       const list = candidates
-        .map((chunk, index) => `[${index + 1}]：${chunk.content.slice(0, 400)}`)
+        .map((chunk, index) => `[${index + 1}]：${chunk.content.slice(0, RERANK_SNIPPET_LIMIT)}`)
         .join('\n\n');
 
       const chatModel = await this.models.getChatModel(userId);
@@ -1208,7 +1222,7 @@ export class AskService {
         { role: 'system', content: '你是检索相关性判断助手。只判断候选片段是否与问题相关，不要回答用户问题。' },
         {
           role: 'user',
-          content: `问题：${question}\n\n候选片段：\n\n${list}\n\n只输出相关片段编号的 JSON 数组，例如 [1,3]；都不相关则输出 []。`,
+          content: `问题：${question}\n\n候选片段：\n\n${list}\n\n文件名片段不能替代正文。问题涉及文档内容或表格数据时，优先保留包含实际正文、姓名或数值的片段。只输出相关片段编号的 JSON 数组，例如 [1,3]；都不相关则输出 []。`,
         },
       ]);
       // 用量统计：LLM 重排（亮点 5）
@@ -1227,8 +1241,8 @@ export class AskService {
         // 解析失败：退回向量排序结果，避免误删候选
         kept = candidates.slice(0, topN);
       } else if (parsed.length === 0) {
-        // 模型判定无相关片段：返回空，让模型用自身知识回答
-        kept = [];
+        // 模型判定无相关片段：保留向量路最优候选兜底，避免检索结果全空导致内容缺失
+        kept = candidates.slice(0, Math.min(1, topN));
       } else {
         kept = parsed
           .map((index) => candidates[index - 1])

@@ -5,6 +5,7 @@
 import { ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { Response } from 'express';
 import { User } from '../users/user.entity.js';
 import { UsersService } from '../users/users.service.js';
 import { LoginDto } from './dto/login.dto.js';
@@ -12,6 +13,10 @@ import { RegisterDto } from './dto/register.dto.js';
 
 /** 对外暴露的用户类型：不含密码哈希 */
 export type PublicUser = Omit<User, 'password'>;
+
+/** 登录态 Cookie 名称与有效期（与 JWT_EXPIRES_IN 对齐，默认 7 天） */
+export const AUTH_COOKIE_NAME = 'kb_access_token';
+export const AUTH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class AuthService {
@@ -37,19 +42,31 @@ export class AuthService {
   }
 
   /** 登录：用户名或密码任一错误都返回统一的 401，避免泄露用户名是否存在 */
-  async login(dto: LoginDto): Promise<{ access_token: string; user: PublicUser }> {
+  async login(dto: LoginDto, response: Response): Promise<PublicUser> {
     const user = await this.usersService.findOneByUsername(dto.username);
     if (!user || !(await bcrypt.compare(dto.password, user.password))) {
       throw new UnauthorizedException('Invalid username or password');
     }
 
-    // JWT payload：sub 为用户 ID（JwtStrategy 据此还原登录用户）
+    // JWT payload：sub 为用户 ID（JwtStrategy 据此还原登录用户）；写入 HttpOnly Cookie
     const access_token = await this.jwtService.signAsync({
       sub: user.id,
       username: user.username,
     });
 
-    return { access_token, user: this.toPublicUser(user) };
+    response.cookie(AUTH_COOKIE_NAME, access_token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: AUTH_COOKIE_MAX_AGE_MS,
+      path: '/',
+    });
+    return this.toPublicUser(user);
+  }
+
+  /** 注销：清除登录态 Cookie */
+  logout(response: Response): { loggedOut: true } {
+    response.clearCookie(AUTH_COOKIE_NAME, { path: '/' });
+    return { loggedOut: true };
   }
 
   /** 查询个人资料，用户不存在时返回 404 */

@@ -3,13 +3,16 @@
  * 返回模型提供方实际使用的“生效配置”。
  * 每次读取都查库（开销极小），模型实例由 ModelProvider 按配置指纹缓存重建，
  * 因此用户在设置页改完配置后无需重启即可生效。
+ *
+ * schema 归属：ai_settings 表由 server 端实体单独管理（synchronize），
+ * 本服务只读（原生 SQL + 手动解密），不注册实体、不参与建表，
+ * 避免两服务重复维护同一实体的定义冲突。
  */
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource } from 'typeorm';
 import type { ChatProvider } from '@ai-knowledge-base/shared';
-import { AiSettings } from '../entities/ai-settings.entity.js';
+import { decryptSecret } from './secret-crypto.js';
 
 /** 用户生效设置：字段为“用户行 ?? .env 默认”合并后的最终值 */
 export interface EffectiveSettings {
@@ -29,14 +32,18 @@ export interface EffectiveSettings {
 @Injectable()
 export class UserSettingsService {
   constructor(
-    @InjectRepository(AiSettings)
-    private readonly settingsRepository: Repository<AiSettings>,
+    private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
   ) {}
 
   /** 读取某用户的生效配置（用户行字段为空时回退 .env 默认值） */
   async getEffectiveSettings(userId: number): Promise<EffectiveSettings> {
-    const row = await this.settingsRepository.findOneBy({ userId });
+    const rows = (await this.dataSource.query(
+      'SELECT * FROM ai_settings WHERE "userId" = $1 LIMIT 1',
+      [userId],
+    )) as Array<Record<string, string | number | boolean | null>>;
+    const raw = rows[0] ?? null;
+    const row = raw ? decryptSettingsRow(raw) : null;
     const env = this.envDefaults();
     return {
       chatProvider: (row?.chatProvider ?? env.chatProvider) as ChatProvider,
@@ -91,4 +98,36 @@ export class UserSettingsService {
       },
     };
   }
+}
+
+/** 原生 SQL 读出的 ai_settings 行（字段与 server 端 AiSettings 实体一一对应） */
+interface SettingsRow {
+  chatProvider: string | null;
+  openaiBaseUrl: string | null;
+  openaiApiKey: string | null;
+  openaiChatModel: string | null;
+  anthropicBaseUrl: string | null;
+  anthropicApiKey: string | null;
+  anthropicChatModel: string | null;
+  embeddingBaseUrl: string | null;
+  embeddingApiKey: string | null;
+  embeddingModel: string | null;
+  temperature: number | null;
+  topK: number | null;
+  keywordTopK: number | null;
+  minScore: number | null;
+  rerankTopN: number | null;
+  dailyTokenLimit: number | null;
+  monthlyTokenLimit: number | null;
+}
+
+/** 解密行内三个 API Key 密文列，返回类型化设置行 */
+function decryptSettingsRow(row: Record<string, string | number | boolean | null>): SettingsRow {
+  const casted = row as unknown as SettingsRow;
+  return {
+    ...casted,
+    openaiApiKey: decryptSecret(casted.openaiApiKey),
+    anthropicApiKey: decryptSecret(casted.anthropicApiKey),
+    embeddingApiKey: decryptSecret(casted.embeddingApiKey),
+  };
 }

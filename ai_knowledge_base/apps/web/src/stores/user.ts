@@ -1,6 +1,6 @@
 /**
- * 用户状态（Pinia）：保存 JWT 与用户信息，并同步持久化到 localStorage，
- * 刷新页面后自动恢复登录态；提供登录写入、头像更新与登出清理。
+ * 用户状态（Pinia）：登录态 JWT 存放在服务端下发的 HttpOnly Cookie 中（前端不可读），
+ * 这里只保存用户信息；刷新页面后通过 /auth/profile 恢复登录态。
  */
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
@@ -12,48 +12,36 @@ export interface UserInfo {
 }
 
 export const useUserStore = defineStore('user', () => {
-  // 初始值直接从 localStorage 恢复，实现刷新免登录
-  const token = ref<string>(localStorage.getItem('token') || '');
-  const userInfo = ref<UserInfo | null>(
-    localStorage.getItem('userInfo') ? JSON.parse(localStorage.getItem('userInfo')!) : null,
-  );
+  // 登录态由 HttpOnly Cookie 承载；是否已登录以最近一次 profile 校验为准
+  const userInfo = ref<UserInfo | null>(null);
+  const authChecked = ref(false);
 
-  /** 是否已登录（仅以 token 有无判定） */
-  const isLoggedIn = computed(() => !!token.value);
+  /** 是否已登录：完成过一次校验且拿到了用户信息 */
+  const isLoggedIn = computed(() => authChecked.value && userInfo.value !== null);
 
-  /** 写入 token：更新响应式状态并持久化 */
-  function setToken(newToken: string) {
-    token.value = newToken;
-    localStorage.setItem('token', newToken);
-  }
-
-  /** 写入用户信息并持久化 */
+  /** 写入用户信息（登录成功或 profile 校验通过后调用） */
   function setUserInfo(info: UserInfo) {
     userInfo.value = info;
-    localStorage.setItem('userInfo', JSON.stringify(info));
+    authChecked.value = true;
   }
 
   /** 更新头像 URL 并同步持久化（上传头像后调用） */
   function updateAvatar(avatarUrl: string) {
     if (userInfo.value) {
       userInfo.value.avatarUrl = avatarUrl;
-      localStorage.setItem('userInfo', JSON.stringify(userInfo.value));
     }
   }
 
-  /** 登出：清空内存状态与本地缓存 */
+  /** 登出：清空内存状态（Cookie 由服务端清除） */
   function logout() {
-    token.value = '';
     userInfo.value = null;
-    localStorage.removeItem('token');
-    localStorage.removeItem('userInfo');
+    authChecked.value = false;
   }
 
   return {
-    token,
     userInfo,
+    authChecked,
     isLoggedIn,
-    setToken,
     setUserInfo,
     updateAvatar,
     logout,

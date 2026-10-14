@@ -99,6 +99,14 @@ export const useChatStore = defineStore('chat', () => {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
 
+  /** 解码文本文件：UTF-8 优先，出现替换字符（U+FFFD）时按 GBK 重新解码（Windows 记事本 ANSI 编码常见） */
+  const decodeTextBlob = async (blob: Blob): Promise<string> => {
+    const buffer = await blob.arrayBuffer();
+    const utf8 = new TextDecoder('utf-8').decode(buffer);
+    if (!utf8.includes('\uFFFD')) return utf8.replace(/^\uFEFF/, '');
+    return new TextDecoder('gbk').decode(buffer).replace(/^\uFEFF/, '');
+  };
+
   /**
    * 轻量 Markdown → HTML 渲染（先转义再按行/块转换，覆盖标题、代码块、引用、
    * 列表、加粗/斜体、行内代码、链接、分隔线与换行；不含高级语法）。
@@ -676,8 +684,8 @@ export const useChatStore = defineStore('chat', () => {
     }, 3000);
   };
 
-  /** 手动重试索引失败的文档（亮点 1 自愈）：成功后刷新列表并继续轮询 */
-  const retryDocumentIndex = async (doc: UploadDocument) => {
+  /** 手动重新索引文档：成功后刷新列表并继续轮询 */
+  const reindexDocument = async (doc: UploadDocument) => {
     try {
       await uploadApi.reindexDocument(doc.id);
       ElMessage.success('已重新提交索引');
@@ -685,7 +693,7 @@ export const useChatStore = defineStore('chat', () => {
       pollIndexStatus();
     } catch (error) {
       console.error(error);
-      ElMessage.error('重试索引失败');
+      ElMessage.error('重新索引失败');
     }
   };
 
@@ -786,7 +794,7 @@ export const useChatStore = defineStore('chat', () => {
       } else if (ext === '.md') {
         previewState.value.html = applyHighlight(renderMarkdown(await blob.text()), highlight);
       } else {
-        previewState.value.html = applyHighlight(escapeHtml(await blob.text()), highlight);
+        previewState.value.html = applyHighlight(escapeHtml(await decodeTextBlob(blob)), highlight);
       }
     } catch (error) {
       console.error(error);
@@ -965,7 +973,7 @@ export const useChatStore = defineStore('chat', () => {
     handleUpload,
     openPasteDialog,
     importText,
-    retryDocumentIndex,
+    reindexDocument,
     pickFolderWithPicker,
     uploadFolderFiles,
     handleFolderChange,

@@ -8,6 +8,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -63,7 +64,7 @@ function decodeFileName(filename: string): string {
 }
 
 @Injectable()
-export class UploadService {
+export class UploadService implements OnModuleInit {
   private readonly logger = new Logger(UploadService.name);
 
   constructor(
@@ -74,6 +75,43 @@ export class UploadService {
     private readonly shareService: ShareService,
     private readonly dataSource: DataSource,
   ) {}
+
+  /** 服务重启后修复遗留的索引状态，避免旧文档永久显示为等待索引。 */
+  async onModuleInit(): Promise<void> {
+    let staleDocuments: Array<{ id: number; chunkCount: number }>;
+    try {
+      staleDocuments = await this.dataSource.query(
+        `SELECT file.id, COUNT(chunk.id)::int AS "chunkCount"
+         FROM upload_files file
+         LEFT JOIN document_chunks chunk ON chunk."uploadFileId" = file.id
+         WHERE file."indexStatus" IN ('pending', 'running')
+         GROUP BY file.id`,
+      );
+    } catch (error) {
+      this.logger.warn(`Could not recover pending document indexes: ${String(error)}`);
+      return;
+    }
+
+    for (const stale of staleDocuments) {
+      const document = await this.uploadFilesRepository.findOneBy({ id: stale.id });
+      if (!document) continue;
+
+      if (stale.chunkCount > 0) {
+        await this.uploadFilesRepository.update(document.id, {
+          indexStatus: 'done',
+          chunkCount: stale.chunkCount,
+          indexedAt: document.indexedAt ?? new Date(),
+          indexError: null,
+          errorKind: null,
+        });
+        continue;
+      }
+
+      setImmediate(() => {
+        void this.runIndexPipeline(document, this.resolveSafeDocumentPath(document.path));
+      });
+    }
+  }
 
   /** 保存头像：把静态访问 URL 更新到用户资料，返回 URL 与脱敏后的用户信息 */
   async saveAvatar(userId: number, file: Express.Multer.File) {
@@ -233,8 +271,9 @@ export class UploadService {
   async deleteDocument(id: number, userId: number): Promise<void> {
     const uploadFile = await this.findOwnedDocument(id, userId);
     const filePath = this.resolveSafeDocumentPath(uploadFile.path);
-    // remove() 会清空实体的主键，先保存 id 供 requestChunkPurge 使用
+    // remove() 会清空实体的主键，先保存 id 与 uploaderId 供后续清理调用使用
     const uploadFileId = uploadFile.id;
+    const uploaderId = uploadFile.uploaderId;
 
     try {
       await unlink(filePath);
@@ -250,6 +289,8 @@ export class UploadService {
 
     // 同步清理 ai-service 中该文件的分块：否则孤儿分块会继续被检索命中（同一文件名出现多条来源）
     await this.requestChunkPurge(uploadFileId);
+    // 知识库内容变化：清掉该用户语义缓存，避免同类问题命中过期答案
+    await this.requestCacheInvalidate(uploaderId);
   }
 
   /** 通知 ai-service 删除某上传文件的全部向量分块；失败仅告警，不影响文档删除本身 */
@@ -272,6 +313,27 @@ export class UploadService {
       }
     } catch (error) {
       this.logger.warn(`AI chunk purge for document ${uploadFileId} could not be delivered: ${String(error)}`);
+    }
+  }
+
+  /** 通知 ai-service 清空某用户语义缓存（文档索引完成/删除后调用，保证缓存不返回过期答案） */
+  private async requestCacheInvalidate(userId: number): Promise<void> {
+    const aiServiceUrl = this.configService.get<string>('aiService.url', 'http://localhost:3001');
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const response = await fetch(`${aiServiceUrl}/ai/cache/invalidate`, {
+        method: 'POST',
+        headers: aiServiceHeaders(this.configService),
+        body: JSON.stringify({ userId }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        this.logger.warn(`Semantic cache invalidate for user ${userId} failed with ${response.status}`);
+      }
+    } catch (error) {
+      this.logger.warn(`Semantic cache invalidate for user ${userId} could not be delivered: ${String(error)}`);
     }
   }
 
@@ -344,6 +406,8 @@ export class UploadService {
           errorKind: null,
         });
         this.logger.log(`Indexing complete for document ${uploadFile.id} (${result.chunks} chunks)`);
+      // 知识库内容变化：清掉该用户语义缓存，避免同类问题命中过期答案
+      await this.requestCacheInvalidate(uploadFile.uploaderId);
         return;
       }
 
