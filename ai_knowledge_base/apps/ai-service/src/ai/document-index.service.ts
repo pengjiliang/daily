@@ -310,7 +310,11 @@ export class DocumentIndexService {
   /** OCR 解析图片：使用适合稀疏排版的模式，保留表格中的文字与数字。 */
   private async extractImageText(filePath: string): Promise<string> {
     const buffer = await readFile(filePath);
-    const worker = await createWorker('chi_sim+eng');
+    // 容器/离线部署时通过 TESSDATA_PREFIX 指定本地语言包目录，避免默认从 CDN 下载
+    const langPath = process.env.TESSDATA_PREFIX?.trim();
+    const worker = langPath
+      ? await createWorker('chi_sim+eng', undefined, { langPath, gzip: false })
+      : await createWorker('chi_sim+eng');
     try {
       await worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT, user_defined_dpi: '300' });
       const {

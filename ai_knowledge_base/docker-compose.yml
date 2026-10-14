@@ -1,2 +1,119 @@
-# Docker services will be configured in a later step.
-services: {}
+# ============================================================================
+# AI 知识库一键部署（docker compose up -d 即可）
+#
+# 组成：
+#   db        - PostgreSQL 16 + pgvector（数据持久化在 ./data/pg）
+#   server    - 后端 API（:3000，仅容器内网）
+#   ai-service- AI 服务（:3001，仅容器内网）
+#   web       - Nginx：托管前端静态文件，并把 /api、/uploads 反代到 server
+#
+# 客户部署步骤：
+#   1. 复制 .env.example 为 .env 并填写（JWT_SECRET / ENV_ENCRYPTION_KEY /
+#      INTERNAL_AI_TOKEN / 客户自己的模型 API Key）
+#   2. 执行 docker compose up -d --build
+#   3. 浏览器访问 http://<服务器IP>:8080
+# ============================================================================
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+      POSTGRES_DB: ${DATABASE_NAME:-ai_knowledge_base}
+    volumes:
+      - ./data/pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-postgres} -d ${DATABASE_NAME:-ai_knowledge_base}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - kb
+
+  server:
+    build:
+      context: .
+      target: server-runtime
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      SERVER_PORT: "3000"
+      DATABASE_HOST: db
+      DATABASE_PORT: "5432"
+      DATABASE_USER: ${DATABASE_USER:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+      DATABASE_NAME: ${DATABASE_NAME:-ai_knowledge_base}
+      JWT_SECRET: ${JWT_SECRET:?请先配置 JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      INTERNAL_AI_TOKEN: ${INTERNAL_AI_TOKEN:?请先配置 INTERNAL_AI_TOKEN}
+      AI_SERVICE_URL: http://ai-service:3001
+      ENV_ENCRYPTION_KEY: ${ENV_ENCRYPTION_KEY:?请先配置 ENV_ENCRYPTION_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-ada-002}
+      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o-mini}
+      AI_TEMPERATURE: ${AI_TEMPERATURE:-0}
+      AI_TOP_K: ${AI_TOP_K:-8}
+      AI_KEYWORD_TOP_K: ${AI_KEYWORD_TOP_K:-8}
+      AI_MIN_SCORE: ${AI_MIN_SCORE:-0.3}
+      AI_RERANK_TOP_N: ${AI_RERANK_TOP_N:-5}
+    volumes:
+      - ./data/uploads:/app/uploads
+    networks:
+      - kb
+
+  ai-service:
+    build:
+      context: .
+      target: ai-service-runtime
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      AI_SERVICE_PORT: "3001"
+      AI_SERVICE_HOST: 0.0.0.0
+      UPLOAD_ROOT: /app/uploads
+      DATABASE_HOST: db
+      DATABASE_PORT: "5432"
+      DATABASE_USER: ${DATABASE_USER:-postgres}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+      DATABASE_NAME: ${DATABASE_NAME:-ai_knowledge_base}
+      INTERNAL_AI_TOKEN: ${INTERNAL_AI_TOKEN:?请先配置 INTERNAL_AI_TOKEN}
+      ENV_ENCRYPTION_KEY: ${ENV_ENCRYPTION_KEY:?请先配置 ENV_ENCRYPTION_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-ada-002}
+      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o-mini}
+      AI_TEMPERATURE: ${AI_TEMPERATURE:-0}
+      AI_TOP_K: ${AI_TOP_K:-8}
+      AI_KEYWORD_TOP_K: ${AI_KEYWORD_TOP_K:-8}
+      AI_MIN_SCORE: ${AI_MIN_SCORE:-0.3}
+      AI_RERANK_TOP_N: ${AI_RERANK_TOP_N:-5}
+      # 离线部署时指向容器内本地 OCR 语言包（见 ai-service 配置）
+      TESSDATA_PREFIX: /app/apps/ai-service
+    volumes:
+      - ./data/uploads:/app/uploads
+    networks:
+      - kb
+
+  web:
+    build:
+      context: .
+      target: web-runtime
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    networks:
+      - kb
+
+networks:
+  kb:
+    driver: bridge

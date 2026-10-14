@@ -1,0 +1,12 @@
+# 构建上下文排除项：避免把本地依赖/产物/数据打进镜像构建
+**/node_modules
+**/dist
+**/uploads
+data
+.env
+.git
+.gitignore
+*.log
+.DS_Store
+项目规划
+docs

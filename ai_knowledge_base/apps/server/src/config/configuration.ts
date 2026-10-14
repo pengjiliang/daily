@@ -13,8 +13,9 @@ export default () => ({
     username: process.env.DATABASE_USER ?? 'postgres',
     password: process.env.DATABASE_PASSWORD ?? 'postgres',
     name: process.env.DATABASE_NAME ?? 'ai_knowledge_base',
-    // 非生产环境允许 TypeORM 自动建表/同步字段
-    synchronize: process.env.NODE_ENV !== 'production',
+    // 私有化单实例部署：默认开启自动建表/同步字段，保证一键启动即可用；
+    // 需要严格可控时可设 DB_SYNC=false 关闭，改为手动迁移。
+    synchronize: process.env.DB_SYNC ? process.env.DB_SYNC === 'true' : true,
   },
   jwt: {
     secret: assertJwtSecret(process.env.JWT_SECRET),
