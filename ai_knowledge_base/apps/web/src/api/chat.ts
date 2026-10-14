@@ -5,9 +5,9 @@
  */
 import request from './request';
 import { useUserStore } from '../stores/user';
+import { API_BASE } from './base';
 import type { AnswerStats, RetrieveDebugView, RetrievedChunk } from '@ai-knowledge-base/shared';
 
-const API_BASE = 'http://localhost:3000';
 
 export interface Conversation {
   id: number;

@@ -7,9 +7,10 @@
 import axios, { type AxiosRequestConfig } from 'axios';
 import { ElMessage } from 'element-plus';
 import { useUserStore } from '../stores/user';
+import { API_BASE } from './base';
 
 const request = axios.create({
-  baseURL: 'http://localhost:3000',
+  baseURL: API_BASE,
   timeout: 30000, // 问答走独立的 SSE fetch，不受此超时影响
   withCredentials: true, // 携带 HttpOnly 登录态 Cookie
 });

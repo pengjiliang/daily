@@ -26,7 +26,12 @@ AI 知识库的 Web 前端，基于 Vue3 + Vite + Element Plus + Pinia，负责�
 
 ## 环境变量
 
-前端开发时通过 Vite 直接访问后端接口，接口地址硬编码在 `src/api/request.ts`（`http://localhost:3000`），无需 `.env`。若后端端口变更，需同步修改该地址。登录接口由服务端写 HttpOnly Cookie，跨域访问需后端 CORS 开启 `credentials`。
+接口与静态资源基础地址统一收敛到 `src/api/base.ts`，优先读取 `VITE_API_BASE`，未配置时本地开发走相对路径：
+
+- 本地开发：不配置 `VITE_API_BASE`，接口走 `/api`、头像等静态资源走 `/uploads`，由 Vite dev server 代理转发到 `http://localhost:3000`（见 `vite.config.ts`），localhost 或局域网 IP 均生效；修改 `vite.config.ts` 后需重启前端 dev server。
+- 部署（局域网/域名/HTTPS）：在构建环境或 `apps/web/.env` 配置 `VITE_API_BASE=http://<后端地址>:3000`，全部请求自动指向该后端。
+
+> 登录接口由服务端写 HttpOnly Cookie，跨域部署时需后端 CORS 开启 `credentials`；本地走代理为同源请求，不受影响。
 
 ## 启动
 

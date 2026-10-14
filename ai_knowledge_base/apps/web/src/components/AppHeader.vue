@@ -94,6 +94,7 @@ import { useUserStore } from '@/stores/user';
 import { useUiStore } from '@/stores/ui';
 import { uploadApi } from '@/api/upload';
 import { authApi } from '@/api/auth';
+import { ASSET_ORIGIN } from '@/api/base';
 
 const userStore = useUserStore();
 const uiStore = useUiStore();
@@ -101,7 +102,7 @@ const uiStore = useUiStore();
 /** 头像相对路径补全为 server 静态资源绝对地址 */
 const fullAvatarUrl = computed(() => {
   if (!userStore.userInfo?.avatarUrl) return '';
-  return `http://localhost:3000${userStore.userInfo.avatarUrl}`;
+  return `${ASSET_ORIGIN}${userStore.userInfo.avatarUrl}`;
 });
 
 // 头像更换弹窗状态

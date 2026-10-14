@@ -5,6 +5,7 @@
 import request from './request';
 import axios from 'axios';
 import { ElMessage } from 'element-plus';
+import { API_BASE } from './base';
 import type { IndexErrorKind, IndexStatus } from '@ai-knowledge-base/shared';
 
 export interface UploadDocument {
@@ -40,7 +41,6 @@ export interface UploadDocument {
 /** @deprecated Use UploadDocument */
 export type Document = UploadDocument;
 
-const API_BASE = 'http://localhost:3000';
 
 export const uploadApi = {
   uploadAvatar(formData: FormData) {

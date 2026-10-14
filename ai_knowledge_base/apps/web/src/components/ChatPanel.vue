@@ -304,6 +304,7 @@ import { useUserStore } from '@/stores/user';
 import { useChatStore } from '@/stores/chat';
 import { chatApi } from '@/api/chat';
 import { uploadApi } from '@/api/upload';
+import { ASSET_ORIGIN } from '@/api/base';
 import type { Source } from '@/api/chat';
 
 const userStore = useUserStore();
@@ -312,7 +313,7 @@ const chatStore = useChatStore();
 /** 头像相对路径补全为 server 静态资源绝对地址 */
 const fullAvatarUrl = computed(() => {
   if (!userStore.userInfo?.avatarUrl) return '';
-  return `http://localhost:3000${userStore.userInfo.avatarUrl}`;
+  return `${ASSET_ORIGIN}${userStore.userInfo.avatarUrl}`;
 });
 
 // ---- 输入与流式状态（组件私有） ----
