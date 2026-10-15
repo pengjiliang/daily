@@ -42,6 +42,7 @@ services:
     environment:
       NODE_ENV: production
       SERVER_PORT: "3000"
+      UPLOAD_ROOT: /app/uploads
       DATABASE_HOST: db
       DATABASE_PORT: "5432"
       DATABASE_USER: ${DATABASE_USER:-postgres}

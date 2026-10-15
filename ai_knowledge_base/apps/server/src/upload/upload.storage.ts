@@ -10,8 +10,12 @@ import { randomUUID } from 'node:crypto';
 import { extname, join } from 'node:path';
 import { diskStorage } from 'multer';
 
-/** 上传文件根目录（运行目录下 uploads/） */
-export const UPLOAD_ROOT = join(process.cwd(), 'uploads');
+/**
+ * 上传文件根目录：优先使用 UPLOAD_ROOT 环境变量（Docker 部署时由 compose 统一
+ * 指定为共享卷 /app/uploads，与 ai-service 保持一致）；未设置时保持开发模式
+ * 默认值（运行目录下 uploads/）。
+ */
+export const UPLOAD_ROOT = process.env.UPLOAD_ROOT?.trim() || join(process.cwd(), 'uploads');
 export const AVATARS_DIRECTORY = join(UPLOAD_ROOT, 'avatars');
 export const DOCUMENTS_DIRECTORY = join(UPLOAD_ROOT, 'documents');
 
