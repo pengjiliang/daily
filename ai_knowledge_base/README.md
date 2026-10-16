@@ -68,6 +68,54 @@ pnpm dev
 
 3. **SSE 流式协议**（`apps/web` ↔ `apps/server` ↔ `apps/ai-service`）：帧格式为 `event: <事件名>\ndata: <JSON>\n\n`；事件包括 `sources`（检索片段数组）、`token`（回答增量字符串）、`done`（最终 `AskResult`，含 `cached` 语义缓存命中标记、`stats` 性能指标、`suggestions` 追问建议）、`error`（错误信息）；客户端断开时服务端应中止上游请求并尽力保留已生成的部分回答。
 
+## Docker 部署（私有化）
+
+项目提供一键 Docker 部署，把 PostgreSQL + 后端 + AI 服务 + 前端全部跑在容器里，无需手动安装 Node / PostgreSQL / pgvector。
+
+### 一键启动
+
+```bash
+docker compose --env-file deploy/.env.docker up -d --build
+```
+
+首次会构建镜像（拉基础镜像 + 装依赖 + 编译，约 5~15 分钟）。启动后访问：
+
+| 服务 | 地址 |
+| :--- | :--- |
+| Web 前端 | http://localhost:8080 |
+| 数据库（可直连查看） | localhost:5433（容器内 5432） |
+
+### 与本地开发的隔离
+
+- **独立环境变量**：Docker 部署使用 `deploy/.env.docker`，本地 `pnpm dev` 使用根目录 `.env`，两套密钥/数据库密码/模型 Key 完全隔离，互不影响。
+- **独立数据库**：Docker 的数据库数据存在 `data/pg`，本地开发用本机 PostgreSQL，两套账号、文档、对话互不相通。
+- **端口不冲突**：容器内 server 3000 / ai-service 3001 / db 5432 不映射宿主机；仅 web 映射 8080、db 映射 5433。本机已有 PostgreSQL（5432）也不冲突。
+- **数据不提交**：`data/` 与 `deploy/.env.docker` 已在 `.gitignore` 中忽略。
+
+### 资源限制
+
+`docker-compose.yml` 为每个容器设置了资源上限（CPU / 内存），防止单个容器耗尽宿主机资源，适合数据量小的项目：
+
+| 服务 | CPU | 内存 |
+| :--- | :--- | :--- |
+| db | 1.0 核 | 512MB |
+| server | 0.5 核 | 256MB |
+| ai-service | 1.0 核 | 512MB |
+| web | 0.25 核 | 128MB |
+
+需要处理大文档/大批量索引时，可调高 `ai-service` 的内存上限后重建。
+
+### 常用命令
+
+```bash
+docker compose --env-file deploy/.env.docker ps                 # 查看状态
+docker compose --env-file deploy/.env.docker logs -f server     # 查看后端日志
+docker compose --env-file deploy/.env.docker down                # 停止（数据保留）
+docker compose --env-file deploy/.env.docker down -v             # 停止并清空数据
+```
+
+> 详细部署步骤见 `deploy/部署手册.docx` 与 `deploy/本地部署验证指南.docx`。
+
 ## 环境变量
 
 前后端与 AI 服务的环境变量已合并为**一份**，统一放在项目根目录 `ai_knowledge_base/.env`：
@@ -81,4 +129,5 @@ pnpm dev
 - 检索/生成参数：`AI_TEMPERATURE`、`AI_TOP_K`、`AI_KEYWORD_TOP_K`、`AI_MIN_SCORE`、`AI_RERANK_TOP_N`
 
 > 提示：`.env` 已在 `.gitignore` 中忽略，请勿提交到仓库；修改后需重启 `pnpm dev` 生效。
+
 

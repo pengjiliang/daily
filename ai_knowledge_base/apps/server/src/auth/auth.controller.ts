@@ -34,6 +34,7 @@ export class AuthController {
   }
 
   /** POST /auth/logout：清除登录态 Cookie */
+  @Public()
   @Post('logout')
   logout(@Res({ passthrough: true }) response: Response): { loggedOut: true } {
     return this.authService.logout(response);

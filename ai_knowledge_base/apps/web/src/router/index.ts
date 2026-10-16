@@ -38,22 +38,32 @@ const router = createRouter({
 router.beforeEach(async (to, _from, next) => {
   const userStore = useUserStore();
 
-  // 尚未完成过登录态校验时先请求 profile（Cookie 自动携带）
-  if (!userStore.authChecked) {
-    try {
-      const profile = await authApi.getProfile();
-      userStore.setUserInfo(profile);
-    } catch {
-      userStore.logout();
+  // 仅访问需要登录的页面时才校验登录态（Cookie 自动携带），登录/注册页不发起校验，
+  // 避免未登录时反复请求 profile，与 401 拦截器形成"整页刷新→再请求→再刷新"的死循环。
+  if (to.meta.requiresAuth) {
+    // 尚未完成过登录态校验时先请求 profile
+    if (!userStore.authChecked) {
+      try {
+        const profile = await authApi.getProfile();
+        userStore.setUserInfo(profile);
+      } catch {
+        // 校验失败（401 等）说明未登录：标记已校验，本会话内不再重复请求
+        userStore.markChecked();
+      }
     }
-  }
 
-  if (to.meta.requiresAuth && !userStore.isLoggedIn) {
-    next('/login');
-  } else if ((to.path === '/login' || to.path === '/register') && userStore.isLoggedIn) {
-    next('/home');
+    if (!userStore.isLoggedIn) {
+      next('/login');
+    } else {
+      next();
+    }
   } else {
-    next();
+    // 登录/注册页：已登录则回主页
+    if (userStore.isLoggedIn) {
+      next('/home');
+    } else {
+      next();
+    }
   }
 });
 

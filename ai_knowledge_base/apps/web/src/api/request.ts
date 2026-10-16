@@ -20,14 +20,23 @@ request.interceptors.response.use(
   (response) => {
     return response.data;
   },
-  (error) => {
+  async (error) => {
     if (error.response) {
       const { message, statusCode } = error.response.data;
-      ElMessage.error(message || '请求失败');
       if (statusCode === 401) {
+        // 401 = 登录态失效/未登录：静默处理，不弹错误提示。
+        // 这是预期流程（路由守卫校验 profile、会话过期等），清空登录态并跳登录页即可。
+        // 必须用 router.push 而非整页刷新：整页刷新会触发路由守卫重新请求 profile
+        // → 再 401 → 再刷新，形成死循环（表现为浏览器不停刷新 + 触发限流 429）。
         const userStore = useUserStore();
         userStore.logout();
-        window.location.href = '/login';
+        const router = await import('../router').then((m) => m.default);
+        if (router.currentRoute.value.path !== '/login' && router.currentRoute.value.path !== '/register') {
+          router.push('/login');
+        }
+      } else {
+        // 其他错误才统一弹提示
+        ElMessage.error(message || '请求失败');
       }
     } else {
       ElMessage.error('网络连接异常');

@@ -2,10 +2,17 @@ node_modules/
 dist/
 .DS_Store
 *.log
+# Word 临时锁文件（文档被打开时生成）
+~$*.docx
 .env
 .env.local
+# Docker 部署专用环境变量（含密钥，勿提交）
+deploy/.env.docker
 .npm-cache/
 .pnpm-store/
+
+# Docker 部署数据（数据库 + 上传文件，勿提交）
+data/
 
 # 排除上传的用户文件和临时文件
 apps/server/uploads/

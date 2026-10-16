@@ -75,6 +75,12 @@ async function handleLogin() {
         ElMessage.success('登录成功');
         router.push('/home');
       } catch (error) {
+        // 登录失败（服务端返回 401，如账号或密码错误）：401 已被全局拦截器静默处理，
+        // 这里补一个明确的错误提示，否则用户看不到失败原因。
+        const msg =
+          (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+          '登录失败，请重试';
+        ElMessage.error(msg);
         console.error(error);
       } finally {
         loading.value = false;

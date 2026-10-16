@@ -38,6 +38,11 @@ export const useUserStore = defineStore('user', () => {
     authChecked.value = false;
   }
 
+  /** 标记登录态已校验过（无论是否登录），用于避免重复请求 profile */
+  function markChecked() {
+    authChecked.value = true;
+  }
+
   return {
     userInfo,
     authChecked,
@@ -45,5 +50,6 @@ export const useUserStore = defineStore('user', () => {
     setUserInfo,
     updateAvatar,
     logout,
+    markChecked,
   };
 });

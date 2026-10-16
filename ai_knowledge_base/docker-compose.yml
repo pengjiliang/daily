@@ -12,15 +12,29 @@
 #      INTERNAL_AI_TOKEN / 客户自己的模型 API Key）
 #   2. 执行 docker compose up -d --build
 #   3. 浏览器访问 http://<服务器IP>:8080
+#
+# 若使用独立环境变量文件（与本地 pnpm dev 隔离），把根目录 .env 的内容
+# 复制到 deploy/.env.docker 并填写，然后启动时加 --env-file：
+#   docker compose --env-file deploy/.env.docker up -d --build
 # ============================================================================
 services:
   db:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    # 资源上限：小项目用足够；限制单个容器，避免耗尽宿主机资源
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
     environment:
       POSTGRES_USER: ${DATABASE_USER:-postgres}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
       POSTGRES_DB: ${DATABASE_NAME:-ai_knowledge_base}
+    # 把容器内 5432 映射到宿主机 5433，避免与宿主机上已安装的 PostgreSQL(5432) 冲突；
+    # 这样用 Navicat/DBeaver 连 localhost:5433 就能查看容器里的数据库。
+    ports:
+      - "5433:5432"
     volumes:
       - ./data/pg:/var/lib/postgresql/data
     healthcheck:
@@ -36,6 +50,12 @@ services:
       context: .
       target: server-runtime
     restart: unless-stopped
+    # 资源上限：轻量 BFF，主要是转发
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
     depends_on:
       db:
         condition: service_healthy
@@ -72,6 +92,12 @@ services:
       context: .
       target: ai-service-runtime
     restart: unless-stopped
+    # 资源上限：最重的服务（embedding / LLM 重排 / OCR），内存给足但限制住
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
     depends_on:
       db:
         condition: service_healthy
@@ -108,6 +134,12 @@ services:
       context: .
       target: web-runtime
     restart: unless-stopped
+    # 资源上限：Nginx 静态托管 + 反代，很轻
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
     depends_on:
       - server
     ports:
