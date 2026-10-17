@@ -6,7 +6,7 @@ dist/
 ~$*.docx
 .env
 .env.local
-# Docker 部署专用环境变量（含密钥，勿提交）
+# Docker 部署专用文件（含密钥与本地文档，勿提交）
 deploy/
 .npm-cache/
 .pnpm-store/
