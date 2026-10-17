@@ -163,7 +163,7 @@
                         @change="chatStore.handleFolderChange"
                       />
                       <el-tooltip
-                        content="支持 PDF、Word(.docx)、Excel(.xlsx/.xls)、CSV、Markdown、TXT、JPG/PNG/GIF 图片(OCR)，单个文件不超过 10MB"
+                        content="支持 PDF、DOCX、XLS/XLSX、CSV、MD、TXT、JPG/JPEG/PNG/GIF/BMP/TIF/TIFF（图片走 OCR）；文件夹上传单个文件不超过 10MB，单文件上传不超过 20MB"
                         placement="top"
                       >
                         <el-icon class="question-icon"><QuestionFilled /></el-icon>
@@ -174,11 +174,12 @@
                   <!-- 我的文档：分"文件夹列表"和"文件列表"两个区域；文件夹点击内联展开内部文件 -->
                   <div class="file-list-section">
                     <div class="section-title">文档列表</div>
-                    <!-- 亮点 1：索引失败聚合条：一键重试全部失败文档 -->
+                    <!-- 索引失败聚合条：批量重试或删除失败文档 -->
                     <div v-if="failedDocuments.length > 0" class="index-failed-banner">
                       <el-icon class="warning-icon"><WarningFilled /></el-icon>
                       <span>{{ failedDocuments.length }} 个文档索引失败</span>
                       <el-button text size="small" type="primary" @click="retryAllFailed">全部重试</el-button>
+                      <el-button text size="small" type="danger" @click="deleteAllFailed">批量删除</el-button>
                     </div>
                     <!-- 文档搜索：按文件名/文件夹名过滤（所见即所得，影响分组与删除范围） -->
                     <div class="doc-search-wrapper">
@@ -526,7 +527,17 @@ const failedDocuments = computed(() =>
 
 /** 一键重试全部失败文档 */
 const retryAllFailed = () => {
-  failedDocuments.value.forEach((doc) => chatStore.reindexDocument(doc));
+  chatStore.reindexFailedDocuments(failedDocuments.value);
+};
+
+const deleteAllFailed = () => {
+  const files = [...failedDocuments.value];
+  chatStore.openDeleteDialog(
+    `确定删除全部 ${files.length} 个索引失败的文档吗？删除后无法恢复。`,
+    () => {
+      void chatStore.deleteBulkDocuments(files, '索引失败文档');
+    },
+  );
 };
 
 /** 按主题过滤后的会话列表（空关键字返回全部） */

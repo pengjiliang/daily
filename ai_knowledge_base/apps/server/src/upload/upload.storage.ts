@@ -30,7 +30,6 @@ const documentExtensions = new Set([
   '.csv',
   '.md',
   '.docx',
-  '.doc',
   '.jpg',
   '.jpeg',
   '.png',

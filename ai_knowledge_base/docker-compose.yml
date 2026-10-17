@@ -70,6 +70,7 @@ services:
       DATABASE_NAME: ${DATABASE_NAME:-ai_knowledge_base}
       JWT_SECRET: ${JWT_SECRET:?请先配置 JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      AUTH_COOKIE_NAME: kb_access_token_docker
       INTERNAL_AI_TOKEN: ${INTERNAL_AI_TOKEN:?请先配置 INTERNAL_AI_TOKEN}
       AI_SERVICE_URL: http://ai-service:3001
       ENV_ENCRYPTION_KEY: ${ENV_ENCRYPTION_KEY:?请先配置 ENV_ENCRYPTION_KEY}

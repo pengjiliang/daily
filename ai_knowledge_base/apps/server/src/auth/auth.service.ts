@@ -15,7 +15,7 @@ import { RegisterDto } from './dto/register.dto.js';
 export type PublicUser = Omit<User, 'password'>;
 
 /** 登录态 Cookie 名称与有效期（与 JWT_EXPIRES_IN 对齐，默认 7 天） */
-export const AUTH_COOKIE_NAME = 'kb_access_token';
+export const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME?.trim() || 'kb_access_token';
 export const AUTH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 @Injectable()

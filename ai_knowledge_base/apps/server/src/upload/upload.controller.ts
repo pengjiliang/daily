@@ -20,6 +20,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
@@ -46,6 +47,7 @@ export class UploadController {
 
   /** POST /upload/document：表单字段名 file，folderName 可选（文件夹上传时传文件夹相对路径），落库后异步触发 ai-service 建索引 */
   @Post('document')
+  @Throttle({ default: { limit: 600, ttl: 60_000 } })
   @UseInterceptors(FileInterceptor('file', documentUploadOptions))
   async uploadDocument(
     @Req() request: AuthenticatedRequest,
@@ -114,12 +116,14 @@ export class UploadController {
 
   /** POST /upload/document/:id/reindex：手动重试索引失败的文档（仅所有者，重置 pending 后重跑流水线） */
   @Post('document/:id/reindex')
+  @Throttle({ default: { limit: 600, ttl: 60_000 } })
   async reindexDocument(@Req() request: AuthenticatedRequest, @Param('id', ParseIntPipe) id: number) {
     return this.uploadService.retryIndexDocument(id, request.user.userId);
   }
 
   /** DELETE /upload/document/:id：删本地文件 + 删库记录 + 通知 ai-service 清向量分块 */
   @Delete('document/:id')
+  @Throttle({ default: { limit: 600, ttl: 60_000 } })
   async deleteDocument(@Req() request: AuthenticatedRequest, @Param('id', ParseIntPipe) id: number) {
     await this.uploadService.deleteDocument(id, request.user.userId);
     return { deleted: true };

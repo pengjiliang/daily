@@ -31,6 +31,8 @@ import { Buffer } from 'node:buffer';
 const INDEX_MAX_ATTEMPTS = 3;
 /** 指数退避基准间隔（秒）：第 n 次重试等待 base * 2^(n-1)（10s → 30s → 60s） */
 const INDEX_RETRY_BASE_SECONDS = 10;
+/** 同时索引的文档数，兼顾批量处理速度与向量服务负载 */
+const INDEX_CONCURRENCY = 4;
 
 /**
  * 兼容多种编码的原始文件名解码：
@@ -66,6 +68,8 @@ function decodeFileName(filename: string): string {
 @Injectable()
 export class UploadService implements OnModuleInit {
   private readonly logger = new Logger(UploadService.name);
+  private readonly indexQueue: Array<{ uploadFile: UploadFile; absolutePath: string }> = [];
+  private activeIndexJobs = 0;
 
   constructor(
     @InjectRepository(UploadFile)
@@ -107,9 +111,7 @@ export class UploadService implements OnModuleInit {
         continue;
       }
 
-      setImmediate(() => {
-        void this.runIndexPipeline(document, this.resolveSafeDocumentPath(document.path));
-      });
+      this.queueIndexing(document, this.resolveSafeDocumentPath(document.path));
     }
   }
 
@@ -146,10 +148,8 @@ export class UploadService implements OnModuleInit {
       }),
     );
 
-    // 异步后台处理，不阻塞响应
-    setImmediate(() => {
-      this.runIndexPipeline(uploadFile, file.path);
-    });
+    // 异步排队处理，不阻塞响应
+    this.queueIndexing(uploadFile, file.path);
     return uploadFile;
   }
 
@@ -181,10 +181,8 @@ export class UploadService implements OnModuleInit {
       }),
     );
 
-    // 异步后台索引，不阻塞响应
-    setImmediate(() => {
-      this.runIndexPipeline(uploadFile, absolutePath);
-    });
+    // 异步排队索引，不阻塞响应
+    this.queueIndexing(uploadFile, absolutePath);
     return uploadFile;
   }
 
@@ -374,6 +372,27 @@ export class UploadService implements OnModuleInit {
     return filePath;
   }
 
+  /** 上传、启动恢复与手动重试共用有并发上限的索引队列 */
+  private queueIndexing(uploadFile: UploadFile, absolutePath: string): void {
+    this.indexQueue.push({ uploadFile, absolutePath });
+    this.processIndexQueue();
+  }
+
+  private processIndexQueue(): void {
+    while (this.activeIndexJobs < INDEX_CONCURRENCY && this.indexQueue.length > 0) {
+      const job = this.indexQueue.shift()!;
+      this.activeIndexJobs += 1;
+      void this.runIndexPipeline(job.uploadFile, job.absolutePath)
+        .catch((error) => {
+          this.logger.error(`Indexing document ${job.uploadFile.id} failed unexpectedly: ${String(error)}`);
+        })
+        .finally(() => {
+          this.activeIndexJobs -= 1;
+          this.processIndexQueue();
+        });
+    }
+  }
+
   /**
    * 索引流水线入口（亮点 1 自愈）：置 running → 请求 ai-service 建索引 →
    * 成功写回 done（chunkCount/embeddingModel/embeddingDim）；
@@ -507,9 +526,7 @@ export class UploadService implements OnModuleInit {
     uploadFile.indexError = null;
     uploadFile.errorKind = null;
     const reset = await this.uploadFilesRepository.save(uploadFile);
-    setImmediate(() => {
-      this.runIndexPipeline(reset, this.resolveSafeDocumentPath(reset.path));
-    });
+    this.queueIndexing(reset, this.resolveSafeDocumentPath(reset.path));
     return reset;
   }
 }

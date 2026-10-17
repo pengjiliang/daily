@@ -151,7 +151,6 @@ export const useChatStore = defineStore('chat', () => {
     '.csv',
     '.md',
     '.docx',
-    '.doc',
     '.jpg',
     '.jpeg',
     '.png',
@@ -166,6 +165,8 @@ export const useChatStore = defineStore('chat', () => {
   const HTML_EXTENSIONS = new Set(['.txt', '.md', '.docx', '.xlsx', '.xls', '.csv']);
   /** 文件夹上传并发数（避免同时发起过多请求） */
   const FOLDER_UPLOAD_CONCURRENCY = 3;
+  const BULK_DELETE_CONCURRENCY = 3;
+  const BULK_REINDEX_CONCURRENCY = 3;
 
   // ---- 数据加载 ----
 
@@ -174,6 +175,9 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const res = await uploadApi.listDocuments();
       documents.value = res;
+      if (!indexPollTimer && res.some((doc) => doc.indexStatus === 'pending' || doc.indexStatus === 'running')) {
+        pollIndexStatus();
+      }
     } catch (error) {
       console.error(error);
       ElMessage.error('加载文档列表失败');
@@ -263,8 +267,10 @@ export const useChatStore = defineStore('chat', () => {
   const deleteBulkDocuments = async (files: UploadDocument[], label: string) => {
     let success = 0;
     let failed = 0;
-    await Promise.all(
-      files.map(async (doc) => {
+    const queue = [...files];
+    const worker = async () => {
+      while (queue.length > 0) {
+        const doc = queue.shift()!;
         try {
           await uploadApi.deleteDocument(doc.id);
           success += 1;
@@ -272,8 +278,9 @@ export const useChatStore = defineStore('chat', () => {
           console.error(`删除失败: ${doc.originalName}`, error);
           failed += 1;
         }
-      }),
-    );
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(BULK_DELETE_CONCURRENCY, files.length) }, () => worker()));
     await loadDocuments();
     if (failed > 0) {
       ElMessage.error(`${label}删除完成：成功 ${success} 个，失败 ${failed} 个`);
@@ -487,6 +494,11 @@ export const useChatStore = defineStore('chat', () => {
 
   /** el-upload 前置钩子：与服务端统一为 20 MiB 上限。 */
   const beforeUpload = (file: File) => {
+    const extension = getExtension(file.name);
+    if (!ALLOWED_DOC_EXTENSIONS.has(extension)) {
+      ElMessage.error(extension ? `不支持 ${extension} 格式；请上传支持的文档或图片` : '无法识别文件格式');
+      return false;
+    }
     const isWithinLimit = file.size <= 20 * 1024 * 1024;
     if (!isWithinLimit) {
       ElMessage.error('文件大小不能超过 20MB');
@@ -609,12 +621,13 @@ export const useChatStore = defineStore('chat', () => {
    * （并发 FOLDER_UPLOAD_CONCURRENCY），结束后汇总提示并刷新文档列表（索引在服务端异步进行）。
    */
   const uploadFolderFiles = async (items: { file: File; folderName: string }[]) => {
-    const valid = items.filter(
-      ({ file }) => ALLOWED_DOC_EXTENSIONS.has(getExtension(file.name)) && file.size / 1024 / 1024 < 10,
-    );
-    const skipped = items.length - valid.length;
+    const supported = items.filter(({ file }) => ALLOWED_DOC_EXTENSIONS.has(getExtension(file.name)));
+    const valid = supported.filter(({ file }) => file.size <= 10 * 1024 * 1024);
+    const skippedFormat = items.length - supported.length;
+    const skippedSize = supported.length - valid.length;
+    const skipped = skippedFormat + skippedSize;
     if (valid.length === 0) {
-      ElMessage.warning(`文件夹内没有可上传的文档（跳过 ${skipped} 个不支持格式或超 10MB 的文件）`);
+      ElMessage.warning(`没有符合条件的文件（不支持格式 ${skippedFormat} 个，超过 10MB ${skippedSize} 个）`);
       return;
     }
 
@@ -657,7 +670,7 @@ export const useChatStore = defineStore('chat', () => {
     uploadingFolder.value = false;
     await loadDocuments();
     pollIndexStatus();
-    ElMessage.success(`文件夹上传完成：成功 ${success} 个，跳过 ${skipped} 个，失败 ${failed} 个`);
+    ElMessage.success(`文件夹上传完成：成功 ${success} 个，跳过 ${skipped} 个（不支持格式 ${skippedFormat} 个、超过 10MB ${skippedSize} 个），失败 ${failed} 个`);
   };
 
   /**
@@ -667,13 +680,11 @@ export const useChatStore = defineStore('chat', () => {
   let indexPollTimer: ReturnType<typeof setInterval> | null = null;
   const pollIndexStatus = () => {
     if (indexPollTimer) clearInterval(indexPollTimer);
-    let elapsed = 0;
     indexPollTimer = setInterval(async () => {
-      elapsed += 3000;
       const hasActive = documents.value.some(
         (doc) => doc.indexStatus === 'pending' || doc.indexStatus === 'running',
       );
-      if (!hasActive || elapsed >= 120000) {
+      if (!hasActive) {
         if (indexPollTimer) {
           clearInterval(indexPollTimer);
           indexPollTimer = null;
@@ -695,6 +706,27 @@ export const useChatStore = defineStore('chat', () => {
       console.error(error);
       ElMessage.error('重新索引失败');
     }
+  };
+
+  const reindexFailedDocuments = async (files: UploadDocument[]) => {
+    let failed = 0;
+    const queue = [...files];
+    const worker = async () => {
+      while (queue.length > 0) {
+        const doc = queue.shift()!;
+        try {
+          await uploadApi.reindexDocument(doc.id);
+        } catch (error) {
+          console.error(`重新索引失败: ${doc.originalName}`, error);
+          failed += 1;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(BULK_REINDEX_CONCURRENCY, files.length) }, () => worker()));
+    await loadDocuments();
+    pollIndexStatus();
+    if (failed > 0) ElMessage.error(`已提交重试，${failed} 个文档提交失败`);
+    else ElMessage.success(`已提交 ${files.length} 个文档重新索引`);
   };
 
   /** 回退方案（webkitdirectory）：webkitRelativePath 缺失时 folderName 为空（按单文件上传） */
@@ -974,6 +1006,7 @@ export const useChatStore = defineStore('chat', () => {
     openPasteDialog,
     importText,
     reindexDocument,
+    reindexFailedDocuments,
     pickFolderWithPicker,
     uploadFolderFiles,
     handleFolderChange,
