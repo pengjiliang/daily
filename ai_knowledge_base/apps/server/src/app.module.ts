@@ -8,7 +8,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { AppController } from './app.controller.js';
 import { AuthModule } from './auth/auth.module.js';
 import configuration from './config/configuration.js';
@@ -41,8 +42,13 @@ import { FeedbackModule } from './feedback/feedback.module.js';
         password: configService.getOrThrow<string>('database.password'),
         database: configService.getOrThrow<string>('database.name'),
         autoLoadEntities: true, // 自动注册各模块通过 forFeature 注册的实体
-        // 仅开发环境自动同步表结构；生产环境关闭（见 configuration）
+        // 数据库结构变更统一走迁移；启动时自动执行未应用的迁移。
+        // 开发环境可设 DB_SYNC=true 临时同步实体字段，生产保持关闭。
         synchronize: configService.getOrThrow<boolean>('database.synchronize'),
+        migrationsRun: configService.getOrThrow<boolean>('database.migrationsRun'),
+        // 迁移文件：dev（nest start）与 prod 都运行编译后的 dist，统一指向 dist/migrations
+        migrations: [join(dirname(fileURLToPath(import.meta.url)), 'migrations', '*.js')],
+        migrationsTransactionMode: 'each' as const,
       }),
     }),
     ThrottlerModule.forRoot({

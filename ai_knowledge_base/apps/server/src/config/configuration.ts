@@ -13,9 +13,10 @@ export default () => ({
     username: process.env.DATABASE_USER ?? 'postgres',
     password: process.env.DATABASE_PASSWORD ?? 'postgres',
     name: process.env.DATABASE_NAME ?? 'ai_knowledge_base',
-    // 私有化单实例部署：默认开启自动建表/同步字段，保证一键启动即可用；
-    // 需要严格可控时可设 DB_SYNC=false 关闭，改为手动迁移。
-    synchronize: process.env.DB_SYNC ? process.env.DB_SYNC === 'true' : true,
+    // 数据库结构变更统一走迁移（migrations/ 目录）；启动时自动执行未应用的迁移。
+    // DB_SYNC=true 仅用于开发环境快速同步实体字段，生产应保持关闭（默认 false）。
+    synchronize: process.env.DB_SYNC ? process.env.DB_SYNC === 'true' : false,
+    migrationsRun: process.env.DB_MIGRATIONS_RUN ? process.env.DB_MIGRATIONS_RUN === 'true' : true,
   },
   jwt: {
     secret: assertJwtSecret(process.env.JWT_SECRET),

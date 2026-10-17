@@ -9,7 +9,7 @@ import cookieParser from 'cookie-parser';
 import * as express from 'express';
 import { join } from 'node:path';
 import { AppModule } from './app.module.js';
-import { UPLOAD_ROOT } from './upload/upload.storage.js';
+import { AVATARS_DIRECTORY } from './upload/upload.storage.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
@@ -18,8 +18,9 @@ async function bootstrap() {
   // 粘贴文本导入上限 20 万字符，需高于 Nest 默认 100kb
   app.use(express.json({ limit: '2mb' }));
   app.use(express.urlencoded({ extended: true, limit: '2mb' }));
-  // 头像/文档等本地上传文件的静态目录（与上传写入路径保持一致）
-  app.use('/uploads', express.static(UPLOAD_ROOT));
+  // 仅开放头像等确需公开的静态资源；知识库文档一律经鉴权下载接口返回，
+  // 避免文档文件绕过登录/共享权限被直接访问。
+  app.use('/uploads/avatars', express.static(AVATARS_DIRECTORY));
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true, // 自动去除 DTO 未声明字段

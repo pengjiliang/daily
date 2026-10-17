@@ -22,10 +22,11 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
+import { unlink } from 'node:fs/promises';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import type { AuthenticatedUser } from '../auth/strategies/jwt.strategy.js';
 import { UploadService } from './upload.service.js';
-import { avatarUploadOptions, documentUploadOptions } from './upload.storage.js';
+import { avatarUploadOptions, documentUploadOptions, readFileHead, sniffType } from './upload.storage.js';
 
 /** 带登录用户信息的请求类型 */
 type AuthenticatedRequest = Request & { user: AuthenticatedUser };
@@ -56,6 +57,13 @@ export class UploadController {
   ) {
     if (!file) {
       throw new BadRequestException('Document file is required');
+    }
+    // 落盘后按文件头校验真实格式，避免伪装扩展名进入解析链路；不匹配则删除已落盘文件
+    const ext = file.originalname.split('.').pop()?.toLowerCase() ?? '';
+    const extWithDot = ext ? `.${ext}` : '';
+    if (!sniffType(readFileHead(file.path), extWithDot)) {
+      await unlink(file.path).catch(() => undefined);
+      throw new BadRequestException('File content does not match its extension');
     }
     return this.uploadService.saveDocument(request.user.userId, file, body.folderName);
   }

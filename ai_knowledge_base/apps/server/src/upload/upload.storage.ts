@@ -5,7 +5,7 @@
  */
 import { BadRequestException } from '@nestjs/common';
 import type { MulterOptions } from '@nestjs/platform-express/multer/interfaces/multer-options.interface.js';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, openSync, readSync, closeSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { extname, join } from 'node:path';
 import { diskStorage } from 'multer';
@@ -42,6 +42,65 @@ const documentExtensions = new Set([
 /** 确保目标目录存在（不存在则递归创建） */
 function ensureDirectory(directory: string): void {
   mkdirSync(directory, { recursive: true });
+}
+
+/**
+ * 读取文件开头的少量字节，用于按内容探测真实格式（magic bytes）。
+ * multer 落盘完成后回调里读取已写入的磁盘文件，避免依赖可伪造的 mimetype。
+ */
+export function readFileHead(path: string, length = 16): Buffer | null {
+  try {
+    const fd = openSync(path, 'r');
+    try {
+      const buffer = Buffer.alloc(length);
+      const bytes = readSync(fd, buffer, 0, length, 0);
+      return buffer.subarray(0, bytes);
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 按文件头判断真实格式：PDF %PDF-、PNG \x89PNG、JPEG FFD8FF、
+ * GIF GIF8、BMP BM、WebP RIFF....WEBP、TIFF II* / MM*、ZIP 头（docx/xlsx）。
+ * 纯文本（txt/md/csv）无固定头，走扩展名 + 不可执行字节过滤。
+ */
+export function sniffType(head: Buffer | null, ext: string): boolean {
+  if (!head || head.length < 4) return false;
+  switch (ext) {
+    case '.pdf':
+      return head.toString('latin1').startsWith('%PDF');
+    case '.png':
+      return head.readUInt32BE(0) === 0x89504e47;
+    case '.jpg':
+    case '.jpeg':
+      return head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+    case '.gif':
+      return head.toString('latin1').startsWith('GIF8');
+    case '.bmp':
+      return head.toString('latin1', 0, 2) === 'BM';
+    case '.webp':
+      return head.toString('latin1', 0, 4) === 'RIFF' && head.toString('latin1', 8, 12) === 'WEBP';
+    case '.tif':
+    case '.tiff':
+      return head.toString('latin1', 0, 2) === 'II' || head.toString('latin1', 0, 2) === 'MM';
+    case '.docx':
+    case '.xlsx':
+      return head.toString('latin1', 0, 2) === 'PK';
+    case '.txt':
+    case '.md':
+    case '.csv':
+      // 文本文件不允许二进制/可执行内容（NUL、脚本解释器标记等）
+      return !head.includes(0);
+    case '.xls':
+      // 老版 .xls 是 OLE 复合文档（D0 CF 11 E0），或纯文本 CSV 误命名
+      return head.readUInt32LE(0) === 0xe011cfd0;
+    default:
+      return false;
+  }
 }
 
 /** 生成磁盘文件名：UUID + 小写扩展名 */
